@@ -9,6 +9,7 @@ use std::time::Instant;
 
 use hb_formats::terrain::CELL_SIZE;
 use hb_formats::Angle;
+mod battle;
 mod sound;
 
 use hb_formats::font::Font;
@@ -97,6 +98,11 @@ impl Flight {
             .camera
             .z
             .wrapping_add(units((forward[2] * self.speed - sy * strafe) * dt));
+        // The world is 1024 units a side and wraps. The engine keeps every
+        // position in it by sign-extending from 26 bits after each move
+        // (`shl 6; sar 6`, e.g. at `0x4069e7`), so this does too.
+        self.camera.x = (self.camera.x << 6) >> 6;
+        self.camera.z = (self.camera.z << 6) >> 6;
     }
 
     /// Keep the eye above the ground and above anything standing on it.
@@ -271,20 +277,24 @@ fn main() -> Result<(), String> {
 
     // Combat. The laser sound is the one the engine names; a destroyed
     // object plays its type's own destroy sound, falling back to a blast.
-    let load_wav = |name: &str| -> Option<std::sync::Arc<hb_audio::Wav>> {
-        let bytes = startup.read("sound", name).or_else(|_| game.read("sound", name)).ok()?;
-        hb_audio::Wav::parse(bytes).ok().map(std::sync::Arc::new)
+    let mut sounds: std::collections::HashMap<String, Option<std::sync::Arc<hb_audio::Wav>>> =
+        std::collections::HashMap::new();
+    let mut sound = |name: &str| -> Option<std::sync::Arc<hb_audio::Wav>> {
+        sounds
+            .entry(name.to_string())
+            .or_insert_with(|| {
+                let bytes = startup.read("sound", name).or_else(|_| game.read("sound", name)).ok()?;
+                hb_audio::Wav::parse(bytes).ok().map(std::sync::Arc::new)
+            })
+            .clone()
     };
-    let laser = load_wav("laser.wav");
-    let blast = load_wav("blast4.wav");
-    let mut shots: Vec<hb_sim::combat::Shot> = Vec::new();
-    let mut health: Vec<hb_sim::combat::Health> = level
-        .placements
-        .iter()
-        .map(|p| hb_sim::combat::Health::for_kind(&level.kinds[p.kind]))
-        .collect();
+    let mut battle = battle::Battle::new(&level);
     let mut cooldown = 0.0f32;
-    let mut destroyed = 0usize;
+    let mut colours = ShotColours::for_palette(&level.palette);
+    // The ship's velocity, from how far the eye moved last frame; turrets
+    // lead with it and the laser adds its magnitude.
+    let mut last_eye = eye_of(&flight.camera);
+    println!("sim: {} turrets", battle.turret_count());
 
     let started = Instant::now();
     let mut last = Instant::now();
@@ -307,14 +317,15 @@ fn main() -> Result<(), String> {
             play_music(&level);
             followers = followers_for(&level);
             live = level.placements.clone();
-            shots.clear();
-            destroyed = 0;
-            health = level
-                .placements
-                .iter()
-                .map(|p| hb_sim::combat::Health::for_kind(&level.kinds[p.kind]))
-                .collect();
-            println!("sim: {} of {} objects follow a course", followers.len(), live.len());
+            battle = battle::Battle::new(&level);
+            colours = ShotColours::for_palette(&level.palette);
+            last_eye = eye_of(&flight.camera);
+            println!(
+                "sim: {} of {} objects follow a course, {} turrets",
+                followers.len(),
+                live.len(),
+                battle.turret_count()
+            );
         }
         tab_was_down = tab;
 
@@ -356,48 +367,80 @@ fn main() -> Result<(), String> {
             }
         }
         target.clear(0);
+        let eye = eye_of(&flight.camera);
+        let velocity = if dt > 0.0 {
+            [
+                hb_sim::combat::wrapped(eye[0] - last_eye[0]) / dt,
+                (eye[1] - last_eye[1]) / dt,
+                hb_sim::combat::wrapped(eye[2] - last_eye[2]) / dt,
+            ]
+        } else {
+            [0.0; 3]
+        };
+        last_eye = eye;
+
         // Fire: a shot every tenth of a second while the button is held. The
-        // rate is this port's choice.
+        // rate is this port's choice; speed and damage are the engine's.
         cooldown -= dt;
-        if window.is_key_down(Key::Space) && cooldown <= 0.0 && demo.is_none() {
+        if window.is_key_down(Key::Space) && cooldown <= 0.0 && demo.is_none() && battle.pilot.alive() {
             cooldown = 0.1;
-            let eye = [
-                flight.camera.x as f32 / 65536.0,
-                flight.camera.y as f32 / 65536.0 - 0.5,
-                flight.camera.z as f32 / 65536.0,
-            ];
-            shots.push(hb_sim::combat::Shot::fire(eye, flight.camera.yaw.0, flight.camera.pitch.0));
-            if let (Some(music), Some(sound)) = (music.as_ref(), laser.as_ref()) {
-                music.effect(sound, 0.5);
+            let from = [eye[0], eye[1] - 0.5, eye[2]];
+            battle.fire(hb_sim::combat::Shot::player_laser(
+                from,
+                flight.camera.yaw.0,
+                flight.camera.pitch.0,
+                flight.speed,
+            ));
+            if let (Some(music), Some(s)) = (music.as_ref(), sound("laser.wav")) {
+                music.effect(&s, 0.5);
             }
         }
-        for shot in &mut shots {
-            let hit = hb_sim::combat::first_hit(shot, dt, &live, |i| !health[i].destroyed);
-            if let Some(i) = hit {
-                shot.age = f32::MAX;
-                if health[i].hit() {
-                    destroyed += 1;
-                    let kind = level.placements[i].kind;
-                    // Become the wreck, or vanish if the type has none.
-                    live[i].kind = level.wreck_mesh[kind].unwrap_or(usize::MAX);
-                    if let Some(music) = music.as_ref() {
-                        let own = level.destroy_sound[kind]
-                            .as_ref()
-                            .and_then(|b| hb_audio::Wav::parse(b).ok())
-                            .map(std::sync::Arc::new);
-                        if let Some(sound) = own.as_ref().or(blast.as_ref()) {
-                            music.effect(sound, 0.8);
-                        }
+
+        let grid = hb_world::Grid::new(&level.terrain);
+        let solid = |p: [f32; 3]| {
+            let (x, z) = ((p[0] * 65536.0) as i32, (p[2] * 65536.0) as i32);
+            (p[1] * 65536.0) as i32 <= grid.ceiling_of_solid(x, z)
+        };
+        // In a demo the recorded flight cannot dodge, so nothing shoots back.
+        let noises = if demo.is_none() {
+            battle.step(&level, &mut live, eye, velocity, dt, &solid)
+        } else {
+            battle.step(&level, &mut live, [0.0, 1.0e6, 0.0], [0.0; 3], dt, &|_| false)
+        };
+        for noise in noises {
+            let (name, volume) = match noise {
+                battle::Noise::Destroyed(kind) => {
+                    let own = level.destroy_sound[kind]
+                        .as_ref()
+                        .and_then(|b| hb_audio::Wav::parse(b).ok())
+                        .map(std::sync::Arc::new);
+                    if let (Some(music), Some(s)) = (music.as_ref(), own.or_else(|| sound("blast4.wav"))) {
+                        music.effect(&s, 0.8);
                     }
+                    continue;
                 }
-            } else {
-                hb_sim::combat::advance(shot, dt);
+                battle::Noise::PlayerHit(n) => (format!("exp{}.wav", n + 1), 0.8),
+                battle::Noise::NearMiss(kind) => (hb_sim::combat::near_miss_sound(kind).to_string(), 0.6),
+                battle::Noise::Died => {
+                    println!("shot down ({} so far) - back to the start", battle.deaths);
+                    ("blast7.wav".to_string(), 1.0)
+                }
+            };
+            if let (Some(music), Some(s)) = (music.as_ref(), sound(&name)) {
+                music.effect(&s, volume);
             }
         }
-        shots.retain(|s| s.alive());
+        if !battle.pilot.alive() {
+            // The port's own: start again where the level starts, whole. The
+            // engine's death - an explosion, a wreck, the mission's end - has
+            // not been read.
+            flight = Flight::new(start_of(&level));
+            battle.pilot = hb_sim::combat::Pilot::default();
+            last_eye = eye_of(&flight.camera);
+        }
 
         for (i, follower) in &mut followers {
-            if health[*i].destroyed {
+            if battle.health[*i].destroyed {
                 continue;
             }
             follower.step(dt);
@@ -415,9 +458,23 @@ fn main() -> Result<(), String> {
         scene.frames = Some(&frames_now);
         scene.placements = &live;
         hb_render::draw_world(&mut target, &scene, &flight.camera);
-        for shot in &shots {
-            // Index 255 is in the reserved range, so no ramp dims it.
-            hb_render::scene::draw_spark(&mut target, &flight.camera, shot.position, 255);
+        // Shots are drawn at the copy of their position nearest the eye.
+        let near = |p: [f32; 3]| {
+            [
+                eye[0] + hb_sim::combat::wrapped(p[0] - eye[0]),
+                p[1],
+                eye[2] + hb_sim::combat::wrapped(p[2] - eye[2]),
+            ]
+        };
+        for flying in &battle.shots {
+            let colour = match flying.shot.side {
+                hb_sim::combat::Side::Player => colours.player,
+                hb_sim::combat::Side::Enemy => colours.enemy,
+            };
+            hb_render::scene::draw_spark(&mut target, &flight.camera, near(flying.shot.position), colour);
+        }
+        for missile in &battle.missiles {
+            hb_render::scene::draw_spark(&mut target, &flight.camera, near(missile.position), colours.missile);
         }
         if show_cockpit {
             if let Some(art) = &cockpit {
@@ -427,11 +484,12 @@ fn main() -> Result<(), String> {
         if show_hud {
             if let Some(font) = &hud_font {
                 let readout = format!(
-                    "{}  ALT {:.0}  SPD {:.0}  KILLS {}",
+                    "{}  ALT {:.0}  SPD {:.0}  HP {:.0}  KILLS {}",
                     level.stem.to_uppercase(),
                     flight.camera.y as f32 / 65536.0,
                     flight.speed,
-                    destroyed
+                    battle.pilot.health * 100.0,
+                    battle.destroyed
                 );
                 // The font is drawn at its authored size, which is 23 pixels
                 // tall - more than a tenth of a 200-line screen, so it sits in
@@ -485,6 +543,39 @@ fn followers_for(level: &Level) -> Vec<(usize, hb_sim::Follower)> {
             Some((i, hb_sim::Follower::new(course, [p.x, p.y, p.z])?))
         })
         .collect()
+}
+
+fn eye_of(camera: &Camera) -> [f32; 3] {
+    [camera.x as f32 / 65536.0, camera.y as f32 / 65536.0, camera.z as f32 / 65536.0]
+}
+
+/// Which palette entries draw shots. All three come from the reserved range,
+/// 240-255, which the renderer's light and fog ramps leave alone, so a shot is
+/// equally bright near and far. The engine draws shots as models; these points
+/// stand in for them.
+struct ShotColours {
+    player: u8,
+    enemy: u8,
+    missile: u8,
+}
+
+impl ShotColours {
+    fn for_palette(palette: &hb_formats::act::Palette) -> ShotColours {
+        let nearest = |want: [i32; 3]| -> u8 {
+            (240u8..=255)
+                .min_by_key(|&i| {
+                    let [r, g, b] = palette.rgb(i);
+                    let d = [r as i32 - want[0], g as i32 - want[1], b as i32 - want[2]];
+                    d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
+                })
+                .unwrap_or(255)
+        };
+        ShotColours {
+            player: 255,
+            enemy: nearest([255, 40, 20]),
+            missile: nearest([255, 200, 40]),
+        }
+    }
 }
 
 /// Start in the middle of the map, above whatever is there.

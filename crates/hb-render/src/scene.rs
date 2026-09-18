@@ -25,6 +25,9 @@ pub struct Scene<'a> {
     pub meshes: &'a [Option<hb_formats::mrgl::Model>],
     /// Which texture each mesh material names, resolved once.
     pub mesh_textures: &'a [Vec<Option<Image>>],
+    /// The 16.16 radius each mesh is drawn at. Models are normalised to
+    /// +/-1.0, so this is the object's half-extent in the world.
+    pub mesh_radius: &'a [i32],
 }
 
 /// Draws the ground and both box sets from the camera's position.
@@ -36,7 +39,11 @@ pub fn draw_world(target: &mut Target, scene: &Scene, camera: &Camera) -> Drawn 
     let mut drawn = Drawn::default();
     draw_sky(target, scene, camera);
     let reach = (camera.far / CELL_SIZE).max(1);
-    let eye = Cell::containing(camera.x, camera.z);
+    // The eye's cell before wrapping. The camera's coordinates are signed and
+    // unbounded, so the walk has to start from the same frame the camera is
+    // in: a camera at x = -10 units is in cell -2, whose data is in grid
+    // column 126 but whose ground is drawn at -16 units, not +1008.
+    let eye = (camera.x >> 19, camera.z >> 19);
 
     // Back to front by cell distance, so the painter's order is roughly right
     // before the depth buffer even runs.
@@ -47,7 +54,7 @@ pub fn draw_world(target: &mut Target, scene: &Scene, camera: &Camera) -> Drawn 
             if d > reach * reach {
                 continue;
             }
-            cells.push((d, eye.x + dx, eye.z + dz));
+            cells.push((d, eye.0 + dx, eye.1 + dz));
         }
     }
     cells.sort_by_key(|&(d, _, _)| std::cmp::Reverse(d));
@@ -117,7 +124,7 @@ fn draw_sky(target: &mut Target, scene: &Scene, camera: &Camera) {
 /// rebased onto the same unwrapped frame the terrain walk uses - otherwise an
 /// object at -300 units lands 1024 units away from the ground it stands on.
 fn draw_objects(target: &mut Target, scene: &Scene, camera: &Camera, drawn: &mut Drawn) {
-    let eye = Cell::containing(camera.x, camera.z);
+    let eye = (camera.x >> 19, camera.z >> 19);
     let mut order: Vec<(i64, usize)> = Vec::new();
     for (i, p) in scene.placements.iter().enumerate() {
         let (wx, wz) = rebase(eye, p.x, p.z);
@@ -135,16 +142,18 @@ fn draw_objects(target: &mut Target, scene: &Scene, camera: &Camera, drawn: &mut
             continue;
         };
         let textures = &scene.mesh_textures[p.kind];
+        let radius = scene.mesh_radius.get(p.kind).copied().unwrap_or(1 << 16);
         let (wx, wz) = rebase(eye, p.x, p.z);
-        if draw_mesh(target, scene, camera, mesh, textures, wx, p.y, wz, p.scale, p.heading) {
+        if draw_mesh(target, scene, camera, mesh, textures, wx, p.y, wz, radius, p.heading) {
             drawn.models += 1;
         }
     }
 }
 
 /// Move a signed world coordinate into the unwrapped frame the terrain walk
-/// uses, choosing the copy of the wrapping world nearest the eye.
-fn rebase(eye: Cell, x: i32, z: i32) -> (i32, i32) {
+/// uses, choosing the copy of the wrapping world nearest the eye. `eye` is the
+/// eye's cell before wrapping.
+fn rebase(eye: (i32, i32), x: i32, z: i32) -> (i32, i32) {
     let one = |eye_cell: i32, coord: i32| {
         let cell = (coord >> 19) & (SIDE as i32 - 1);
         // The nearest equivalent cell index to the eye's, modulo 128.
@@ -156,7 +165,7 @@ fn rebase(eye: Cell, x: i32, z: i32) -> (i32, i32) {
         }
         ((eye_cell + delta) << 19) | (coord & (CELL_SIZE - 1))
     };
-    (one(eye.x, x), one(eye.z, z))
+    (one(eye.0, x), one(eye.1, z))
 }
 
 /// One MRGL mesh, at a position, scale and heading.
@@ -175,7 +184,7 @@ fn draw_mesh(
 ) -> bool {
     let (sy, cy) = hb_formats::Angle(heading).to_radians().sin_cos();
     // Model space is 2.14 and spans -1.0 to +1.0, so `Vertex::world` turns a
-    // vertex into a 16.16 world offset at the placement's scale.
+    // vertex into a 16.16 world offset at the type's radius.
     let (width, height) = (target.width, target.height);
     let place = |v: &hb_formats::mrgl::Vertex| -> Option<(f32, f32, f32)> {
         let [mx, my, mz] = v.world(scale);

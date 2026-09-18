@@ -106,11 +106,15 @@ Multiplayer is out of scope until everything above works.
 
 Reported from playing `hb-fly` and deliberately deferred:
 
-- **Everything feels too big.** The height scale and coordinates are not the
-  cause - the recorded demo flight confirms both. Candidates are the port's own
-  choices: a 90-degree field of view, the eye height, and a speed limit of 90
-  units a second in a 1024-unit world. The engine's field of view has not been
-  read.
+- **Everything feels too big.** Likely found in worklog 28: objects were
+  drawn at a median one twentieth of their real size, because the port read a
+  placement's hit points as its scale. With them drawn at their type's radius
+  the terrain has things of the right size on it. Still worth checking against
+  the original once played: a 90-degree field of view that is the port's own,
+  and a speed limit of 90 units a second where the recorded demo flies at a
+  median 16.5 and a 90th percentile of 49.
+- **Half the world was empty.** Also worklog 28, and not reported but surely
+  seen: at a negative coordinate the terrain was drawn 1,024 units away.
 - **The frame rate is poor.** Measured at the 60 fps cap in a `--release`
   build; a debug build is many times slower at a per-pixel rasteriser, so check
   which was run first. If it is release, the obvious costs are walking every

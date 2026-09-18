@@ -639,9 +639,9 @@ fn the_def_file_also_holds_the_instance_list() {
         assert!(placed.len() <= 500, "{stem} places {}", placed.len());
         for p in &placed {
             assert!(p.kind < types.len(), "{stem}: type {} of {}", p.kind, types.len());
-            // Always zero in the shipped data.
-            assert_eq!(p.unknown_5, 0);
-            assert_eq!(p.unknown_6, 0);
+            // Pitch and roll: always zero in the shipped data.
+            assert_eq!(p.pitch, 0);
+            assert_eq!(p.roll, 0);
             max_xz = max_xz.max(p.x.abs()).max(p.z.abs());
             min_y = min_y.min(p.y);
             max_y = max_y.max(p.y);
@@ -657,6 +657,71 @@ fn the_def_file_also_holds_the_instance_list() {
     // which is altitude byte 255 scaled by 2^15.
     assert_eq!(max_y, 255 << 15);
     assert!(min_y >= -(126 << 16), "{} units", min_y >> 16);
+}
+
+/// The second placement field is the actor's hit points, not a scale.
+///
+/// The loader writes it to actor offset 0x1c, which the damage routine at
+/// `0x40d3fc` decrements; the draw at `0x40da00` never reads it. The data
+/// agrees: the values count hits of the player's laser, whose damage is 4,096
+/// (1/16) in the weapon table at `0x50e7a0`.
+#[test]
+fn a_placements_second_field_counts_laser_hits() {
+    let pod = archive!("GAME.POD");
+    let (mut total, mut whole_hits, mut dead) = (0usize, 0usize, 0usize);
+    for e in pod.entries().iter().filter(|e| e.ext() == "lvl") {
+        let level = lvl::Level::parse(pod.bytes(e)).unwrap();
+        let def = pod.read("data", &format!("{}.def", level.stem())).unwrap();
+        for p in text::placements(def).unwrap() {
+            total += 1;
+            if p.hit_points % 4096 == 0 {
+                whole_hits += 1;
+            }
+            if p.hit_points <= 0 {
+                dead += 1;
+            }
+        }
+    }
+    assert_eq!(total, 7_606);
+    // Nothing is placed already dead - a shot skips actors at zero or below.
+    assert_eq!(dead, 0);
+    // 98 per cent are a whole number of laser hits.
+    assert_eq!(whole_hits, 7_453);
+}
+
+/// Every type record's behaviour lines parse, and the fields the turret
+/// routine reads are consistent with it.
+#[test]
+fn every_type_record_carries_its_weapon() {
+    let pod = archive!("GAME.POD");
+    let (mut types, mut turrets, mut still) = (0usize, 0usize, 0usize);
+    let mut guided = 0usize;
+    for e in pod.entries().iter().filter(|e| e.ext() == "lvl") {
+        let level = lvl::Level::parse(pod.bytes(e)).unwrap();
+        let def = pod.read("data", &format!("{}.def", level.stem())).unwrap();
+        for kind in text::enemy_defs(def).unwrap() {
+            types += 1;
+            assert!(kind.radius() > 0, "{} has radius {}", kind.model, kind.radius());
+            assert!(kind.muzzles.len() <= 8 && kind.hit_spheres.len() <= 8);
+            // Nothing ships a fire sound; the line is there and says null.
+            assert!(kind.fire_sound.is_none(), "{}: {:?}", kind.model, kind.fire_sound);
+            if kind.class() == 10 {
+                turrets += 1;
+                if kind.shot_speed() == 0 {
+                    still += 1;
+                }
+                if kind.weapon == 19 {
+                    guided += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(types, 1_848);
+    assert_eq!(turrets, 118);
+    // Two turret types never fire a shot that moves.
+    assert_eq!(still, 2);
+    // The SAM sites: weapon 19 is the guided missile.
+    assert_eq!(guided, 14);
 }
 
 #[test]

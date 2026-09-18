@@ -201,6 +201,13 @@ stride of 16 is confirmed by `ALIENSH.BIN`, where `aliensh1.bin` begins at
 0x18 and `aliensh2.bin` at 0x28. In that file the eight unused name slots and
 all sixteen pointer slots - 0x98 through 0x158 - are zero.
 
+The only group a level places is the SAM site's `SamSite1.Bin`, whose eight
+children run `Sam01.Bin` to `Sam05.Bin` and back to `Sam02.Bin` - the order of
+a ping-pong animation. 97 of the 7,606 placements use it. Where the engine
+needs a group's geometry for the type - its bounding box, at `0x473ee0` - it
+recurses into the name at +0x18, the first child. How it advances through the
+children when drawing has not been read; the port draws the first.
+
 ## Worked example
 
 `MODELS\CUBE.BIN`, 576 bytes:

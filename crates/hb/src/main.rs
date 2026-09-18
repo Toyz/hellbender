@@ -24,7 +24,10 @@ hb - inspect Hellbender's data
   hb view <name.bin> <out.png>      a model, flat shaded, as a PNG
   hb heightmap <level> <out.png>    a level's ground, lit, from above
   hb ground <level> <out.png>       a level's ground, textured, from above
-  hb fly <level> <out.png> [x z yaw height pitch]   one frame from in-level
+  hb fly <level> <out.png> [x z yaw height pitch] [--bare]
+                                    one frame from in-level; --bare skips the cockpit
+  hb look <level> <n> <out.png> [distance]
+                                    placement n, framed from the south and above
   hb font <out.png> [text]          a specimen of the front end's typeface
   hb demo <n> <seconds> <out.png>   a frame of a recorded attract-mode flight
   hb check                          parse everything and report what fails
@@ -80,6 +83,7 @@ fn run(args: &[&str]) -> Result<(), String> {
         ["heightmap", name, out] => cmd_heightmap(name, Path::new(out)),
         ["ground", name, out] => cmd_ground(name, Path::new(out)),
         ["fly", name, out, rest @ ..] => cmd_fly(name, Path::new(out), rest),
+        ["look", name, index, out, rest @ ..] => cmd_look(name, index, Path::new(out), rest),
         ["font", out, rest @ ..] => cmd_font(Path::new(out), rest),
         ["demo", n, at, out] => cmd_demo(n, at, Path::new(out)),
         ["check"] => cmd_check(),
@@ -366,7 +370,59 @@ fn cmd_ground(name: &str, out: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// One placed object seen from `distance` units along -z and a third of that
+/// above, looking at it: a direct way to see what size things are drawn.
+fn cmd_look(name: &str, index: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
+    let game = open_pod("game")?;
+    let startup = open_pod("startup")?;
+    let level = hb_render::Level::load(&game, Some(&startup), name)?;
+    let n: usize = index.parse().map_err(|_| "n must be a placement index")?;
+    let p = *level
+        .placements
+        .get(n)
+        .ok_or_else(|| format!("{name} places {}", level.placements.len()))?;
+    let kind = &level.kinds[p.kind];
+    let distance: f32 = match rest.first() {
+        Some(d) => d.parse().map_err(|_| "distance must be world units")?,
+        None => (kind.radius() as f32 / 65536.0 * 4.0).max(10.0),
+    };
+    let (x, y, z) = (p.x, p.y + ((distance / 3.0) * 65536.0) as i32, p.z - (distance * 65536.0) as i32);
+    let grid = hb_world::Grid::new(&level.terrain);
+    println!(
+        "object at ({:.1}, {:.1}, {:.1}), solid top there {:.1}; eye at y {:.1}, solid top under it {:.1}",
+        p.x as f32 / 65536.0,
+        p.y as f32 / 65536.0,
+        p.z as f32 / 65536.0,
+        grid.ceiling_of_solid(p.x, p.z) as f32 / 65536.0,
+        y as f32 / 65536.0,
+        grid.ceiling_of_solid(x, z) as f32 / 65536.0
+    );
+    let mut camera = hb_render::Camera::looking_at(x, y, z, hb_formats::Angle(0));
+    // Nose down by the angle to the object: atan(1/3), in the 16-bit circle.
+    camera.pitch = hb_formats::Angle(((1.0f32 / 3.0).atan() / std::f32::consts::TAU * 65536.0) as u16);
+    let (w, h) = hb_render::Target::MODE_200;
+    let mut target = hb_render::Target::new(w, h);
+    target.clear(0);
+    let drawn = hb_render::draw_world(&mut target, &level.scene(), &camera);
+    let rgb = target.to_rgb(&level.palette);
+    std::fs::write(out, png::rgb(w, h, &rgb)).map_err(|e| e.to_string())?;
+    println!(
+        "{}: #{n} {} ({:?}), radius {:.1}, hit points {:.3}, from {distance:.0} units - {} objects drawn -> {}",
+        level.stem,
+        kind.model,
+        kind.name.trim(),
+        kind.radius() as f32 / 65536.0,
+        p.hit_points as f32 / 65536.0,
+        drawn.models,
+        out.display()
+    );
+    Ok(())
+}
+
 fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
+    let bare = rest.contains(&"--bare");
+    let rest: Vec<&str> = rest.iter().copied().filter(|a| *a != "--bare").collect();
+    let rest = rest.as_slice();
     let game = open_pod("game")?;
     let startup = open_pod("startup")?;
     let level = hb_render::Level::load(&game, Some(&startup), name)?;
@@ -401,12 +457,13 @@ fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
     camera.pitch = hb_formats::Angle(pitch as u16);
     let scene = level.scene();
     let drawn = hb_render::draw_world(&mut target, &scene, &camera);
-    // The cockpit, in VGA.ACT, over a frame in the level's palette.
-    if let Some(art) = startup
+    // The cockpit, in VGA.ACT, over a frame in the level's palette - unless
+    // asked for the bare view.
+    let cockpit = startup
         .read("art", "ckpt200.raw")
         .ok()
-        .and_then(|b| raw::Image::parse_guessed(b).ok().flatten())
-    {
+        .and_then(|b| raw::Image::parse_guessed(b).ok().flatten());
+    if let (Some(art), false) = (cockpit, bare) {
         target.overlay(&art);
     }
     let rgb = target.to_rgb(&level.palette);

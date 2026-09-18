@@ -2,7 +2,7 @@
 title: The simulation
 status: partial
 covers: HELLBEND.EXE logic phases, crates/hb-sim
-worklog: 26, 27
+worklog: 26, 27, 28
 ---
 
 # The simulation
@@ -64,36 +64,166 @@ Everything past phase 0 is its own choice:
 The heading an actor faces is `atan2(dx, dz)` of its direction of travel, the
 same convention the recorded demo flight measured.
 
-## Shooting
+## Behaviour classes
 
-What comes from the data, per type in the level's `.DEF`:
+Every actor runs one routine a frame, chosen by its type's class - field 0 of
+the `.DEF` record's first line, type offset 0x0c. The switch at `0x40bb93`
+indexes a 65-entry jump table at `0x40c6cc` (type records are 664 bytes at
+`[0x500748]`, the class at `+0x0c`). Most cases call a routine and then run the
+same visibility test, `radius << 8 / distance >= 16`, into the actor's `+0x20`.
 
-- **What it becomes when destroyed** - the second model on line 0. Seven
-  distinct values across the 1,848 types: `wbnkruin.bin` for the 439 bunkers,
-  five dome ruins `krdom0r.bin` to `krdom4r.bin`, and `cube.bin` for the other
-  1,394. `cube.bin` is the un-normalised test model, and this port reads it as
-  the exporter's placeholder for "nothing left" - an inference, but one that
-  makes a building vanish rather than turn into a cube.
-- **The sound it makes** - line 24, the second name under
-  `{ Escape and destroy sound files`. 143 of them resolve to a `.WAV` in the
-  archives. One type names `CRY-DES.DEF` where it means `CRY-DES.WAV`, a typo
-  that shipped; it resolves to nothing.
-- **Its damage multipliers** - lines 17 to 19, cannon, laser and missile, in
-  16.16. 1.0 in almost every type.
-- **Its hit points, probably** - field 2 of line 0. It is a function of the
-  model, which is the shape hit points should have, and read as 16.16 it
-  orders sensibly: a cube 0.55, a bunker 4.65, a control centre 11.9. That is
-  an inference from the data, not a reading of the engine.
+```
+class   types   routine    what
+    0     874   -          scenery: visibility only
+    9     454   -          bunkers and domes: visibility only
+   10     118   0x408c30   turret
+   47      97   0x421240   course follower (phase 0 read, see above)
+   25       0   0x40aa90   rises from the ground playing missile.wav; unused
+```
 
-What is this port's own choice:
+The other classes' routines are listed by the table and not yet read.
+
+There is no range gate in the actor loop (`0x40bb00`): every actor thinks
+every frame, near the player or not.
+
+## Time
+
+Frame time is `0x59d14c`, 16.16 seconds. `0x46f160` reads `timeGetTime` and
+scales milliseconds by 1179.648, and `0x481cd7` divides the difference by 18 -
+65.536 a millisecond, exactly 16.16 - then caps it at `0x4000`, a quarter of a
+second, and scales it by a game-speed factor at `0x50f580`.
+
+## The turret
+
+Class 10 (`0x408c30`), each frame:
+
+1. **Aim with lead.** The time a shot takes to reach the player is the 3D
+   distance over the type's shot speed (`+0x218`); the aim point is the
+   player's position plus the player's velocity (`0x5b3a00`, `0x5b3a08`)
+   times that time, horizontally only. The wanted heading is
+   `atan2(lead_x, lead_z)`; the wanted pitch is 0.
+2. **Turn.** `0x4068f0` eases the actor's angles toward the wanted ones by
+   `error * turn_rate * dt` (`+0x68`) - exponential, not a fixed rate. The same
+   routine eases position by `move_rate * dt` (`+0x64`), but a turret asks to
+   stay where it is.
+3. **Fire.** Frame time accumulates at actor `+0x68`; past the fire interval
+   (`+0x6c`) the interval is subtracted and the turret fires - through
+   `0x4074e0` for weapon 19, `0x406dc0` otherwise.
+
+`0x406dc0`, the straight shot:
+
+- Steps the barrel counter at actor `+0xac` for barrel modes 1 and 2, then
+  offsets pitch and heading by that barrel's entry in the tables at
+  `0x500760` and `0x500778`.
+- Builds the shot direction from the actor's angles plus the offset, and
+  **returns without firing if the player is behind it** (`0x406fc6`).
+- Picks a muzzle at random from the type's line-3 list and places it with the
+  actor's rotation; a muzzle vertex at the model's origin fires nothing. With
+  no list, the shot leaves the actor's origin.
+- Spawns into the shot pool with the type's damage (`+0x70`), shot speed
+  (`+0x218`) and weapon kind (`+0xdc`), and plays line 12's sound - `null`
+  everywhere.
+
+A shot's direction does not converge on the player from the muzzle: it is the
+barrel's direction, from wherever the muzzle is. A gun whose muzzles are high
+on its model fires over a player at its own height. On `HOTH`'s spike gun, 17
+units off, a player at the spike tips' height takes 13 shots in a minute and
+one at the gun's own height takes 3 (`a_hoth_spike_gun_hits_at_its_muzzles_height_and_not_below`).
+
+## Straight shots
+
+A pool of 256 at `0x614570`, 104 bytes a slot; the player's shots take slots
+0-127 and everyone else's 128-255. The spawner (`0x476780`) records damage,
+speed, side and kind, and gives every shot **two seconds** (`0x20000` at
+`+0x04`). A slot with speed zero is free.
+
+The update (`0x476ac0`) moves each shot along its direction in **eight equal
+sub-steps a frame** and tests after each: a point test, not a swept one. It
+stops at solid ground below or a ceiling above (`0x41c300`, `0x41c4d0`).
+
+- A **player's** shot tests every actor with hit points above zero
+  (`0x40d750`). An actor is hit if the point is inside one of its type's
+  line-5 hit spheres - each really a cube, tested axis by axis - or, when it
+  lists none, inside the model's bounding box turned to the actor
+  (`0x40ce70`). The box is filled from the model at `0x404d40`.
+- An **enemy's** shot also tests actors, and then the player: inside 2 units
+  on every axis of the ship (`0x465650`).
+
+A hit takes the shot's damage times the target type's multiplier for the
+weapon kind (`0x40d2b0`): kinds 1-3 use line 18 (laser), 18, 19 and 24-28 line
+19 (missile), 23 line 17 (cannon), and anything else none. At zero the actor
+is destroyed (`0x40cb00`); a friendly one counts toward the three friendly
+kills that set `0x512720`.
+
+An enemy shot that comes within 16 units of the player while closing plays a
+sound once (`0x4768a0`): `missile.wav` for kind 17, else the weapon table's
+sound for its kind, else `whiz3.wav`.
+
+## The weapon table
+
+68-byte rows at `0x50e7a0`, speed first then damage, both 16.16:
+
+```
+kind   speed   damage   sound
+   0    32.0   0.0625
+   1    32.0   0.0625   laser4.wav
+   2    24.0   0.125    laser3.wav
+   3    64.0   0.0625   laser5.wav
+ 4-8    32.0   0.25
+18,19   64.0   1.0      missile.wav, missl-2.wav
+  23   128.0   0.125    m-gun-r.wav
+24,25   64.0   1.0      missl-1.wav, missl-3.wav
+```
+
+Rows 9-17 and 20-22 have speed zero. The player fires through `0x479ce0` with
+the row's speed **plus the ship's speed** - `0x47d57a` takes the magnitude of
+the velocity at `0x5b3a00` - and the row's damage.
+
+## The guided missile
+
+Weapon 19, the SAM sites' (`0x4074e0`). No in-front test: it launches from a
+random muzzle along the site's current heading into a second pool, 16 slots of
+88 bytes at `0x613700` (`0x477890`).
+
+- It starts at the type's move rate plus one - effectively at rest - and gains
+  16 units a second every second (`0x478673`) up to 64 (`0x400000`).
+- It lives **six seconds** (`0x60000`; ten for kind 24) and does **0.25**
+  damage (`0x4000`).
+- It steers in **four sub-steps a frame** (`0x478670`) toward the player's
+  heading and pitch from it (`0x477f20`). The gain on the error rises from 0
+  to 4.0 over its first second and holds 4.0 to a second and a half; **after
+  that it points straight at the player every sub-step**.
+- A smoke puff every sixteenth of a second (`0x478e35`).
+
+## The player
+
+Health at `0x5b39ec`, full at `0xffff`; shield at `0x62d6e0`, starting at 0.5
+(`0x426f47`). A hit (`0x4653a0`):
+
+- At difficulty 0 the damage is halved, plus one. The default is 1
+  (`0x512628`).
+- Scaled by `1 - shield / 2`, so the starting shield takes a quarter off.
+- The shield loses 1/32, and a voice warns as health passes 0.1 and as the
+  shield passes 0.1.
+- One of `exp1.wav`-`exp5.wav` plays (`0x476ef0`), and a one-second timer at
+  `0x5b36a4` shakes the view.
+- At zero health the ship is destroyed.
+
+## Shooting in this port
+
+`hb-sim` transcribes all of the above for straight shots, turrets, guided
+missiles and the player's health and shield. What is its own:
 
 | choice | why |
 | --- | --- |
-| A shot travels 180 units a second and lives 1.4 seconds | Not read. |
-| A laser hit does 1.0 before the type's multiplier | Not read. |
-| Ten shots a second while the button is held | Not read. |
-| A placed object is hit as a sphere of radius equal to its scale | Models are normalised to +/-1.0, so the scale is the half-extent. The engine's own test has not been read. |
-| A shot is drawn as a point | The engine's is a model - `bullet.bin` is in STARTUP.POD. |
+| The player fires weapon 1 | Rows 0 and 1 are the same laser; which the game starts on is not read. 1 is the row the laser multiplier applies to. |
+| Ten shots a second while the button is held | The player's rate of fire is not read. |
+| Enemy shots do not hit other actors | The engine's do. A muzzle can sit inside its own turret's box, and the engine's exclusion, if any, is not read. |
+| A dead player starts again at the level's start, whole | What the engine does at death is not read. |
+| No view shake | The shake's amounts are not read. |
+| Shots and missiles are points | The engine draws models by kind (`0x4769cf`). |
+| A group model is its first child | Only the SAM site uses one. The engine's frame advance is not read. |
+| Turrets only among the 65 classes shoot | The rest are not read. |
 
 The fire button is the space bar, because `HELLBEND.INI` binds `fireKey=57`,
 which is the space bar's scan code - and 636 of the 638 key presses in the
@@ -101,9 +231,9 @@ recorded demos are it.
 
 ## Unknown
 
-Everything past phase 0: speeds, turning, curve fitting, what happens at the end
-of a course, and how the seven logic routines differ. Whether field 2 really is
-hit points. The engine's weapons - speeds, damage, the fourteen weapon slots in
-the powerup table. What makes an actor start moving - whether all of them move
-from the start of the level or some wait for the player. Anything shooting
-back.
+Everything past phase 0 of the course follower: speeds, curve fitting, what
+happens at the end of a course, how the seven logic routines differ. The other
+63 behaviour classes, including the flyers (53, 56, 60) that make up most of
+what moves. The player's flight model and rate of fire. What happens at death.
+How the engine picks which shot model to draw. Line 2 of the type record and
+line 7's first two values.

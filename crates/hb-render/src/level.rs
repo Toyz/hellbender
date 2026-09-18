@@ -46,6 +46,11 @@ pub struct Level {
     /// them. A model's textures come from `ART\` by name, not from the level's
     /// `.TEX` list.
     pub mesh_textures: Vec<Vec<Option<Image>>>,
+    /// The scale each mesh is drawn at: its type's radius from `.DEF` line 0
+    /// field 2, which is what the engine's actor draw at `0x40da00` passes.
+    /// A wreck is drawn at the radius of the type it replaces - the engine
+    /// swaps the model on the same actor.
+    pub mesh_radius: Vec<i32>,
     /// The sky texture, 64 x 64. `None` for the levels whose sky slot names a
     /// zero-length `.VOX`, which are the ones set in space.
     pub sky: Option<Image>,
@@ -135,7 +140,18 @@ impl Level {
                         ..mrgl::Model::default()
                     });
                 }
-                mrgl::Model::parse(&bytes).ok()
+                let model = mrgl::Model::parse(&bytes).ok()?;
+                // A group model - only the SAM sites use one - has no geometry
+                // of its own, only child names. The engine takes the first
+                // child for the type's bounds (`0x473ee0` recurses into the
+                // name at 0x18), and so does this. The children run
+                // Sam01-05-02 like an animation, whose rate is not read.
+                if model.polygons.is_empty() {
+                    if let Some(first) = model.children.first() {
+                        return mrgl::Model::parse(&read("models", first)?).ok();
+                    }
+                }
+                Some(model)
             })
             .collect();
 
@@ -239,6 +255,7 @@ impl Level {
         let mut meshes = meshes;
         let mut mesh_textures = mesh_textures;
         let mut wreck_mesh = Vec::with_capacity(kinds.len());
+        let mut mesh_radius: Vec<i32> = kinds.iter().map(EnemyDef::radius).collect();
         for kind in &kinds {
             if kind.wreck.eq_ignore_ascii_case("cube.bin") {
                 wreck_mesh.push(None);
@@ -254,6 +271,7 @@ impl Level {
                         .collect();
                     meshes.push(Some(model));
                     mesh_textures.push(textures);
+                    mesh_radius.push(kind.radius());
                     wreck_mesh.push(Some(meshes.len() - 1));
                 }
                 None => wreck_mesh.push(None),
@@ -289,6 +307,7 @@ impl Level {
             placements,
             meshes,
             mesh_textures,
+            mesh_radius,
             manifest,
             stem,
             terrain,
@@ -315,6 +334,7 @@ impl Level {
             placements: &self.placements,
             meshes: &self.meshes,
             mesh_textures: &self.mesh_textures,
+            mesh_radius: &self.mesh_radius,
         }
     }
 

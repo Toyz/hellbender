@@ -137,12 +137,47 @@ pub fn name_list(data: &[u8], what: &'static str) -> Result<Vec<String>> {
 /// `.DEF`: a count, then that many 25-line records.
 pub const DEF_RECORD_LINES: usize = 25;
 
-#[derive(Debug, Clone)]
+/// One `.DEF` type record.
+///
+/// The loader at `HELLBEND.EXE:0x404f80` reads each record into a 664-byte
+/// type struct in the array at `[0x500748]`. The struct offsets are given on
+/// each field so a reading of the engine can be matched to the data.
+#[derive(Debug, Clone, Default)]
 pub struct EnemyDef {
-    /// The six integers of the record's first line. Fields 1, 3 and 5 are zero
-    /// in every one of the 1,848 shipped records; field 0 is a class of some
-    /// kind and field 2 is large and varied.
+    /// The six integers of the record's first line, into type offsets 0x0c,
+    /// 0x1c, 0x08, 0x10, 0x14 and 0x18. Field 0 is the behaviour class (see
+    /// [`EnemyDef::class`]) and field 2 the radius (see
+    /// [`EnemyDef::radius`]). Fields 1, 3 and 5 are zero in every one of the
+    /// 1,848 shipped records.
     pub fields: [i64; 6],
+    /// Line 1 field 0, type offset 0x64: the rate the actor eases its position
+    /// toward where it wants to be, 16.16 per second. `0x4068f0` multiplies it
+    /// by the frame time. Also the default shot speed's half: with no
+    /// `#New2ndweapon` line the loader sets the shot speed to twice this.
+    pub move_rate: i32,
+    /// Line 1 field 1, type offset 0x68: the rate the actor eases its angles
+    /// toward the ones it wants, 16.16 per second. A turret swings at this.
+    pub turn_rate: i32,
+    /// Line 1 field 2, type offset 0x6c: seconds between shots, 16.16.
+    pub fire_interval: i32,
+    /// Line 1 field 3, type offset 0x70: what one shot takes off the player's
+    /// health, whose full value is 1.0, in 16.16.
+    pub shot_damage: i32,
+    /// Line 1 field 4, type offset 0xdc: the weapon kind a shot carries. 19 is
+    /// a guided missile; the rest fly straight.
+    pub weapon: i32,
+    /// Line 3: the model vertices shots leave from, count at type offset 0x190
+    /// and up to eight indices from 0x194. A shot picks one at random.
+    pub muzzles: Vec<u16>,
+    /// Line 5 (`;NewHit`): hit spheres, count at 0x1b4, vertex indices from
+    /// 0x1b8 and 16.16 radii from 0x1d8. Empty means the model's own bounding
+    /// box is the target - `0x40ce70` takes one branch or the other.
+    pub hit_spheres: Vec<(u16, i32)>,
+    /// Line 10 (`#New2ndweapon`), type offsets 0x20c, 0x210, 0x214, 0x218.
+    pub second_weapon: SecondWeapon,
+    /// Line 12, type offset 0x21c: played at the muzzle on every shot. `null`
+    /// in every shipped record.
+    pub fire_sound: Option<String>,
     /// The intact model.
     pub model: String,
     /// The wrecked model. `wbunker.bin` pairs with `wbnkruin.bin`; everything
@@ -158,27 +193,74 @@ pub struct EnemyDef {
     pub raw: Vec<String>,
 }
 
-/// One placed object: an index into the level's type table, a scale, a
-/// position and a heading.
+impl EnemyDef {
+    /// Line 0 field 0, type offset 0x0c: which behaviour routine runs the
+    /// actor. The switch at `0x40bb93` dispatches on it through a 65-entry
+    /// table; class 10 is a turret (`0x408c30`) and class 47 a course follower
+    /// (`0x421240`).
+    pub fn class(&self) -> i64 {
+        self.fields[0]
+    }
+
+    /// Line 0 field 2, type offset 0x08: the object's radius in 16.16 world
+    /// units. Models are normalised to +/-1.0, so this is also the scale the
+    /// model is drawn at - the actor draw at `0x40da00` passes it as the draw
+    /// record's size - and the size the visibility test at `0x40c21f` weighs
+    /// against distance.
+    pub fn radius(&self) -> i32 {
+        self.fields[2] as i32
+    }
+
+    /// How fast this type's shots fly, in 16.16 units per second.
+    pub fn shot_speed(&self) -> i32 {
+        self.second_weapon.shot_speed
+    }
+}
+
+/// `.DEF` line 10, `#New2ndweapon`.
+///
+/// The loader peeks for the `#`; a record without the line gets
+/// `shot_speed = 2 * move_rate` and zeros (`0x405338`). Every shipped record
+/// has it.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SecondWeapon {
+    /// Type offset 0x20c: 0 fires one barrel; 1 cycles three and 2 cycles five,
+    /// each offset by 2,048 (11.25 degrees) in pitch or heading from the tables
+    /// at `0x500760` and `0x500778`.
+    pub barrels: i32,
+    pub unknown_1: i32,
+    pub unknown_2: i32,
+    /// Type offset 0x218: shot speed, 16.16 units per second.
+    pub shot_speed: i32,
+}
+
+/// One placed object: an index into the level's type table, its hit points,
+/// a position and three angles.
 ///
 /// The loader reads these with `fscanf(file, "%d,%d,%d,%d,%d,%d,%d,%d")` at
-/// `HELLBEND.EXE:0x405938` and refuses more than 500 per level.
+/// `HELLBEND.EXE:0x4059ab` straight into the actor struct - offsets 0x18,
+/// 0x1c, 0x00, 0x04, 0x08, 0x0c, 0x10, 0x14 - and refuses more than 500 per
+/// level.
 #[derive(Debug, Clone, Copy)]
 pub struct Placement {
     /// Index into the record list from [`enemy_defs`]. Always in range across
     /// all 7,606 shipped instances.
     pub kind: usize,
-    /// 16.16. 1.0 is the model's own size; most objects are smaller, with
-    /// 0.625, 0.125 and 0.0625 the three commonest values.
-    pub scale: i32,
+    /// Actor offset 0x1c, 16.16. Every hit subtracts the shot's damage times
+    /// the type's multiplier (`0x40d3fc`) and the actor dies at zero; a shot
+    /// only tests actors whose value is above zero (`0x40d772`). The commonest
+    /// values are 4,096, 8,192 and 40,960 - one, two and ten hits of the
+    /// player's 1/16 laser.
+    pub hit_points: i32,
     /// 16.16 world position. The world is centred, so x and z run to +/-512.
     pub x: i32,
     pub y: i32,
     pub z: i32,
-    /// Zero in every shipped instance.
-    pub unknown_5: i32,
-    pub unknown_6: i32,
-    /// A heading in the engine's 16-bit circle.
+    /// Actor offsets 0x0c and 0x10, the engine's 16-bit circle. Zero in every
+    /// shipped instance.
+    pub pitch: i32,
+    pub roll: i32,
+    /// Actor offset 0x14, a heading in the engine's 16-bit circle.
     pub heading: u16,
 }
 
@@ -202,12 +284,12 @@ pub fn placements(data: &[u8]) -> Result<Vec<Placement>> {
         }
         out.push(Placement {
             kind: v[0].max(0) as usize,
-            scale: v[1] as i32,
+            hit_points: v[1] as i32,
             x: v[2] as i32,
             y: v[3] as i32,
             z: v[4] as i32,
-            unknown_5: v[5] as i32,
-            unknown_6: v[6] as i32,
+            pitch: v[5] as i32,
+            roll: v[6] as i32,
             heading: v[7] as u16,
         });
     }
@@ -253,7 +335,45 @@ pub fn enemy_defs(data: &[u8]) -> Result<Vec<EnemyDef>> {
             record[18].trim().parse().unwrap_or(0),
             record[19].trim().parse().unwrap_or(0),
         ];
+        let fixed = |at: usize, n: usize, what: &'static str| -> Result<Vec<i32>> {
+            let v = ints(record, at, what)?;
+            if v.len() < n {
+                return Err(Error::BadLine { what, line: base + at + 1, saw: record[at].clone() });
+            }
+            Ok(v.into_iter().map(|x| x as i32).collect())
+        };
+        let conduct = fixed(1, 5, "DEF line 1")?;
+        // Count then indices; the engine reads nine integers and uses as many
+        // indices as the count says.
+        let muzzle_line = fixed(3, 9, "DEF muzzles")?;
+        let muzzles = muzzle_line[1..=muzzle_line[0].clamp(0, 8) as usize]
+            .iter()
+            .map(|&v| v as u16)
+            .collect();
+        let hit_line = fixed(5, 17, "DEF ;NewHit")?;
+        let hit_spheres = (0..hit_line[0].clamp(0, 8) as usize)
+            .map(|i| (hit_line[1 + i] as u16, hit_line[9 + i]))
+            .collect();
+        let second = fixed(10, 4, "DEF #New2ndweapon")?;
+        let sound = |at: usize| {
+            let name = record[at].trim();
+            (!name.is_empty() && !name.eq_ignore_ascii_case("null")).then(|| name.to_string())
+        };
         out.push(EnemyDef {
+            move_rate: conduct[0],
+            turn_rate: conduct[1],
+            fire_interval: conduct[2],
+            shot_damage: conduct[3],
+            weapon: conduct[4],
+            muzzles,
+            hit_spheres,
+            second_weapon: SecondWeapon {
+                barrels: second[0],
+                unknown_1: second[1],
+                unknown_2: second[2],
+                shot_speed: second[3],
+            },
+            fire_sound: sound(12),
             fields,
             model: head[6].trim().to_string(),
             wreck: head[7].trim().to_string(),

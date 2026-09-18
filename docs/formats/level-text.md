@@ -2,7 +2,7 @@
 title: The level text files - .DEF, .NAV, .TXT, .TEX, .ANI, .LVL family
 status: partial
 covers: DATA\*.DEF, DATA\*.NAV, DATA\*.TXT, DATA\*.TEX, DATA\*.ANI, DEMO\*.DMO
-worklog: 3, 15, 16, 22
+worklog: 3, 15, 16, 22, 28
 ---
 
 # The level text files
@@ -24,7 +24,8 @@ records. The loader at `0x00404fc5` refuses more than 100 per level.
 
 **These records are types, not placements.** Field 2 of a record's first line
 is a function of its model: 242 of the 250 models used take exactly one value,
-and `wbunker.bin` takes two across 439 records. The display names say the same
+and `wbunker.bin` takes two across 439 records - because it is the model's
+radius (see below). The display names say the same
 thing - "Extra" appears 395 times and "none" 156 - which is a fixed-size table
 with unused slots.
 
@@ -61,16 +62,76 @@ records. See below.
 
 What the first line's fields are, measured across all 1,848 records:
 
-| field | distinct values | reading |
-| ---: | ---: | --- |
-| 0 | 27 | a type or class id; 0 in 874 records, 9 in 454 |
-| 1 | 1 | always 0 |
-| 2 | 235 | large, 36269 and 304869 dominate; hit points or an id |
-| 3 | 1 | always 0 |
-| 4 | 4 | 0 in 1,830; otherwise 300000, 350000 or 500000 |
-| 5 | 1 | always 0 |
-| 6 | 250 | model filename |
-| 7 | 7 | second model filename |
+| field | distinct values | offset | reading |
+| ---: | ---: | ---: | --- |
+| 0 | 27 | 0x0c | behaviour class; 0 in 874 records, 9 in 454, 10 (turret) in 118 |
+| 1 | 1 | 0x1c | always 0 |
+| 2 | 235 | 0x08 | radius, 16.16 world units: the size the model is drawn at |
+| 3 | 1 | 0x10 | always 0 |
+| 4 | 4 | 0x14 | 0 in 1,830; otherwise 300000, 350000 or 500000 |
+| 5 | 1 | 0x18 | always 0 |
+| 6 | 250 | | model filename |
+| 7 | 7 | | second model filename |
+
+The offsets are into the 664-byte type struct the loader fills, one per record,
+in the array at `[0x500748]`.
+
+**Field 0 is the behaviour class.** The actor update switches on it at
+`0x40bb93` through a 65-entry jump table at `0x40c6cc`. Class 47 runs
+`0x421240`, the course follower (see [the simulation](../engine/simulation.md));
+class 10 runs `0x408c30`, a turret. Classes 0 and 9, most of the records, run
+nothing but the visibility test.
+
+**Field 2 is the radius.** Models are normalised to +/-1.0 (see
+[MRGL](mrgl.md)), and the actor draw at `0x40da00` passes this value as the
+draw record's size (`[type+0x08]` into record `+0x1c`, at `0x40dabe`); the
+visibility test at `0x40c21f` weighs `radius << 8 / distance` against 16.
+Across the 7,606 placements the median radius is 5.8 units - under a cell -
+and the largest 44.8.
+
+### The rest of the type record
+
+The loader (`0x404f80` to `0x4056ef`) reads the record's numeric lines with
+`fscanf` into these offsets. Lines 6-7 and 9-10 are optional to the engine: it
+peeks for the `!` or `#` and, if absent, fills defaults - but every shipped
+record has both.
+
+| line | format | offsets | reading |
+| ---: | --- | --- | --- |
+| 1 | `%d,%d,%d,%d,%d` | 0x64 0x68 0x6c 0x70 0xdc | move rate, turn rate, fire interval, shot damage, weapon kind |
+| 2 | `%d,%d,%d,%d` | 0xe0 0xe4 0xe8 0xec | not read yet |
+| 3 | nine `%d` | 0x190, 0x194.. | muzzles: a count, then up to eight model vertex indices |
+| 5 | seventeen `%d` | 0x1b4, 0x1b8.., 0x1d8.. | hit spheres: a count, eight vertex indices, eight 16.16 half-sizes |
+| 7 | `%d,%d,%d,%d` | 0x1f8 0x1fc 0x200 - | defaults 32 and 16 in the first two; the third, when set, lets the actor play its line-13 sound at random |
+| 10 | `%d,%d,%d,%d` | 0x20c 0x210 0x214 0x218 | barrel mode, two unread, shot speed in 16.16 units a second |
+| 12 | `%s` | 0x21c | the sound played with each shot; `null` in every record |
+| 13 | `%s` | 0x230 | a sound the actor plays now and then |
+| 15 | `%d` | 0x244 | course id |
+| 17-19 | `%d` | 0x248 0x24c 0x250 | cannon, laser and missile damage multipliers |
+| 21 | `%d` | 0x254 | friendly: three friendly kills set `0x512720` |
+
+Line 1 in detail, as the turret uses it:
+
+- **Move rate** and **turn rate** are the rates of the exponential approach at
+  `0x4068f0`: each frame an actor's position closes on where it wants to be by
+  `error * move_rate * dt` and its angles by `error * turn_rate * dt`.
+- **Fire interval** is seconds in 16.16. Frame time accumulates in the actor
+  and a shot goes when it passes the interval.
+- **Shot damage** comes off the player's health, whose full value is 1.0.
+- **Weapon kind** picks the target's damage multiplier and the shot's sound;
+  19 is a guided missile instead of a straight shot.
+
+Without line 10, the shot speed defaults to twice the move rate (`0x405338`).
+
+Barrel mode 1 cycles three barrels and 2 cycles five, each offset by 2,048 -
+11.25 degrees - in pitch or heading, from the tables at `0x500760` and
+`0x500778`:
+
+```
+barrel     0      1      2      3      4
+pitch      0  -2048      0   2048      0
+heading    0      0  -2048      0   2048
+```
 
 Field 7 is the wrecked form of field 6: `wbunker.bin` is paired with
 `wbnkruin.bin` 439 times, and everything else pairs with `cube.bin`. Fields 1,
@@ -92,25 +153,35 @@ eight-integer lines. `0x405938` reads them with
 1,65536,-21759556,-3768320,18127669,0,0,32632
 ```
 
+The loader's `fscanf` at `0x4059ab` writes straight into the actor struct, so
+each field has an actor offset:
+
 ```
-0  kind        index into the type records above
-1  scale       16.16; 1.0 is the model's own size
-2  x           16.16 world position, signed, the world is centred
-3  y
-4  z
-5  unknown     zero in all 7,606 shipped instances
-6  unknown     zero in all 7,606
-7  heading     the engine's 16-bit circle
+0  kind        0x18   index into the type records above
+1  hit points  0x1c   16.16; a hit subtracts damage, zero or below is dead
+2  x           0x00   16.16 world position, signed, the world is centred
+3  y           0x04
+4  z           0x08
+5  pitch       0x0c   zero in all 7,606 shipped instances
+6  roll        0x10   zero in all 7,606
+7  heading     0x14   the engine's 16-bit circle
 ```
+
+Field 1 was first read here as a scale. It is not: the draw at `0x40da00` never
+reads it, and the damage routine at `0x40d3fc` subtracts from it. The values
+count hits of the player's laser, whose damage is 4,096: 7,453 of the 7,606 are
+a whole number of them, and none is zero or below
+(`a_placements_second_field_counts_laser_hits`). Difficulty 2 multiplies every
+actor's hit points by 1.5 and 3 doubles them as the level loads (`0x405b0b`);
+the default is 1.
 
 Measured across all 26 levels: 7,606 instances, **no** kind index out of range,
 x and z between -512.0 and +511.9 units, y between -125.5 and +127.5 - which is
 exactly the world's horizontal bounds and exactly the terrain's own vertical
 span of 127.5 units. `HOTH` places 476, `SHIP` 290, `FLOAT` 293.
 
-The commonest scales are 0.625, 0.125 and 0.0625, so most objects are drawn
-much smaller than their model's own size. A model is normalised - see
-[MRGL](mrgl.md) - so the scale is the object's half-extent in world units.
+The commonest hit points are 0.625, 0.125 and 0.0625 - ten, two and one laser
+hits.
 
 ### The type record
 
@@ -210,7 +281,8 @@ read from the shipped data.
 
 ## Unknown
 
-The meaning of `.DEF` type fields 0, 2 and 4, and of its lines 1 to 7 and 10.
-What instance fields 5 and 6 are, given they are zero everywhere. The record
+`.DEF` type field 4 (0x14), line 2 (0xe0-0xec), line 7's first two values
+and line 10's middle two. What the 63 behaviour classes other than 10 and 47
+do. How the engine animates a group model such as the SAM site's. The record
 shape of `.PUP` and `.TDF`. Whether `.NAV`'s leading `6` is part of the header
 or the first record.

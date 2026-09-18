@@ -2,7 +2,7 @@
 title: The port's renderer
 status: partial
 covers: crates/hb-render
-worklog: 13, 16, 17, 20, 21, 22, 25
+worklog: 13, 16, 17, 20, 21, 22, 25, 28
 ---
 
 # The port's renderer
@@ -55,7 +55,8 @@ spans 127.5 units from the bottom of its range to the top.
 ## What is drawn
 
 The sky, ground triangles, both sets of ground boxes, chamber floors and
-ceilings, the level's placed objects, and the cockpit over the top of it all.
+ceilings, the level's placed objects, shots and missiles as points, and the
+cockpit over the top of it all.
 Terrain textures animate on the wall clock where the level's
 [`.ANI`](../formats/level-text.md) says they should. Not yet: sprites, the HUD,
 or anything that moves through the world.
@@ -74,13 +75,27 @@ and only appear once the eye is inside one; on `ROID` the whole playable volume
 is one, which is what a level set in space should be.
 
 An object comes from the instance list in the level's
-[.DEF](../formats/level-text.md): a kind, a position, a heading and a scale.
-Its mesh is normalised to -1.0..+1.0, so a vertex reaches the world as
-`(vertex * scale) >> 14`. Positions are in the world's signed coordinates and
-the terrain walk uses unwrapped indices around the eye, so a placement is
-rebased onto the nearest copy of the wrapping world before it is projected -
-otherwise an object at -300 units lands 1024 units from the ground it stands
-on.
+[.DEF](../formats/level-text.md): a kind, a position and a heading. Its size is
+its **type's radius**, field 2 of the type record's first line, which is what
+the engine's actor draw passes (`0x40da00`). Its mesh is normalised to
+-1.0..+1.0, so a vertex reaches the world as `(vertex * radius) >> 14`. A wreck
+is drawn at the radius of the type it replaced.
+
+Until worklog 28 the port drew objects at the placement's second field, which
+turned out to be hit points. That drew them at a median of one twentieth of
+their size - buildings a few units across in a world of 8-unit cells - and is
+the likeliest reason the first playtest found everything "too big": the
+terrain was right and the things on it were tiny.
+
+Positions are in the world's signed coordinates. The terrain walk starts from
+the eye's cell **before wrapping** - `camera.x >> 19`, no mask - and each
+cell's data is looked up through the wrapped index, so the ground is drawn in
+the camera's own frame. A placement is rebased onto the copy of the wrapping
+world nearest the eye before it is projected. Until worklog 28 the walk started
+from the wrapped cell, which put the ground 1,024 units away whenever the
+camera stood at a negative coordinate - half the world rendered as empty sky.
+`a_view_is_the_same_from_either_side_of_the_wrap` renders one place from both
+sides of the wrap and requires the two frames to match.
 
 The sky is drawn first and writes no depth, so everything covers it. Its
 texture is brought into the level's palette through the level's `.MAP` - see

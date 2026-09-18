@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-27 entries: audio 2, build 1, content 4, decomp 6, engine 2, format 19, port 21, render 13, test 3, tooling 2, ui 1, world 10.
+28 entries: audio 2, build 1, content 4, decomp 7, engine 3, format 20, port 22, render 14, test 3, tooling 2, ui 1, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -38,3 +38,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 25 | [The original game's own flight, and the four bugs it found](worklog/0025-the-original-game-s-own-flight-and-the-four-bugs-it-found.md) | 2026-09-17 | format, world, render, port, test |
 | 26 | [Things move, and join their course at the nearest point](worklog/0026-things-move-and-join-their-course-at-the-nearest-point.md) | 2026-09-17 | engine, decomp, port |
 | 27 | [Shooting things, and a typo that shipped](worklog/0027-shooting-things-and-a-typo-that-shipped.md) | 2026-09-17 | engine, audio, port, content |
+| 28 | [Things are their real size, the world has no hole in it, and turrets shoot back](worklog/0028-things-are-their-real-size-the-world-has-no-hole-in-it-and-t.md) | 2026-09-17 | decomp,engine,render,port,format |
