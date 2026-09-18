@@ -8,7 +8,7 @@
 
 use std::path::PathBuf;
 
-use hb_formats::{act, colour, course, lvl, mrgl, raw, terrain, text};
+use hb_formats::{act, anim, colour, course, lvl, mrgl, raw, terrain, text};
 use hb_pod::Pod;
 
 fn game_dir() -> PathBuf {
@@ -232,6 +232,109 @@ fn an_untextured_polygon_carries_a_flat_colour_instead() {
             ("shell.bin".to_string(), 32),
         ]
     );
+}
+
+#[test]
+fn every_animated_model_parses_to_the_last_line() {
+    let pod = archive!("GAME.POD");
+    let (mut files, mut parts, mut frames, mut polys) = (0usize, 0usize, 0usize, 0usize);
+    let mut bare = 0usize;
+    for e in pod.entries() {
+        if e.dir() != "models" || e.ext() != "txt" {
+            continue;
+        }
+        let model = anim::parse(pod.bytes(e))
+            .unwrap_or_else(|why| panic!("{}: {why}", e.name));
+        files += 1;
+        parts += model.parts.len();
+        frames += model.frames;
+        polys += model.polygon_count();
+        assert!(model.frames > 0 && !model.parts.is_empty(), "{}", e.name);
+        for part in &model.parts {
+            // Every part carries a keyframe per frame, in both lists.
+            assert_eq!(part.angles.len(), model.frames, "{} {}", e.name, part.name);
+            assert_eq!(part.centres.len(), model.frames, "{} {}", e.name, part.name);
+            // A parent is either the root marker or an earlier part.
+            assert!(part.parent == -1 || (part.parent as usize) < model.parts.len(),
+                "{}: {} has parent {}", e.name, part.name, part.parent);
+            for poly in &part.polygons {
+                assert!((3..=4).contains(&poly.corners.len()), "{}", e.name);
+                for c in &poly.corners {
+                    assert!(
+                        (c.vertex as usize) < part.vertices.len(),
+                        "{} {}: vertex {} of {}",
+                        e.name, part.name, c.vertex, part.vertices.len()
+                    );
+                }
+                match poly.material {
+                    Some(m) => assert!(m < model.materials.len(), "{}: material {m}", e.name),
+                    None => bare += 1,
+                }
+            }
+        }
+    }
+    assert_eq!(files, 18, "animated models in GAME.POD");
+    assert_eq!(parts, 219);
+    assert_eq!(frames, 917, "keyframes summed over the 18 models");
+    assert_eq!(polys, 4_392);
+    // Twelve faces use the 255 sentinel instead of naming a material.
+    assert_eq!(bare, 12, "faces with no material");
+}
+
+#[test]
+fn an_animated_models_rest_pose_is_its_raw_vertices() {
+    let pod = archive!("GAME.POD");
+    let trex = anim::parse(pod.read("models", "trex.txt").unwrap()).unwrap();
+    // A Tyrannosaurus with twenty parts and sixty-one keyframes.
+    assert_eq!(trex.parts.len(), 20);
+    assert_eq!(trex.frames, 61);
+    assert_eq!(trex.materials.len(), 43);
+    let (vertices, polygons) = trex.rest_pose();
+    assert_eq!(vertices.len(), trex.vertex_count());
+    assert_eq!(polygons.len(), trex.polygon_count());
+    // The pose rebases each part's corner indices onto the merged list.
+    for poly in &polygons {
+        for c in &poly.corners {
+            assert!((c.vertex as usize) < vertices.len());
+        }
+    }
+    // Its body, mid sections and tail chain along x, which is how you can tell
+    // the raw vertices are already in model space.
+    let span = |p: &anim::Part| {
+        let lo = p.vertices.iter().map(|v| v.x).min().unwrap();
+        let hi = p.vertices.iter().map(|v| v.x).max().unwrap();
+        (lo, hi)
+    };
+    let (_, front_hi) = span(&trex.parts[0]);
+    let (mid2_lo, _) = span(&trex.parts[2]);
+    let (tail_lo, _) = span(&trex.parts[3]);
+    assert!(front_hi < mid2_lo, "the body should end before the mid section");
+    assert!(mid2_lo < tail_lo, "the mid section should come before the tail");
+}
+
+#[test]
+fn animated_models_normalise_to_twice_the_binary_ones() {
+    let pod = archive!("GAME.POD");
+    let mut checked = 0;
+    for e in pod.entries() {
+        if e.dir() != "models" || e.ext() != "txt" {
+            continue;
+        }
+        let model = anim::parse(pod.bytes(e)).unwrap();
+        let reach = model
+            .parts
+            .iter()
+            .flat_map(|p| p.vertices.iter())
+            .flat_map(|v| [v.x.abs(), v.y.abs(), v.z.abs()])
+            .max()
+            .unwrap();
+        // Raw, with no part offsets applied, every model fills exactly the
+        // normalisation box - which is twice the binary models' 16,384.
+        assert_eq!(reach, anim::MODEL_ONE, "{}", e.name);
+        checked += 1;
+    }
+    assert_eq!(checked, 18);
+    assert_eq!(anim::MODEL_ONE, 2 * mrgl::MODEL_ONE - 1);
 }
 
 #[test]

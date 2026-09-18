@@ -5,6 +5,7 @@
 //! name rather than pretending to know what it is.
 
 pub mod act;
+pub mod anim;
 pub mod colour;
 pub mod course;
 pub mod lvl;

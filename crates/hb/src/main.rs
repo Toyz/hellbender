@@ -289,7 +289,21 @@ fn cmd_view(name: &str, out: &Path) -> Result<(), String> {
     let pod = open_pod(if startup { "startup" } else { "game" })?;
     let name = name.trim_start_matches("startup:");
     let data = pod.read("models", name).map_err(|e| e.to_string())?;
-    let model = mrgl::Model::parse(data).map_err(|e| e.to_string())?;
+    let model = if name.to_ascii_lowercase().ends_with(".txt") {
+        // An animated model, flattened to one frame.
+        let animated = hb_formats::anim::parse(data).map_err(|e| e.to_string())?;
+        println!(
+            "{name}: {} parts, {} frames at {:.3}s, {} materials",
+            animated.parts.len(),
+            animated.frames,
+            animated.time_per_frame as f32 / 65536.0,
+            animated.materials.len()
+        );
+        let (vertices, polygons) = animated.rest_pose();
+        mrgl::Model { vertices, polygons, materials: animated.materials, ..Default::default() }
+    } else {
+        mrgl::Model::parse(data).map_err(|e| e.to_string())?
+    };
     let view = view::View::default();
     let (pixels, drawn, culled) = view::render(&model, &view);
     std::fs::write(out, png::rgb(view.width, view.height, &pixels))

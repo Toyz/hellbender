@@ -8,7 +8,7 @@ use hb_formats::act::Palette;
 use hb_formats::colour::Ramp;
 use hb_formats::lvl::Level as Manifest;
 use hb_formats::raw::Image;
-use hb_formats::mrgl;
+use hb_formats::{anim, mrgl};
 use hb_formats::terrain::Terrain;
 use hb_formats::text::{self, EnemyDef, Placement};
 use hb_pod::Pod;
@@ -81,14 +81,23 @@ impl Level {
             .ok_or_else(|| format!("no data\\{stem}.def"))?;
         let kinds = text::enemy_defs(&def).map_err(|e| e.to_string())?;
         let placements = text::placements(&def).map_err(|e| e.to_string())?;
+        // An animated `.TXT` model is flattened to its first frame so that it
+        // can be drawn by the same path as a static one. Playing the animation
+        // needs the rotation order, which is not established.
         let meshes: Vec<Option<mrgl::Model>> = kinds
             .iter()
             .map(|k| {
-                // A .TXT model is the animated format and needs its own parser.
-                if k.model.to_ascii_lowercase().ends_with(".txt") {
-                    return None;
-                }
                 let bytes = read("models", &k.model)?;
+                if k.model.to_ascii_lowercase().ends_with(".txt") {
+                    let animated = anim::parse(&bytes).ok()?;
+                    let (vertices, polygons) = animated.rest_pose();
+                    return Some(mrgl::Model {
+                        vertices,
+                        polygons,
+                        materials: animated.materials,
+                        ..mrgl::Model::default()
+                    });
+                }
                 mrgl::Model::parse(&bytes).ok()
             })
             .collect();
