@@ -63,11 +63,10 @@ fn the_rasteriser_fills_a_triangle_and_respects_the_depth_buffer() {
     let shade = Shade {
         light: None,
         fog: None,
-        intensity: 255,
         fog_distance: 100.0,
         index_zero_is_clear: false,
     };
-    let at = |x: f32, y: f32, depth: f32| Vertex { x, y, depth, u: 0.0, v: 0.0 };
+    let at = |x: f32, y: f32, depth: f32| Vertex { x, y, depth, u: 0.0, v: 0.0, light: 255.0 };
     target.triangle([at(2.0, 2.0, 5.0), at(60.0, 2.0, 5.0), at(2.0, 60.0, 5.0)], &texture, &shade);
     let filled = target.colour.iter().filter(|&&c| c == 7).count();
     assert!(filled > 1_400, "only {filled} pixels filled");
@@ -90,11 +89,10 @@ fn a_degenerate_triangle_draws_nothing_rather_than_dividing_by_zero() {
     let shade = Shade {
         light: None,
         fog: None,
-        intensity: 255,
         fog_distance: 100.0,
         index_zero_is_clear: false,
     };
-    let at = |x: f32| Vertex { x, y: 8.0, depth: 1.0, u: 0.0, v: 0.0 };
+    let at = |x: f32| Vertex { x, y: 8.0, depth: 1.0, u: 0.0, v: 0.0, light: 255.0 };
     target.triangle([at(1.0), at(8.0), at(15.0)], &texture, &shade);
     assert!(target.colour.iter().all(|&c| c == 0));
 }
@@ -120,4 +118,49 @@ fn a_negative_pitch_reads_as_negative_when_it_is_used_linearly() {
     // And the sine and cosine agree either way, which is why only linear uses
     // were affected.
     assert!((up.to_radians().sin() - up.to_signed_radians().sin()).abs() < 1e-5);
+}
+
+#[test]
+fn texture_coordinates_are_perspective_correct() {
+    // A quad seen at a slant: the near edge at depth 1, the far edge at 4.
+    // Halfway up the screen between them is not halfway along the texture -
+    // it is where 1/z is halfway, which is depth 1.6 and a fifth of the way.
+    let mut target = Target::new(64, 64);
+    target.clear(0);
+    let stripes = Image { shape: Shape::new(1, 256), pixels: (0..=255u8).collect() };
+    let shade = Shade { light: None, fog: None, fog_distance: 100.0, index_zero_is_clear: false };
+    let v = |x: f32, y: f32, depth: f32, tv: f32| Vertex { x, y, depth, u: 0.0, v: tv, light: 255.0 };
+    let (near, far) = (60.0, 4.0);
+    target.triangle([v(0.0, near, 1.0, 0.0), v(64.0, near, 1.0, 0.0), v(0.0, far, 4.0, 255.0)], &stripes, &shade);
+    target.triangle([v(64.0, near, 1.0, 0.0), v(64.0, far, 4.0, 255.0), v(0.0, far, 4.0, 255.0)], &stripes, &shade);
+    let middle = ((near + far) / 2.0) as usize;
+    let sampled = target.colour[middle * 64 + 32] as f32;
+    // 1/z halfway between 1 and 1/4 is 5/8: depth 1.6, t = (1/1 - 5/8)/(1 - 1/4) = 0.5
+    // in 1/z, which is v = 255 * (1.6 - 1) / (4 - 1) = 51.
+    assert!((sampled - 51.0).abs() < 4.0, "sampled row {sampled}");
+}
+
+#[test]
+fn light_is_interpolated_across_a_triangle() {
+    use hb_formats::colour::Ramp;
+    // A ramp whose row n maps every index to n: the written index is the row.
+    let mut bytes = vec![0u8; 4096];
+    for row in 0..16 {
+        for i in 0..256 {
+            bytes[row * 256 + i] = row as u8;
+        }
+    }
+    let ramp = Ramp::parse(&bytes).unwrap();
+    let mut target = Target::new(64, 8);
+    target.clear(99);
+    let flat = Image { shape: Shape::new(1, 1), pixels: vec![1] };
+    let shade = Shade { light: Some(&ramp), fog: None, fog_distance: 100.0, index_zero_is_clear: false };
+    let v = |x: f32, y: f32, light: f32| Vertex { x, y, depth: 1.0, u: 0.0, v: 0.0, light };
+    target.triangle([v(0.0, 0.0, 255.0), v(64.0, 0.0, 0.0), v(0.0, 8.0, 255.0)], &flat, &shade);
+    target.triangle([v(64.0, 0.0, 0.0), v(64.0, 8.0, 0.0), v(0.0, 8.0, 255.0)], &flat, &shade);
+    // Full light at the left edge is row 0; none at the right is row 15.
+    let row = &target.colour[4 * 64..5 * 64];
+    assert_eq!(row[0], 0);
+    assert_eq!(row[63], 15);
+    assert!(row.windows(2).all(|w| w[0] <= w[1]), "{row:?}");
 }

@@ -49,23 +49,38 @@ pub const BOX_TEXTURES: usize = 6;
 
 /// Which face each of a box's six texture slots covers.
 ///
-/// Measured, not transcribed. Over eight levels, taking every box cell whose
-/// four side slots are three-of-a-kind plus one odd one out and that has
-/// exactly one boxless neighbour: the odd slot is 0 or 1 when the exposed
-/// neighbour is in z (160 and 129 cases, against 4 in x), and 2 or 3 when it is
-/// in x (145 and 141 cases, against 0 in z). So the pairing of slots to axes is
-/// settled; which member of each pair faces which way is not - see
-/// [`BoxFace::AXIS_ONLY`].
+/// Read from the box drawer, which draws each face from its own call site
+/// into `0x414f60` with the slot's word from the 18-byte box cell (slot n at
+/// `+4 + 2n`), the face's normal for the back-face test at `0x456650`, and the
+/// neighbouring box cell it checks for a face that cannot be seen:
+///
+/// ```text
+/// slot  site      normal        neighbour   quad (box vertex numbers)
+///  0    0x415cc0  (0, 0, -1)    z - 1       0 1 5 4
+///  1    0x416773  (0, 0, +1)    z + 1       2 3 7 6
+///  2    0x417222  (+1, 0, 0)    x + 1       1 2 6 5
+///  3    0x417cb6  (-1, 0, 0)    x - 1       3 0 4 7
+///  4    0x4186de  (0, +1, 0)    -           12 13 14 15
+///  5    0x4188a1  (0, -1, 0)    -           8 9 10 11
+/// ```
+///
+/// Box vertices 0-3 are the bottom corners and 4-7 the top, each in the
+/// ground's corner order: (x, z), (x+1, z), (x+1, z+1), (x, z+1). Vertices
+/// 8-15 are copies of 0-7 - each call site follows the face with a
+/// `rep movs` of 0x48 dwords from `0x59d360` to `0x59d480` - so the bottom is
+/// the four bottom corners and the top the four top corners, in that order. The earlier
+/// measurement - odd-one-out slots against exposed neighbours - had already
+/// paired slots 0 and 1 with z and 2 and 3 with x; this gives the signs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoxFace {
-    /// Slot 0. One of the two z-facing sides.
-    Z0 = 0,
-    /// Slot 1. The other z-facing side.
-    Z1 = 1,
-    /// Slot 2. One of the two x-facing sides.
-    X0 = 2,
-    /// Slot 3. The other x-facing side.
-    X1 = 3,
+    /// Slot 0, the side facing -z.
+    NegZ = 0,
+    /// Slot 1, the side facing +z.
+    PosZ = 1,
+    /// Slot 2, the side facing +x.
+    PosX = 2,
+    /// Slot 3, the side facing -x.
+    NegX = 3,
     /// Slot 4. The top. Carries by far the most variety - 80 distinct values
     /// across `FLOAT`'s 1,142 boxes, against 18 for the bottom.
     Top = 4,
@@ -74,19 +89,27 @@ pub enum BoxFace {
 }
 
 impl BoxFace {
-    /// The signs within each axis pair are still unknown, so a renderer that
-    /// needs them must decide and say so. Kept as a constant rather than a
-    /// comment so it shows up in a search for what is not yet settled.
-    pub const AXIS_ONLY: bool = true;
-
     pub const ALL: [BoxFace; 6] = [
-        BoxFace::Z0,
-        BoxFace::Z1,
-        BoxFace::X0,
-        BoxFace::X1,
+        BoxFace::NegZ,
+        BoxFace::PosZ,
+        BoxFace::PosX,
+        BoxFace::NegX,
         BoxFace::Top,
         BoxFace::Bottom,
     ];
+
+    /// The face's four corners as the engine hands them to `0x414f60`: cell
+    /// offsets in x and z, and whether each is at the box's top.
+    pub fn corners(self) -> [(i32, i32, bool); 4] {
+        match self {
+            BoxFace::NegZ => [(0, 0, false), (1, 0, false), (1, 0, true), (0, 0, true)],
+            BoxFace::PosZ => [(1, 1, false), (0, 1, false), (0, 1, true), (1, 1, true)],
+            BoxFace::PosX => [(1, 0, false), (1, 1, false), (1, 1, true), (1, 0, true)],
+            BoxFace::NegX => [(0, 1, false), (0, 0, false), (0, 0, true), (0, 1, true)],
+            BoxFace::Top => [(0, 0, true), (1, 0, true), (1, 1, true), (0, 1, true)],
+            BoxFace::Bottom => [(0, 0, false), (1, 0, false), (1, 1, false), (0, 1, false)],
+        }
+    }
 }
 /// Two per chamber: floor and ceiling.
 pub const CHAMBER_TEXTURES: usize = 2;
@@ -145,23 +168,40 @@ impl TextureRef {
     }
 
     /// The orientation code, 0 to 15.
-    ///
-    /// Consumed in exactly one place, `0x413940`, which takes a cell's four
-    /// corners and permutes their texture coordinates in the table at
-    /// `0x59d36c`:
-    ///
-    /// ```text
-    /// (code >> 2)     tested first, a 2-bit selector
-    /// code & 2        swaps corner 0 with 1 and corner 3 with 2
-    /// code & 1        a further swap
-    /// ```
-    ///
-    /// So it is a mirror-and-rotate applied to the cell's UVs. Which bit is
-    /// which mirror depends on the corner argument order at that call site,
-    /// which is not yet pinned - see the Unknown section of
-    /// `docs/formats/terrain.md`.
     pub fn orientation(self) -> u8 {
         (self.0 >> 12) as u8
+    }
+
+    /// The texture coordinates of a quad's four corners after this word's
+    /// orientation code, in the order the corners were given.
+    ///
+    /// Both of the engine's callers hand `0x413940` a quad whose corners start
+    /// at `a (lo, hi)`, `b (hi, hi)`, `c (hi, lo)`, `d (lo, lo)` - the ground
+    /// at `0x413c20`, whose corners are (x, z), (x+1, z), (x+1, z+1), (x, z+1),
+    /// and every box face at `0x414f60`. So u runs with x and **v runs against
+    /// z**. `lo` and `hi` are 2.0 and 254.0 in the 256-unit texture space, half
+    /// a texel in from each edge of a 64-texel texture. Then `0x413940`:
+    ///
+    /// ```text
+    /// r = code >> 2     if r != 0: a, b, c, d take the uvs of corners
+    ///                   r, r+1, r+2, r+3 (mod 4) - a quarter turn per step
+    /// code & 2          swaps a with b and d with c
+    /// code & 1          swaps a with d and b with c
+    /// ```
+    pub fn corner_uvs(self, lo: f32, hi: f32) -> [(f32, f32); 4] {
+        let base = [(lo, hi), (hi, hi), (hi, lo), (lo, lo)];
+        let code = self.orientation();
+        let r = (code >> 2) as usize;
+        let mut uv = [base[r], base[(r + 1) & 3], base[(r + 2) & 3], base[(r + 3) & 3]];
+        if code & 2 != 0 {
+            uv.swap(0, 1);
+            uv.swap(3, 2);
+        }
+        if code & 1 != 0 {
+            uv.swap(0, 3);
+            uv.swap(1, 2);
+        }
+        uv
     }
 
     /// Whether the texture is drawn in its authored orientation.
@@ -279,7 +319,9 @@ pub struct ChamberLayer {
 /// the same values at `0x41c5d0` from the terrain and a light direction.
 #[derive(Debug, Clone)]
 pub struct Shading {
-    /// Two per cell, one per triangle half.
+    /// Two per cell, one little-endian word: the intensity of the grid point at
+    /// the cell's origin in the low byte, and in bit 8 a flag that makes the
+    /// renderer use the level's ambient instead (`0x414e0b`).
     pub ground: Vec<[u8; 2]>,
     /// One per cell.
     pub box_a: Vec<u8>,
@@ -413,5 +455,49 @@ impl Terrain {
                 None => None,
             },
         })
+    }
+}
+
+#[cfg(test)]
+mod orientation {
+    use super::TextureRef;
+
+    const LO: f32 = 2.0;
+    const HI: f32 = 254.0;
+
+    fn uvs(code: u16) -> [(f32, f32); 4] {
+        TextureRef(code << 12).corner_uvs(LO, HI)
+    }
+
+    #[test]
+    fn code_zero_leaves_v_running_against_z() {
+        // a (x, z), b (x+1, z), c (x+1, z+1), d (x, z+1).
+        assert_eq!(uvs(0), [(LO, HI), (HI, HI), (HI, LO), (LO, LO)]);
+    }
+
+    #[test]
+    fn the_top_two_bits_turn_a_quarter_each() {
+        assert_eq!(uvs(4), [(HI, HI), (HI, LO), (LO, LO), (LO, HI)]);
+        assert_eq!(uvs(8), [(HI, LO), (LO, LO), (LO, HI), (HI, HI)]);
+        assert_eq!(uvs(12), [(LO, LO), (LO, HI), (HI, HI), (HI, LO)]);
+    }
+
+    #[test]
+    fn bit_one_mirrors_u_and_bit_zero_mirrors_v() {
+        // Swapping a with b and d with c exchanges u at the same v.
+        assert_eq!(uvs(2), [(HI, HI), (LO, HI), (LO, LO), (HI, LO)]);
+        // Swapping a with d and b with c exchanges v at the same u.
+        assert_eq!(uvs(1), [(LO, LO), (HI, LO), (HI, HI), (LO, HI)]);
+        // Both is a half turn, the same as rotation 2.
+        assert_eq!(uvs(3), uvs(8));
+    }
+
+    #[test]
+    fn every_code_is_one_of_the_eight_symmetries_of_a_square() {
+        use std::collections::HashSet;
+        let distinct: HashSet<Vec<(i32, i32)>> = (0..16)
+            .map(|c| uvs(c).iter().map(|&(u, v)| (u as i32, v as i32)).collect())
+            .collect();
+        assert_eq!(distinct.len(), 8);
     }
 }

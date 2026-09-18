@@ -2,7 +2,7 @@
 title: The .LVL manifest
 status: partial
 covers: LEVELS\*.LVL
-worklog: 3
+worklog: 3, 29
 ---
 
 # The .LVL manifest
@@ -33,10 +33,10 @@ line  value                     slot
   15  float8.mod                music, ProTracker module    MUSIC\
   16  float.fog                 fog table                   FOG\
   17  float.lte                 light table                 FOG\
-  18  -46333,-46333,0           a position                  (see notes)
-  19  40960                     a heading
-  20  -46333,-46333,0           a second position
-  21  32768                     a second heading
+  18  -46333,-46333,0           light direction             (see notes)
+  19  40960                     ambient light
+  20  -46333,-46333,0           chamber light direction
+  21  32768                     chamber ambient light
   22  255                       unidentified
   23  ;New story stuff          sentinel
   24  null                      in-level story movie 1      Story\
@@ -78,6 +78,22 @@ Lines 41 and 42 are pairs of 16.16 fixed-point values. Line 42 is
 `983040,1966080` - 15.0 and 30.0 - in all 26 levels. Line 41 is `0,0` in 15
 levels and 5.0, 10.0 or 20.0 in the other 11.
 
+Lines 18 to 21 are light, not placement. The parser reads them at `0x44bb88`
+into the level struct at `0x666cb0` - line 18's three values to `+0x284`, which
+is `0x666f34`, line 19 to `0x666f40`, line 20 to `0x666f44`, line 21 to
+`0x666f50`, and line 22 to `0x666f54`. The terrain shading computation at
+`0x41c5d0` lights the ground and box set A from `0x666f34` and `0x666f40`, and
+the chambers from `0x666f44` and `0x666f50`.
+
+- Lines 18 and 20 are 16.16 unit vectors: `-46333,-46333,0` is (-0.707,
+  -0.707, 0). Line 18 is that in every level; line 20 is too, except `HOTH2`
+  and `HOTH3`, which give `0,0,0`.
+- Lines 19 and 21 are ambient intensities, 16.16: from 16384 (0.25) to 60000.
+  Line 19 is each level's floor in the [ground shading](terrain.md) - 16384 in
+  `HOTH`, whose shading bottoms out at 64 - and the value a shadowed ground
+  vertex or box corner takes. A lightning flash swaps it for a moment
+  (`0x49d399`).
+
 Line 35 is a CD track number, 0 to 9. `NETLVL1` through `NETLVL3` set 0.
 
 ## The sentinels
@@ -99,12 +115,9 @@ check them and refuse a file whose sentinels are out of place.
 
 ## Notes
 
-Lines 18 and 20 are *not* the player start and respawn. Line 18 is
-`-46333,-46333,0` in all 26 levels and line 20 is the same in 24 of them
-(`0,0,0` in the other two), and no two levels can start the player in the same
-spot. The headings on 19 and 21 do vary. Read them as an extent or an origin
-with an orientation until the level loader says otherwise; the real spawn is
-expected to be in the `.DEF` or object placement list.
+Lines 18 and 20 were first read here as positions, then ruled out as the
+player's start because line 18 is the same in every level. They are light
+directions - see Fields above and worklog 29.
 
 ## The 26 levels
 

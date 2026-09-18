@@ -3,7 +3,7 @@
 use hb_formats::act::Palette;
 use hb_formats::colour::Ramp;
 use hb_formats::raw::Image;
-use hb_formats::terrain::{Layer, TextureRef, CELL_SIZE, SIDE};
+use hb_formats::terrain::{BoxFace, Layer, TextureRef, CELL_SIZE, SIDE};
 use hb_world::{triangle, Cell, Corner, Grid, Half};
 
 use crate::camera::Camera;
@@ -28,6 +28,9 @@ pub struct Scene<'a> {
     /// The 16.16 radius each mesh is drawn at. Models are normalised to
     /// +/-1.0, so this is the object's half-extent in the world.
     pub mesh_radius: &'a [i32],
+    /// The level's ambient light, 0-255: `.LVL` line 19 over 256. A ground
+    /// vertex whose shade word has bit 8 set takes this.
+    pub ambient: u8,
 }
 
 /// Draws the ground and both box sets from the camera's position.
@@ -37,6 +40,14 @@ pub struct Scene<'a> {
 /// front, and lets the depth buffer settle the rest.
 pub fn draw_world(target: &mut Target, scene: &Scene, camera: &Camera) -> Drawn {
     let mut drawn = Drawn::default();
+    // Everything past the draw distance is fully fogged, and the fog ramp's
+    // last row sends every colour to one index - 255 in FLOAT, JURASIC and
+    // KREASH, 0 in HOTH and ROID. Filling the frame with it first means the
+    // band between the last cell drawn and the horizon reads as distance
+    // rather than as a hole.
+    if let Some(fog) = scene.fog {
+        target.colour.fill(fog.shade(15, 1));
+    }
     draw_sky(target, scene, camera);
     let reach = (camera.far / CELL_SIZE).max(1);
     // The eye's cell before wrapping. The camera's coordinates are signed and
@@ -194,13 +205,7 @@ fn draw_mesh(
         project_onto(camera, width, height, x + rx as i32, y + my, z + rz as i32)
     };
 
-    let shade = Shade {
-        light: scene.light,
-        fog: scene.fog,
-        intensity: 255,
-        fog_distance: (camera.far / 65536) as f32,
-        index_zero_is_clear: false,
-    };
+    let shade = shade_for(scene, camera);
     let mut any = false;
     for poly in &mesh.polygons {
         // Each polygon records the material node that preceded it, or a flat
@@ -221,6 +226,7 @@ fn draw_mesh(
                     depth,
                     u: (c.u >> 16) as f32,
                     v: (c.v >> 16) as f32,
+                    light: 255.0,
                 })
             })
             .collect();
@@ -290,13 +296,44 @@ fn slot(scene: &Scene, index: u16) -> usize {
     }
 }
 
-fn shade_for<'a>(scene: &'a Scene, camera: &Camera, intensity: u8) -> Shade<'a> {
+fn shade_for<'a>(scene: &'a Scene, camera: &Camera) -> Shade<'a> {
     Shade {
         light: scene.light,
         fog: scene.fog,
-        intensity,
         fog_distance: (camera.far / 65536) as f32,
         index_zero_is_clear: false,
+    }
+}
+
+/// A texture's corner coordinates, half a texel in from each edge of a
+/// 64-texel texture in the 256-unit space: `0x413c20` and `0x414f60` write
+/// `0x20000` and `0xfe0000`, 2.0 and 254.0.
+const UV_LO: f32 = 2.0;
+const UV_HI: f32 = 254.0;
+
+/// Which of a quad's corners `a b c d` a cell corner is, in the engine's
+/// order: (x, z), (x+1, z), (x+1, z+1), (x, z+1).
+fn quad_corner(corner: Corner) -> usize {
+    match corner.offset() {
+        (0, 0) => 0,
+        (1, 0) => 1,
+        (1, 1) => 2,
+        _ => 3,
+    }
+}
+
+/// The light at one grid point of the ground.
+///
+/// The engine gives each of a cell's four vertices the shade of the cell whose
+/// origin that vertex is (`0x414e05` to `0x414ea7`): the low byte of the
+/// shading word, or, when bit 8 is set, the level's ambient (`[0x525c5c]`,
+/// the `.LVL`'s line 19). So the shading database is a value per grid point,
+/// and the ground is Gouraud shaded between them.
+fn ground_light(scene: &Scene, x: i32, z: i32) -> f32 {
+    match scene.grid.terrain.shading.as_ref() {
+        Some(s) if s.ground_flag(x, z) => scene.ambient as f32,
+        Some(s) => s.ground_intensity(x, z) as f32,
+        None => 255.0,
     }
 }
 
@@ -312,36 +349,33 @@ fn draw_ground(
     let Some(Some(texture)) = scene.textures.get(slot(scene, word.index())) else {
         return;
     };
-    let intensity = scene
-        .grid
-        .terrain
-        .shading
-        .as_ref()
-        .map(|s| s.ground_intensity(cell.x, cell.z))
-        .unwrap_or(255);
-    let shade = shade_for(scene, camera, intensity);
+    let height = |dx: i32, dz: i32| {
+        scene.grid.height_at_grid(Layer::Ground, cell.x + dx, cell.z + dz).unwrap_or(0)
+    };
+    // Ground that a box of set A encloses is never seen, and the engine does
+    // not draw it: a cell whose four corners all lie within its box's span is
+    // skipped (`0x414d43`).
+    if let Some((bottom, top)) = scene.grid.box_span(Layer::BoxA, cell) {
+        let corners = [height(0, 0), height(1, 0), height(1, 1), height(0, 1)];
+        if bottom != top && corners.iter().all(|&h| h >= bottom && h <= top) {
+            return;
+        }
+    }
+    let uvs = word.corner_uvs(UV_LO, UV_HI);
+    let shade = shade_for(scene, camera);
 
     for half in [Half::First, Half::Second] {
         let tri = triangle(cell, half);
-        let mut points = [Vertex { x: 0.0, y: 0.0, depth: 0.0, u: 0.0, v: 0.0 }; 3];
+        let mut points = [Vertex::default(); 3];
         let mut visible = true;
         for (slot, corner) in points.iter_mut().zip(tri.corners) {
+            let (dx, dz) = corner.offset();
             let (wx, wz) = corner_world(origin, corner);
-            let height = scene
-                .grid
-                .height_at_grid(Layer::Ground, cell.x + corner.offset().0, cell.z + corner.offset().1)
-                .unwrap_or(0);
-            match project(camera, target, wx, height, wz) {
+            match project(camera, target, wx, height(dx, dz), wz) {
                 Some((x, y, depth)) => {
-                    let (dx, dz) = corner.offset();
-                    *slot = Vertex {
-                        x,
-                        y,
-                        depth,
-                        // One cell spans the full 256-unit texture space.
-                        u: (dx * 255) as f32,
-                        v: (dz * 255) as f32,
-                    };
+                    let (u, v) = uvs[quad_corner(corner)];
+                    let light = ground_light(scene, cell.x + dx, cell.z + dz);
+                    *slot = Vertex { x, y, depth, u, v, light };
                 }
                 None => {
                     visible = false;
@@ -361,9 +395,11 @@ fn draw_ground(
 /// A chamber's floor and ceiling, triangulated exactly like the ground.
 ///
 /// Both are height fields that `heightAtGrid` accepts as layers 2 and 3, so
-/// the same split and the same corner heights apply. The two textures in the
-/// cell's `.CL1` entry are the floor's and the ceiling's, in that order -
-/// which is the order the loader reads them and is not otherwise confirmed.
+/// the same split and the same corner heights apply. The floor is the `.CL1`
+/// entry's first word and the ceiling its second: the engine draws them
+/// through the ground's own cell routine, `0x4144b0`, from `0x41911a` with the
+/// word at chamber `+4` and from `0x41957a` with the word at `+6` and its
+/// flip flag set. So their texture coordinates follow the ground's rule too.
 fn draw_chamber(
     target: &mut Target,
     scene: &Scene,
@@ -375,23 +411,26 @@ fn draw_chamber(
     if !scene.grid.has_chamber(cell) {
         return;
     }
-    let intensity = scene
+    // The chamber's 24-bit shading value is not decomposed; its low byte
+    // stands in, flat across the cell.
+    let light = scene
         .grid
         .terrain
         .shading
         .as_ref()
-        .map(|s| s.chambers[cell.index()][0])
-        .unwrap_or(255);
-    let shade = shade_for(scene, camera, intensity);
+        .map(|s| s.chambers[cell.index()][0] as f32)
+        .unwrap_or(255.0);
+    let shade = shade_for(scene, camera);
 
     for (face, layer) in [(0usize, Layer::ChamberFloor), (1, Layer::ChamberCeiling)] {
         let word = scene.grid.terrain.chambers.textures.texture_at(cell.x, cell.z, face);
         let Some(Some(texture)) = scene.textures.get(slot(scene, word.index())) else {
             continue;
         };
+        let uvs = word.corner_uvs(UV_LO, UV_HI);
         for half in [Half::First, Half::Second] {
             let tri = triangle(cell, half);
-            let mut points = [Vertex { x: 0.0, y: 0.0, depth: 0.0, u: 0.0, v: 0.0 }; 3];
+            let mut points = [Vertex::default(); 3];
             let mut visible = true;
             for (point, corner) in points.iter_mut().zip(tri.corners) {
                 let (dx, dz) = corner.offset();
@@ -402,13 +441,8 @@ fn draw_chamber(
                     .unwrap_or(0);
                 match project(camera, target, wx, height, wz) {
                     Some((x, y, depth)) => {
-                        *point = Vertex {
-                            x,
-                            y,
-                            depth,
-                            u: (dx * 255) as f32,
-                            v: (dz * 255) as f32,
-                        }
+                        let (u, v) = uvs[quad_corner(corner)];
+                        *point = Vertex { x, y, depth, u, v, light };
                     }
                     None => {
                         visible = false;
@@ -426,6 +460,12 @@ fn draw_chamber(
     }
 }
 
+/// A box: four sides and a top, each from its own slot, with the engine's
+/// corners and texture coordinates (see [`BoxFace`]).
+///
+/// The bottom is not drawn: it cannot be seen from outside. A side is skipped
+/// when the neighbouring box on that side covers it top to bottom, as the
+/// engine does before each face.
 fn draw_box(
     target: &mut Target,
     scene: &Scene,
@@ -441,52 +481,73 @@ fn draw_box(
     if bottom == top {
         return;
     }
-    let intensity = 255;
-    let shade = shade_for(scene, camera, intensity);
+    // A box's `.LTE` byte is not a shade but eight shadow bits, one per
+    // corner: the computation at `0x41c8cd` clears it, then for each corner
+    // casts 48 units toward the light (`0x413580`) and sets the corner's bit
+    // if something is in the way. The drawer gives a shadowed corner the
+    // level's ambient and a lit one full light (`0x415e45`). Bit n is taken to
+    // be box vertex n - bottom corners 0-3 then top 4-7, in the ground's
+    // order - which is the order the first two tests run in.
+    let shadows = scene
+        .grid
+        .terrain
+        .shading
+        .as_ref()
+        .map(|s| match layer {
+            Layer::BoxB => s.box_b[cell.index()],
+            _ => s.box_a[cell.index()],
+        })
+        .unwrap_or(0);
+    let corner_light = |dx: i32, dz: i32, up: bool| {
+        let n = match (dx, dz) {
+            (0, 0) => 0,
+            (1, 0) => 1,
+            (1, 1) => 2,
+            _ => 3,
+        } + if up { 4 } else { 0 };
+        if shadows & (1 << n) != 0 {
+            scene.ambient as f32
+        } else {
+            255.0
+        }
+    };
+    let shade = shade_for(scene, camera);
 
-    // Four sides and a top. The bottom is never seen from the air, and which
-    // of slots 0-3 faces which way is not settled, so the sides are drawn with
-    // the pair that matches their axis and the first of the pair.
-    let faces: [( [Corner; 4], usize ); 5] = [
-        ([Corner::Origin, Corner::X, Corner::X, Corner::Origin], 0),
-        ([Corner::Z, Corner::Far, Corner::Far, Corner::Z], 1),
-        ([Corner::X, Corner::Far, Corner::Far, Corner::X], 2),
-        ([Corner::Origin, Corner::Z, Corner::Z, Corner::Origin], 3),
-        ([Corner::Origin, Corner::X, Corner::Far, Corner::Z], 4),
-    ];
-
-    for (corners, face) in faces {
+    for face in [BoxFace::NegZ, BoxFace::PosZ, BoxFace::PosX, BoxFace::NegX, BoxFace::Top] {
+        let neighbour = match face {
+            BoxFace::NegZ => Some((0, -1)),
+            BoxFace::PosZ => Some((0, 1)),
+            BoxFace::PosX => Some((1, 0)),
+            BoxFace::NegX => Some((-1, 0)),
+            _ => None,
+        };
+        if let Some((dx, dz)) = neighbour {
+            let next = Cell::new(cell.x + dx, cell.z + dz);
+            if let Some((b, t)) = scene.grid.box_span(layer, next) {
+                if b != t && b <= bottom && t >= top {
+                    continue;
+                }
+            }
+        }
         let word = scene
             .grid
-            .box_texture(layer, cell, hb_formats::terrain::BoxFace::ALL[face])
+            .box_texture(layer, cell, face)
             .map(TextureRef)
             .unwrap_or_default();
         let Some(Some(texture)) = scene.textures.get(slot(scene, word.index())) else {
             continue;
         };
-        // A side face uses bottom, bottom, top, top; the top face is flat.
-        let heights = if face == 4 {
-            [top, top, top, top]
-        } else {
-            [bottom, bottom, top, top]
-        };
-        let mut quad = [Vertex { x: 0.0, y: 0.0, depth: 0.0, u: 0.0, v: 0.0 }; 4];
+        let uvs = word.corner_uvs(UV_LO, UV_HI);
+        let mut quad = [Vertex::default(); 4];
         let mut visible = true;
-        for (i, corner) in corners.into_iter().enumerate() {
-            let (wx, wz) = corner_world(origin, corner);
-            match project(camera, target, wx, heights[i], wz) {
-                Some((x, y, depth)) => {
-                    let (u, v) = match face {
-                        4 => {
-                            let (dx, dz) = corner.offset();
-                            ((dx * 255) as f32, (dz * 255) as f32)
-                        }
-                        _ => (
-                            if i == 0 || i == 3 { 0.0 } else { 255.0 },
-                            if i < 2 { 255.0 } else { 0.0 },
-                        ),
-                    };
-                    quad[i] = Vertex { x, y, depth, u, v };
+        for (i, (dx, dz, up)) in face.corners().into_iter().enumerate() {
+            let (wx, wz) = (origin.0 + dx * CELL_SIZE, origin.1 + dz * CELL_SIZE);
+            let y = if up { top } else { bottom };
+            match project(camera, target, wx, y, wz) {
+                Some((x, sy, depth)) => {
+                    let (u, v) = uvs[i];
+                    let light = corner_light(dx, dz, up);
+                    quad[i] = Vertex { x, y: sy, depth, u, v, light };
                 }
                 None => {
                     visible = false;

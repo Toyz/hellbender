@@ -286,6 +286,7 @@ pub fn textured(
     palette: &hb_formats::act::Palette,
     ramp: Option<&hb_formats::colour::Ramp>,
     scale: usize,
+    oriented: bool,
 ) -> (Vec<u8>, usize) {
     use hb_formats::terrain::{TextureRef, SIDE};
 
@@ -319,9 +320,26 @@ pub fn textured(
                     };
                     let index = match image {
                         Some(img) => {
-                            let u = sx * img.shape.width / scale;
-                            let v = sy * img.shape.height / scale;
-                            img.pixels[v * img.shape.width + u]
+                            // The engine's corner coordinates, blended across
+                            // the cell: a (x, z), b (x+1, z), c (x+1, z+1),
+                            // d (x, z+1). See `TextureRef::corner_uvs`.
+                            let [a, b, c, d] = if oriented {
+                                word.corner_uvs(0.0, 256.0)
+                            } else {
+                                TextureRef(word.index()).corner_uvs(0.0, 256.0)
+                            };
+                            let fx = (sx as f32 + 0.5) / scale as f32;
+                            let fz = (sy as f32 + 0.5) / scale as f32;
+                            let blend = |k: fn(&(f32, f32)) -> f32| {
+                                k(&a) * (1.0 - fx) * (1.0 - fz)
+                                    + k(&b) * fx * (1.0 - fz)
+                                    + k(&c) * fx * fz
+                                    + k(&d) * (1.0 - fx) * fz
+                            };
+                            let (w, h) = (img.shape.width, img.shape.height);
+                            let u = ((blend(|p| p.0) * w as f32 / 256.0) as usize).min(w - 1);
+                            let v = ((blend(|p| p.1) * h as f32 / 256.0) as usize).min(h - 1);
+                            img.pixels[v * w + u]
                         }
                         None => 0,
                     };

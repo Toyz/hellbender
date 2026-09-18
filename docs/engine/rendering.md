@@ -2,7 +2,7 @@
 title: The port's renderer
 status: partial
 covers: crates/hb-render
-worklog: 13, 16, 17, 20, 21, 22, 25, 28
+worklog: 13, 16, 17, 20, 21, 22, 25, 28, 29
 ---
 
 # The port's renderer
@@ -26,6 +26,14 @@ This page is about the port. What the original does is under
   [hb-world](../formats/terrain.md).
 - Texture selection: the 12-bit index out of a `.CLR`, `.CL0`, `.CL1` or
   `.CL2` word, resolved against the level's `.TEX` list.
+- How a texture lies on a cell or a box face: u along x, v against z, then the
+  word's orientation code's turn and mirrors, as `0x413c20`, `0x414f60` and
+  `0x413940` do it - see [terrain](../formats/terrain.md).
+- Light: each ground vertex takes its own grid point's shade, or the level's
+  ambient when the point is in shadow, and the ground is Gouraud shaded between
+  them. A box corner is full light or ambient by its shadow bit. Box faces are
+  the engine's, sign and all, and a side hidden by its neighbour's box is not
+  drawn; nor is ground inside a box.
 - The three screen sizes the art is drawn for: 320x200, 320x400, 640x480.
 
 ## What is the renderer's own choice
@@ -35,14 +43,15 @@ port that later reads the engine should revisit them.
 
 | choice | why |
 | --- | --- |
-| Affine texture interpolation | The engine has a `perspectiveFlag` with three settings, so it switches on some threshold. The threshold is unknown and at a cell's size the difference is small. |
+| Perspective-correct texture, light and depth | The engine has a `perspectiveFlag` with three settings, so it switches between affine and corrected on some threshold, which is unknown. The port first chose affine and it bent textures badly on the large ground triangles near the eye, so it now always corrects. |
 | Texture space scales, not wraps | A coordinate is a texel in a 256-unit space and the textures are 64 x 64. Scaling makes a corner-to-corner face one tile; wrapping makes it four, and puts a fine grid over everything. |
 | Depth buffer | The engine's visibility scheme is not known. This sorts cells back to front by distance and settles the rest with a z-buffer. |
 | Heading 0 looks along +z and increases toward +x | No longer a choice: the recorded demo flight measures it to a median 0.8 degrees. The port had the direction backwards until then. |
 | 90-degree field of view | Not established. |
 | Draw distance of 220 units | Chosen so the fog ramp saturates before the edge. |
 | The 118 colourless polygons are skipped | Four models have polygons with neither a material nor a flat colour before them, so nothing says what colour they are. |
-| A chamber's first `.CL1` texture is the floor's | That is the order the terrain loader reads the two in. Nothing confirms which is which. |
+| A chamber is lit flat by the low byte of its 24-bit shade | The value is not decomposed. |
+| Past the draw distance is the fog colour | The fog ramp's last row sends every colour to one index; the frame is filled with it before the sky, so the band between the last cell and the horizon is fog rather than a hole. |
 | The sky wraps once around the horizon and once from horizon to zenith | The engine's projection is not known - a `skyTextureFlag` and a `"Sky clip overflow!"` diagnostic is all there is. This is the simplest thing that turns with the camera. |
 
 ## The units
@@ -69,8 +78,9 @@ So the drawing code never knows a texture moves.
 A chamber's floor and ceiling are height fields that `heightAtGrid` accepts as
 layers 2 and 3, so they use the same triangle split and the same corner heights
 as the ground. Their two textures come from the cell's `.CL1` entry, floor
-first - which is the order the loader reads them in and is not otherwise
-confirmed. Because chambers sit below the ground they are invisible from above
+first: the engine draws them through the ground's own cell routine, from
+`0x41911a` with the word at chamber `+4` and from `0x41957a` with the word at
+`+6` and its flip flag set. Because chambers sit below the ground they are invisible from above
 and only appear once the eye is inside one; on `ROID` the whole playable volume
 is one, which is what a level set in space should be.
 
@@ -113,11 +123,9 @@ Objects whose kind names a `.TXT` model are skipped: that is the animated model
 format and it has no parser yet. `HOTH` places 476 objects of which 465 have a
 `.BIN` mesh; `FLOAT` places 293 of which 269 do.
 
-A box is drawn as four sides and a top. The bottom is skipped because it cannot
-be seen from outside, and because which of the four side slots faces which way
-is [not settled](../formats/terrain.md) - the sides use the slot that matches
-their axis and take the first of the pair, which is right for the axis and may
-be mirrored within it.
+A box is drawn as four sides and a top, each from the slot the engine uses for
+that face: slot 0 faces -z, 1 +z, 2 +x, 3 -x, 4 is the top. The bottom is not
+drawn from outside.
 
 ## Unknown
 

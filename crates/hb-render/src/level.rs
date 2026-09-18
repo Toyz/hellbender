@@ -335,6 +335,7 @@ impl Level {
             meshes: &self.meshes,
             mesh_textures: &self.mesh_textures,
             mesh_radius: &self.mesh_radius,
+            ambient: (self.manifest.ambient >> 8).clamp(0, 255) as u8,
         }
     }
 

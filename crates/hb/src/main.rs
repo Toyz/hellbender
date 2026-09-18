@@ -23,9 +23,12 @@ hb - inspect Hellbender's data
   hb png <pod> <entry> <out.png>    a .RAW plus its palette, as a PNG
   hb view <name.bin> <out.png>      a model, flat shaded, as a PNG
   hb heightmap <level> <out.png>    a level's ground, lit, from above
-  hb ground <level> <out.png>       a level's ground, textured, from above
+  hb ground <level> <out.png> [--authored]
+                                    a level's ground, textured, from above;
+                                    --authored ignores the orientation codes
   hb fly <level> <out.png> [x z yaw height pitch] [--bare]
                                     one frame from in-level; --bare skips the cockpit
+  hb bench <level> [mode]           frames a second drawing a turn in place
   hb look <level> <n> <out.png> [distance]
                                     placement n, framed from the south and above
   hb font <out.png> [text]          a specimen of the front end's typeface
@@ -81,9 +84,12 @@ fn run(args: &[&str]) -> Result<(), String> {
         ["png", pod, entry, out] => cmd_png(pod, entry, Path::new(out)),
         ["view", name, out] => cmd_view(name, Path::new(out)),
         ["heightmap", name, out] => cmd_heightmap(name, Path::new(out)),
-        ["ground", name, out] => cmd_ground(name, Path::new(out)),
+        ["ground", name, out, rest @ ..] => {
+            cmd_ground(name, Path::new(out), !rest.contains(&"--authored"))
+        }
         ["fly", name, out, rest @ ..] => cmd_fly(name, Path::new(out), rest),
         ["look", name, index, out, rest @ ..] => cmd_look(name, index, Path::new(out), rest),
+        ["bench", name, rest @ ..] => cmd_bench(name, rest),
         ["font", out, rest @ ..] => cmd_font(Path::new(out), rest),
         ["demo", n, at, out] => cmd_demo(n, at, Path::new(out)),
         ["check"] => cmd_check(),
@@ -345,7 +351,7 @@ fn cmd_heightmap(name: &str, out: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn cmd_ground(name: &str, out: &Path) -> Result<(), String> {
+fn cmd_ground(name: &str, out: &Path, oriented: bool) -> Result<(), String> {
     let game = open_pod("game")?;
     let startup = open_pod("startup")?;
     let level = hb_render::Level::load(&game, Some(&startup), name)?;
@@ -357,6 +363,7 @@ fn cmd_ground(name: &str, out: &Path) -> Result<(), String> {
         &level.palette,
         level.light.as_ref(),
         scale,
+        oriented,
     );
     let side = terrain::SIDE * scale;
     std::fs::write(out, png::rgb(side, side, &pixels)).map_err(|e| e.to_string())?;
@@ -366,6 +373,43 @@ fn cmd_ground(name: &str, out: &Path) -> Result<(), String> {
         level.resolved_textures(),
         level.texture_names.len(),
         out.display()
+    );
+    Ok(())
+}
+
+/// Draw a full turn in place from the middle of a level and report the rate:
+/// the renderer's cost with nothing else in the way.
+fn cmd_bench(name: &str, rest: &[&str]) -> Result<(), String> {
+    let game = open_pod("game")?;
+    let startup = open_pod("startup")?;
+    let level = hb_render::Level::load(&game, Some(&startup), name)?;
+    let (w, h) = match rest.first().copied() {
+        Some("400") => hb_render::Target::MODE_400,
+        Some("480") => hb_render::Target::MODE_480,
+        _ => hb_render::Target::MODE_200,
+    };
+    let grid = hb_world::Grid::new(&level.terrain);
+    let (x, z) = (64 * terrain::CELL_SIZE, 64 * terrain::CELL_SIZE);
+    let y = grid.ceiling_of_solid(x, z) + (20 << 16);
+    let mut target = hb_render::Target::new(w, h);
+    let scene = level.scene();
+    let frames = 120u32;
+    let started = std::time::Instant::now();
+    let mut triangles = 0usize;
+    for i in 0..frames {
+        target.clear(0);
+        let yaw = (i as u32 * 65536 / frames) as u16;
+        let mut camera = hb_render::Camera::looking_at(x, y, z, hb_formats::Angle(yaw));
+        camera.pitch = hb_formats::Angle(2000);
+        let d = hb_render::draw_world(&mut target, &scene, &camera);
+        triangles += d.ground + d.boxes + d.chambers;
+    }
+    let seconds = started.elapsed().as_secs_f32();
+    println!(
+        "{}: {w}x{h}, {frames} frames in {seconds:.2} s - {:.1} fps, {} terrain triangles a frame",
+        level.stem,
+        frames as f32 / seconds,
+        triangles / frames as usize
     );
     Ok(())
 }

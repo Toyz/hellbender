@@ -5,9 +5,9 @@ use hb_formats::act::Palette;
 use hb_formats::colour::Ramp;
 use hb_formats::raw::{Image, Shape};
 
-/// A vertex as the rasteriser wants it: screen position, reciprocal depth for
-/// the perspective divide, and texture coordinates in texels.
-#[derive(Debug, Clone, Copy)]
+/// A vertex as the rasteriser wants it: screen position, view depth,
+/// texture coordinates in the 256-unit texture space, and a light level.
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Vertex {
     pub x: f32,
     pub y: f32,
@@ -15,6 +15,10 @@ pub struct Vertex {
     pub depth: f32,
     pub u: f32,
     pub v: f32,
+    /// 0 is dark, 255 is full, as the shading database stores it. Interpolated
+    /// across the triangle: the engine gives each ground vertex its own shade
+    /// (`0x414e05`), so the ground is Gouraud shaded.
+    pub light: f32,
 }
 
 pub struct Target {
@@ -82,13 +86,14 @@ impl Target {
         self.triangle(tri, &one, shade);
     }
 
-    /// One textured triangle, affinely mapped.
+    /// One textured triangle, perspective correct.
     ///
     /// The original has a `perspectiveFlag` in its settings with three values,
     /// so it chooses between affine and perspective correction per some
-    /// threshold. Which threshold is not known, and at a cell's size the
-    /// difference is small, so this always interpolates affinely - a choice of
-    /// this renderer, not a reading of the engine.
+    /// threshold, which is not known. This always corrects: texture, light and
+    /// depth are interpolated as `a / z` and `1 / z`. Affine interpolation was
+    /// this renderer's first choice and bent every texture on the large ground
+    /// triangles near the eye.
     pub fn triangle(&mut self, tri: [Vertex; 3], texture: &Image, shade: &Shade) {
         let top = tri
             .iter()
@@ -109,6 +114,10 @@ impl Target {
         if area.abs() < 1e-6 {
             return;
         }
+        // Everything that varies is carried divided by depth.
+        let inv = tri.map(|v| 1.0 / v.depth.max(1e-3));
+        let over = |f: fn(&Vertex) -> f32| [f(&tri[0]) * inv[0], f(&tri[1]) * inv[1], f(&tri[2]) * inv[2]];
+        let (us, vs, ls) = (over(|v| v.u), over(|v| v.v), over(|v| v.light));
 
         for y in top..bottom {
             let scan = y as f32 + 0.5;
@@ -135,18 +144,23 @@ impl Target {
                 let w0 = edge(tri[1], tri[2], px, scan) / area;
                 let w1 = edge(tri[2], tri[0], px, scan) / area;
                 let w2 = 1.0 - w0 - w1;
-                let depth = w0 * tri[0].depth + w1 * tri[1].depth + w2 * tri[2].depth;
+                let one_over = w0 * inv[0] + w1 * inv[1] + w2 * inv[2];
+                if one_over <= 0.0 {
+                    continue;
+                }
+                let depth = 1.0 / one_over;
                 let at = y * self.width + x;
                 if depth >= self.depth[at] {
                     continue;
                 }
-                let u = w0 * tri[0].u + w1 * tri[1].u + w2 * tri[2].u;
-                let v = w0 * tri[0].v + w1 * tri[1].v + w2 * tri[2].v;
+                let u = (w0 * us[0] + w1 * us[1] + w2 * us[2]) * depth;
+                let v = (w0 * vs[0] + w1 * vs[1] + w2 * vs[2]) * depth;
+                let light = (w0 * ls[0] + w1 * ls[1] + w2 * ls[2]) * depth;
                 let index = sample(texture, u, v);
                 if index == 0 && shade.index_zero_is_clear {
                     continue;
                 }
-                self.colour[at] = shade.apply(index, depth);
+                self.colour[at] = shade.apply(index, depth, light);
                 self.depth[at] = depth;
             }
         }
@@ -154,12 +168,10 @@ impl Target {
 }
 
 /// How a sampled index becomes a written index: the level's light ramp at the
-/// surface's own shade, then the fog ramp by distance.
+/// pixel's light level, then the fog ramp by distance.
 pub struct Shade<'a> {
     pub light: Option<&'a Ramp>,
     pub fog: Option<&'a Ramp>,
-    /// 0 is dark, 255 is full, as the shading database stores it.
-    pub intensity: u8,
     /// Where the fog ramp reaches its last row.
     pub fog_distance: f32,
     /// Terrain is opaque; sprites and cockpit overlays are not.
@@ -167,10 +179,12 @@ pub struct Shade<'a> {
 }
 
 impl Shade<'_> {
-    pub fn apply(&self, index: u8, depth: f32) -> u8 {
+    /// `light` is 0 (dark) to 255 (full).
+    pub fn apply(&self, index: u8, depth: f32, light: f32) -> u8 {
         let mut out = index;
         if let Some(ramp) = self.light {
-            out = ramp.shade(((255 - self.intensity as usize) >> 4).min(15), out);
+            let level = (255.0 - light.clamp(0.0, 255.0)) as usize >> 4;
+            out = ramp.shade(level.min(15), out);
         }
         if let Some(ramp) = self.fog {
             let level = (depth / self.fog_distance * 16.0) as isize;

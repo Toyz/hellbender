@@ -18,3 +18,19 @@ rust-version = "1.75"
 
 [profile.release]
 opt-level = 3
+
+# The rasteriser and the mixer are per-pixel and per-sample loops that run six
+# times slower unoptimised - 24 frames a second against 148 for `hb bench hoth`
+# - so a plain `cargo run -p hb-fly` optimises them anyway. Everything else
+# keeps fast debug builds.
+[profile.dev.package.hb-render]
+opt-level = 3
+
+[profile.dev.package.hb-audio]
+opt-level = 3
+
+[profile.dev.package.hb-world]
+opt-level = 3
+
+[profile.dev.package.hb-formats]
+opt-level = 3

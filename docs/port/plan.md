@@ -115,11 +115,15 @@ Reported from playing `hb-fly` and deliberately deferred:
   median 16.5 and a 90th percentile of 49.
 - **Half the world was empty.** Also worklog 28, and not reported but surely
   seen: at a negative coordinate the terrain was drawn 1,024 units away.
-- **The frame rate is poor.** Measured at the 60 fps cap in a `--release`
-  build; a debug build is many times slower at a per-pixel rasteriser, so check
-  which was run first. If it is release, the obvious costs are walking every
-  cell within 220 units each frame, projecting objects before culling them, and
-  an `atan` per sky pixel.
+- **The frame rate is poor.** Likely the debug build: `hb bench hoth` draws
+  148 frames a second at 320x200 in release and 24 unoptimised. The workspace
+  now builds the rasteriser, the mixer, the world and the formats optimised
+  even in a dev build (114 a second), so a plain `cargo run -p hb-fly` is
+  fast. At 640x480 release draws 50 to 80 a second.
+- **The world did not look right.** Worklog 29: every ground texture was
+  mirrored and none were turned, the ground was lit flat per cell where the
+  engine shades each grid point, box sides took the wrong one of each pair,
+  and textures were mapped affinely. All four are now the engine's.
 - **It looks crunchy.** Partly authentic: the default is the game's own 320x200
   upscaled by whole pixels, the palette is 8-bit with only 16 light levels, and
   the textures are 64x64 and point-sampled - `--mode 480` is far less blocky.
@@ -130,21 +134,15 @@ Reported from playing `hb-fly` and deliberately deferred:
 
 ## What is still missing
 
-Two of the four blockers listed here earlier are closed. The cell triangulation
-is read out of `groundTriangleMidpoint` and reproduced in `hb-world`, and the
-box texture slots are pinned to axes by measurement - slots 0 and 1 face along
-z, 2 and 3 along x, 4 is the top and 5 the bottom.
+The cell triangulation is read out of `groundTriangleMidpoint` and reproduced
+in `hb-world`. The box faces, the orientation code and bit 8 of the ground
+shading word were read out of the ground and box drawers in worklog 29.
 
 What remains:
 
-- Which member of each box axis pair faces which way. The exposure test that
-  settled the axes gives no signal on the sign, 81 against 77 and 82 against
-  63. Settling it needs perspective rendering, or a rendered level compared
-  with a screenshot.
-- Which of the four `.CLR` orientation bits is which mirror and which rotation.
-- Bit 8 of the ground shading word, and what the chamber's 24-bit shading value
-  decomposes into.
+- What the chamber's 24-bit shading value decomposes into.
 - What separates polygon node 0x18 from 0x0e.
+- The sky's projection, and how a group model animates.
 
 None of these block a first terrain render; all of them would make it wrong in
 some detail.

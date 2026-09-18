@@ -34,12 +34,23 @@ pub struct Level {
     pub version: i64,
     /// Lines 2-17, in order, matching [`DIRS`].
     pub files: Vec<String>,
-    /// Lines 18-21. Not the player start: line 18 is the same in all 26
-    /// levels, so whatever it is, it is not per-level placement.
-    pub anchor_a: [i64; 3],
-    pub heading_a: i64,
-    pub anchor_b: [i64; 3],
-    pub heading_b: i64,
+    /// Line 18: the light direction, a 16.16 unit vector - `-46333,-46333,0`,
+    /// (-0.707, -0.707, 0), in every level. The parser at `0x44bb88` reads it
+    /// into the level struct at `+0x284`, which is `0x666f34`, and the shading
+    /// computation at `0x41c5d0` lights the ground and box set A with it.
+    pub light: [i64; 3],
+    /// Line 19: the ambient intensity for the same, 16.16 (`0x666f40`). It is
+    /// each level's floor in the ground shading - 16384 in `HOTH` whose
+    /// shading bottoms out at 64, 40960 in `FLOAT` at 160 - and a ground
+    /// vertex whose shade word has bit 8 set takes it in place of its own
+    /// shade (`0x414e10`).
+    pub ambient: i64,
+    /// Lines 20 and 21: the direction and ambient the same computation lights
+    /// the chambers with (`0x666f44`, `0x666f50`, read at `0x41d161` beside the
+    /// chamber array). `HOTH2` and `HOTH3` give no direction.
+    pub chamber_light: [i64; 3],
+    pub chamber_ambient: i64,
+    /// Line 22, read into `0x666f54`.
     pub unknown_22: i64,
     /// Lines 24-28, `None` where the file says `null`.
     pub story_movies: [Option<String>; 5],
@@ -95,10 +106,10 @@ impl Level {
         Ok(Level {
             version,
             files: l[1..17].to_vec(),
-            anchor_a: triple(17, "LVL line 18")?,
-            heading_a: int(&l, 18, "LVL line 19")?,
-            anchor_b: triple(19, "LVL line 20")?,
-            heading_b: int(&l, 20, "LVL line 21")?,
+            light: triple(17, "LVL light")?,
+            ambient: int(&l, 18, "LVL ambient")?,
+            chamber_light: triple(19, "LVL chamber light")?,
+            chamber_ambient: int(&l, 20, "LVL chamber ambient")?,
             unknown_22: int(&l, 21, "LVL line 22")?,
             story_movies: [opt(23), opt(24), opt(25), opt(26), opt(27)],
             unknown_30: int(&l, 29, "LVL line 30")?,
