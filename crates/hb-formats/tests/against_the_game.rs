@@ -8,7 +8,7 @@
 
 use std::path::PathBuf;
 
-use hb_formats::{act, colour, lvl, mrgl, raw, terrain, text};
+use hb_formats::{act, colour, course, lvl, mrgl, raw, terrain, text};
 use hb_pod::Pod;
 
 fn game_dir() -> PathBuf {
@@ -377,6 +377,93 @@ fn a_texture_word_is_twelve_bits_of_index_and_four_of_orientation() {
     // measurement rather than a reading of the disassembly alone.
     assert_eq!(raw_out_of_range, 3_658);
     assert_eq!(oriented, 3_658);
+}
+
+#[test]
+fn every_course_parses_and_stays_inside_the_world() {
+    let pod = archive!("GAME.POD");
+    let (mut files, mut courses, mut points) = (0usize, 0usize, 0usize);
+    let (mut kind_points, mut kind_segments) = (0usize, 0usize);
+    let (mut max_x, mut max_z, mut min_y, mut max_y) = (0i32, 0i32, 0i32, 0i32);
+    for e in pod.entries().iter().filter(|e| e.ext() == "crs") {
+        files += 1;
+        let parsed = course::parse(pod.bytes(e))
+            .unwrap_or_else(|why| panic!("{}: {why}", e.name));
+        for c in &parsed {
+            courses += 1;
+            match c {
+                course::Course::Points { .. } => kind_points += 1,
+                course::Course::Segments { .. } => kind_segments += 1,
+            }
+            for p in c.points() {
+                points += 1;
+                max_x = max_x.max(p.x.abs());
+                max_z = max_z.max(p.z.abs());
+                min_y = min_y.min(p.y);
+                max_y = max_y.max(p.y);
+            }
+        }
+    }
+    assert_eq!(files, 24, "levels with a .CRS");
+    assert_eq!(courses, 90);
+    assert_eq!(kind_points, 86, "point-list courses");
+    assert_eq!(kind_segments, 4, "segment courses");
+    // A segment course's segments meet end to start, so the shared endpoints
+    // are counted once: 16 segments across the four of them give 20 points,
+    // not 32.
+    assert_eq!(points, 1_648);
+
+    // The world is 1024 units square and centred, so no course leaves it.
+    let half = 512 << 16;
+    assert!(max_x < half, "x reaches {} units", max_x >> 16);
+    assert!(max_z < half, "z reaches {} units", max_z >> 16);
+    // And it really is centred rather than starting at zero: courses use the
+    // negative half as much as the positive one.
+    assert!(max_x > (500 << 16), "x only reaches {} units", max_x >> 16);
+    // Height stays within the terrain's own span plus the structures on it.
+    assert!(min_y > -(200 << 16) && max_y < (200 << 16), "{min_y}..{max_y}");
+}
+
+#[test]
+fn the_shipped_data_has_dangling_course_references() {
+    // The engine has a diagnostic for this - "Bad course ID for enemy" - and
+    // the shipped levels trip it. Six of the 26 name a course their own .CRS
+    // does not contain, so a port must survive a dangling id rather than
+    // assume the data is sound. The set is pinned here so that a change in the
+    // parser shows up as a change in the list.
+    let pod = archive!("GAME.POD");
+    let mut dangling: Vec<(String, usize)> = Vec::new();
+    for e in pod.entries().iter().filter(|e| e.ext() == "lvl") {
+        let level = lvl::Level::parse(pod.bytes(e)).unwrap();
+        let stem = level.stem().to_string();
+        let courses = pod
+            .read("data", &level.courses)
+            .ok()
+            .map(|b| course::parse(b).unwrap())
+            .unwrap_or_default();
+        let defs =
+            text::enemy_defs(pod.read("data", &format!("{stem}.def")).unwrap()).unwrap();
+        let bad = defs
+            .iter()
+            .filter(|d| d.course != -1 && (d.course as usize) >= courses.len())
+            .count();
+        if bad > 0 {
+            dangling.push((stem, bad));
+        }
+    }
+    dangling.sort();
+    assert_eq!(
+        dangling,
+        [
+            ("hoth2".to_string(), 1),
+            ("kreash2".to_string(), 3),
+            ("netlvl1".to_string(), 9),
+            ("netlvl2".to_string(), 9),
+            ("netlvl3".to_string(), 9),
+            ("roid2".to_string(), 1),
+            ("ship".to_string(), 50),
+        ]
+    );
 }
 
 #[test]

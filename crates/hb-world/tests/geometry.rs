@@ -184,3 +184,26 @@ fn the_engines_own_corner_triples_come_back_out() {
     assert_eq!(inside.cell, Cell::new(1, 0));
     assert_eq!(inside.half, Half::Second);
 }
+
+#[test]
+fn the_world_is_centred_on_the_origin() {
+    // Course points run to about +/-512 units in x and z, so a cell index is
+    // the middle seven bits of a signed coordinate and the two halves of the
+    // grid are the two signs.
+    assert_eq!(Cell::new(0, 0).signed_origin(), (0, 0));
+    assert_eq!(Cell::new(63, 0).signed_origin().0, 63 * CELL_SIZE);
+    assert_eq!(Cell::new(64, 0).signed_origin().0, -64 * CELL_SIZE);
+    assert_eq!(Cell::new(127, 0).signed_origin().0, -CELL_SIZE);
+
+    // And a signed coordinate round-trips to the cell that holds it. A world
+    // unit is 1 << 16; a cell is eight of them.
+    for units in [-511, -300, -8, -1, 0, 1, 7, 300, 511] {
+        let coord = units << 16;
+        let cell = Cell::containing(coord, coord);
+        let (ox, _) = cell.signed_origin();
+        assert!(
+            coord - ox >= 0 && coord - ox < CELL_SIZE,
+            "{units} units: coord {coord} not inside cell {cell:?} at origin {ox}"
+        );
+    }
+}

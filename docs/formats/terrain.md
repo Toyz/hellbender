@@ -2,7 +2,7 @@
 title: The terrain grids
 status: partial
 covers: DATA\*.RAW, DATA\*.CLR, DATA\*.RA0-RA5, DATA\*.CL0-CL2
-worklog: 4, 8, 10, 11, 12
+worklog: 4, 8, 10, 11, 12, 15
 ---
 
 # The terrain grids
@@ -134,6 +134,13 @@ which is `(index & 0x7f) << 19`. So a cell is `0x80000` world units - 8.0 in
 16.16 - and the grid **wraps** at 128 rather than clamping. `heightAtGrid`
 masks the same way, with `and eax, 0x7f`. The world is 1024.0 units square and
 a level has no edge.
+
+The origin is in the **middle** of that square, not at a corner: every course
+point in every level lies between -511.3 and +511.8 units in x and z - see
+[.CRS](courses.md). A cell index is the middle seven bits of a signed
+coordinate, so cells 0 to 63 are the positive half and 64 to 127 the negative
+one, and the wrap is what a two's-complement coordinate masked to seven bits
+does on its own.
 
 `heightAtGrid` returns the stored altitude shifted left by 8, so a query
 returns the byte scaled by 2^15: half a world unit per step, 127.5 units from

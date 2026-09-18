@@ -18,11 +18,13 @@ The containers and record layouts.
 | [The .ACT palette](formats/act.md) | solid | ART\*.ACT |
 | [Sound, music and cutscenes](formats/audio-video.md) | solid | SOUND\*.WAV, MUSIC\*.MOD, system/Story/*.SMK |
 | [The colour tables - .MAP, .LTE, .FOG, .MIX](formats/colour-tables.md) | partial | FOG\*.MAP, FOG\*.LTE, FOG\*.FOG, FOG\*.MIX, DATA\*.LTE |
+| [The .CRS courses](formats/courses.md) | solid | DATA\*.CRS |
 | [The level text files - .DEF, .NAV, .TXT, .TEX, .ANI, .LVL family](formats/level-text.md) | partial | DATA\*.DEF, DATA\*.NAV, DATA\*.TXT, DATA\*.TEX, DATA\*.ANI, DEMO\*.DMO |
 | [The .LVL manifest](formats/lvl.md) | partial | LEVELS\*.LVL |
 | [The .BIN model and its MRGL nodes](formats/mrgl.md) | partial | MODELS\*.BIN |
 | [The .POD archive](formats/pod.md) | solid | system/GAME.POD, system/STARTUP.POD |
 | [The .RAW image](formats/raw.md) | solid | ART\*.RAW, DATA\*.RAW |
+| [The .GLT lights, .QKE moving geometry and .TTY ground types](formats/scenery.md) | partial | DATA\*.GLT, DATA\*.QKE, DATA\*.TTY |
 | [The terrain grids](formats/terrain.md) | partial | DATA\*.RAW, DATA\*.CLR, DATA\*.RA0-RA5, DATA\*.CL0-CL2 |
 
 ## Engine

@@ -2,7 +2,7 @@
 title: The level text files - .DEF, .NAV, .TXT, .TEX, .ANI, .LVL family
 status: partial
 covers: DATA\*.DEF, DATA\*.NAV, DATA\*.TXT, DATA\*.TEX, DATA\*.ANI, DEMO\*.DMO
-worklog: 3
+worklog: 3, 15
 ---
 
 # The level text files
@@ -20,7 +20,20 @@ not where the version says they should be.
 
 The biggest of them. First line is a record count; each record is exactly 25
 lines. `FLOAT.DEF` declares 83 and has 83. Across all 26 levels there are 1,848
-records.
+records. The loader at `0x00404fc5` refuses more than 100 per level.
+
+**These are types, not placements.** Field 2 of a record's first line is a
+function of its model: 242 of the 250 models used take exactly one value, and
+`wbunker.bin` takes two across 439 records. A position would be unique per
+record. The display names say the same thing - "Extra" appears 395 times and
+"none" 156 - which is a fixed-size table with unused slots, not a list of
+things standing somewhere.
+
+Where instances are placed is **not known**. It is not in this file, not in
+[.CRS](courses.md), and not in any per-level file that has been read. The
+likeliest candidate is the spare byte in each [ground box cell](terrain.md) at
++0x11, which nothing yet accounts for and which is the right size for an index
+into a 100-entry table.
 
 ```
  0  0,0,782409,0,0,0,fmbbld.bin,cube.bin    six ints, then two model names
@@ -69,6 +82,13 @@ Field 7 is the wrecked form of field 6: `wbunker.bin` is paired with
 
 The loader is at `HELLBEND.EXE:0x00404fc5`, which emits
 `"Unable to open enemy description file"` and `"Too many enemy defs"`.
+
+The loader reads a record's six integers with
+`fscanf(file, "%d,%d,%d,%d,%d,%d,%s", ...)` into struct offsets 0x0c, 0x1c,
+0x08, 0x10, 0x14 and 0x18. There is only one `%s` for two filenames, because
+`%s` stops at whitespace and the two names are separated by a comma - the
+loader takes the whole `fmbbld.bin,cube.bin` token and splits it afterwards. It
+then checks `fscanf` returned 7.
 
 ## .NAV - navigation courses
 
@@ -148,16 +168,18 @@ iowah2.lvl
 0,...
 ```
 
-## .TTY, .PUP, .TDF, .CRS, .GLT, .QKE
+## .PUP and .TDF
 
-All count-prefixed text in the same family. In most levels `.TTY`, `.PUP` and
-`.TDF` are the three bytes `0\r\n` - a count of zero and nothing else - so
-their record shape cannot be read from the shipped data. `.QKE` is the largest
-of them, up to 72,046 bytes in one level, and `.CRS` holds the courses that
-`.DEF` line 15 indexes.
+Count-prefixed text in the same family. In most levels both are the three bytes
+`0\r\n` - a count of zero and nothing else - so their record shape cannot be
+read from the shipped data.
+
+`.CRS` has [its own page](courses.md), and `.GLT`, `.QKE` and `.TTY`
+[another](scenery.md).
 
 ## Unknown
 
-The meaning of `.DEF` fields 0, 2 and 4, and of its lines 1 to 7 and 10. The
-record shape of `.TTY`, `.PUP` and `.TDF`. Whether `.NAV`'s leading `6` is part
-of the header or the first record.
+Where object instances are placed - see the note under `.DEF` above. The
+meaning of `.DEF` fields 0, 2 and 4, and of its lines 1 to 7 and 10. The record
+shape of `.PUP` and `.TDF`. Whether `.NAV`'s leading `6` is part of the header
+or the first record.

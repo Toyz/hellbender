@@ -24,13 +24,36 @@ impl Cell {
     }
 
     /// The cell containing a world position in 16.16 fixed point.
+    ///
+    /// An arithmetic shift then a mask, which is what `heightAtGrid` and
+    /// `groundTriangleMidpoint` do - the latter as
+    /// `(p & 0x3f80000) >> 19`, the middle seven bits. Negative coordinates
+    /// fold onto the upper half of the grid, which is why the world wraps.
     pub fn containing(x: i32, z: i32) -> Cell {
         Cell::new(x >> 19, z >> 19)
     }
 
-    /// The cell's origin corner, in 16.16 world units.
+    /// The cell's origin corner in 16.16 world units, taking the index at face
+    /// value. Cells 0 to 127 map to 0 to +1016 units.
+    ///
+    /// Use this when positions only have to be consistent with each other, as
+    /// in a renderer that places the camera the same way. Use
+    /// [`Cell::signed_origin`] when a position has to agree with the
+    /// coordinates in a `.CRS` or `.NAV` file.
     pub fn origin(self) -> (i32, i32) {
         (self.x << 19, self.z << 19)
+    }
+
+    /// The cell's origin corner in the world's own signed coordinates.
+    ///
+    /// Course points run from about -511.3 to +511.8 units in x and z across
+    /// all 26 levels, so the world is 1024 units square and centred on the
+    /// origin rather than starting at it. A cell index is the middle seven bits
+    /// of a coordinate, which folds -512..+512 onto 0..127: cells 0 to 63 are
+    /// the positive half and 64 to 127 the negative one.
+    pub fn signed_origin(self) -> (i32, i32) {
+        let fold = |c: i32| (((c + 64) & WRAP) - 64) << 19;
+        (fold(self.x), fold(self.z))
     }
 
     pub fn index(self) -> usize {
