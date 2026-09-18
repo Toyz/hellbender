@@ -25,7 +25,7 @@ hb-fly - fly around a Hellbender level
   arrows        pitch and turn        w / s   throttle
   a / d         strafe                r / f   climb and dive
   space         stop                  tab     cycle the level
-  esc           quit
+  c             collision on/off      esc     quit
 ";
 
 fn game_dir() -> PathBuf {
@@ -34,16 +34,22 @@ fn game_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("original"))
 }
 
+/// How far above the surface the eye is held when collision is on.
+const CLEARANCE: i32 = 2 << 16;
+
 /// The eye, with just enough motion to steer it.
 struct Flight {
     camera: Camera,
     /// World units per second along the view axis.
     speed: f32,
+    collide: bool,
+    /// Set on the frame the eye was pushed up out of the ground.
+    grounded: bool,
 }
 
 impl Flight {
     fn new(camera: Camera) -> Flight {
-        Flight { camera, speed: 0.0 }
+        Flight { camera, speed: 0.0, collide: true, grounded: false }
     }
 
     fn step(&mut self, window: &Window, dt: f32) {
@@ -82,6 +88,24 @@ impl Flight {
             .camera
             .z
             .wrapping_add(units((forward[2] * self.speed - sy * strafe) * dt));
+    }
+
+    /// Keep the eye above the ground and above anything standing on it.
+    ///
+    /// The engine has a real collision system - `intersectingBoxSurface` and
+    /// the ground triangle queries are part of it - and this is not it. It is
+    /// the height query used honestly: find the top of whatever is under the
+    /// eye and refuse to go below it.
+    fn settle(&mut self, grid: &hb_world::Grid) {
+        self.grounded = false;
+        if !self.collide {
+            return;
+        }
+        let floor = grid.ceiling_of_solid(self.camera.x, self.camera.z) + CLEARANCE;
+        if self.camera.y < floor {
+            self.camera.y = floor;
+            self.grounded = true;
+        }
     }
 }
 
@@ -162,7 +186,12 @@ fn main() -> Result<(), String> {
         }
         tab_was_down = tab;
 
+        if window.is_key_pressed(Key::C, minifb::KeyRepeat::No) {
+            flight.collide = !flight.collide;
+            println!("collision {}", if flight.collide { "on" } else { "off" });
+        }
         flight.step(&window, dt);
+        flight.settle(&hb_world::Grid::new(&level.terrain));
         target.clear(0);
         let scene = level.scene();
         hb_render::draw_world(&mut target, &scene, &flight.camera);
@@ -176,7 +205,21 @@ fn main() -> Result<(), String> {
 
         frames += 1;
         if since.elapsed().as_secs_f32() >= 2.0 {
-            println!("{:.0} fps", frames as f32 / since.elapsed().as_secs_f32());
+            let grid = hb_world::Grid::new(&level.terrain);
+            let cell = hb_world::Cell::containing(flight.camera.x, flight.camera.z);
+            let ground = grid
+                .height_at(hb_formats::terrain::Layer::Ground, flight.camera.x, flight.camera.z)
+                .unwrap_or(0);
+            println!(
+                "{:.0} fps  cell ({:3},{:3})  y {:7.1}  ground {:7.1}  speed {:6.1}{}",
+                frames as f32 / since.elapsed().as_secs_f32(),
+                cell.x,
+                cell.z,
+                flight.camera.y as f32 / 65536.0,
+                ground as f32 / 65536.0,
+                flight.speed,
+                if flight.grounded { "  [on the deck]" } else { "" }
+            );
             frames = 0;
             since = Instant::now();
         }
@@ -188,7 +231,7 @@ fn main() -> Result<(), String> {
 fn start_of(level: &Level) -> Camera {
     let grid = hb_world::Grid::new(&level.terrain);
     let (x, z) = (64 * CELL_SIZE, 64 * CELL_SIZE);
-    let ground = hb_render::scene::ground_height(&grid, x, z);
+    let ground = grid.ceiling_of_solid(x, z);
     let mut camera = Camera::looking_at(x, ground + (25 << 16), z, Angle(0x2000));
     camera.pitch = Angle(2_000);
     camera

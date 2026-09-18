@@ -9,6 +9,7 @@ use hb_world::grid::{
     Corner, FRACTION_ONE, SAMPLE_HIGH, SAMPLE_LOW,
 };
 use hb_world::{Cell, Diagonal, Half};
+use hb_world::grid::triangle_containing as tri_at;
 
 #[test]
 fn a_cell_is_eight_units_and_the_grid_wraps() {
@@ -205,5 +206,66 @@ fn the_world_is_centred_on_the_origin() {
             coord - ox >= 0 && coord - ox < CELL_SIZE,
             "{units} units: coord {coord} not inside cell {cell:?} at origin {ox}"
         );
+    }
+}
+
+#[test]
+fn the_interpolated_height_meets_the_corner_heights_at_the_corners() {
+    // No game data: a flat synthetic terrain, then a sloped one, checked
+    // against the corner altitudes the same grid reports.
+    use hb_formats::terrain::{Altitudes, BoxLayer, ChamberLayer, Indices, Layer, Scale, Terrain, CELLS, SIDE};
+    use hb_world::Grid;
+
+    let flat = |v: u8| Altitudes::parse(&vec![v; CELLS], Scale::Up).unwrap();
+    let down = |v: u8| Altitudes::parse(&vec![v; CELLS], Scale::Down).unwrap();
+    let indices = |per| Indices::parse(&vec![0u8; CELLS * per * 2], per, "t").unwrap();
+
+    // A ramp along x: altitude byte equals the cell's x index.
+    let mut ramp = vec![0u8; CELLS];
+    for z in 0..SIDE {
+        for x in 0..SIDE {
+            ramp[z * SIDE + x] = x as u8;
+        }
+    }
+    let terrain = Terrain {
+        ground: Altitudes::parse(&ramp, Scale::Up).unwrap(),
+        colour: indices(1),
+        boxes_a: BoxLayer { bottom: flat(0), top: flat(0), textures: indices(6) },
+        chambers: ChamberLayer { floor: down(255), ceiling: down(255), textures: indices(2) },
+        boxes_b: BoxLayer { bottom: down(255), top: down(255), textures: indices(6) },
+        shading: None,
+    };
+    let grid = Grid::new(&terrain);
+
+    // At a cell's origin corner the interpolated height is that corner's.
+    for cx in [0i32, 1, 17, 60] {
+        for cz in [0i32, 1, 9] {
+            let (ox, oz) = Cell::new(cx, cz).origin();
+            let corner = grid.height_at_grid(Layer::Ground, cx, cz).unwrap();
+            let interpolated = grid.height_at(Layer::Ground, ox, oz).unwrap();
+            assert_eq!(interpolated, corner, "cell ({cx},{cz})");
+        }
+    }
+
+    // Halfway along x between two cells the height is halfway between them,
+    // on a ramp that rises one altitude step per cell.
+    let (ox, oz) = Cell::new(10, 4).origin();
+    let low = grid.height_at_grid(Layer::Ground, 10, 4).unwrap();
+    let high = grid.height_at_grid(Layer::Ground, 11, 4).unwrap();
+    let mid = grid.height_at(Layer::Ground, ox + CELL_SIZE / 2, oz).unwrap();
+    assert!(
+        (mid - (low + high) / 2).abs() <= 16,
+        "midpoint {mid} between {low} and {high}"
+    );
+
+    // The query is defined everywhere and never leaves the terrain's range.
+    for i in 0..500 {
+        let x = i * 7919;
+        let z = i * 104_729;
+        let h = grid.height_at(Layer::Ground, x, z).unwrap();
+        assert!((0..=(255 << 15)).contains(&h), "at ({x},{z}) height {h}");
+        // And it lands in the triangle the engine's own test picks.
+        let tri = tri_at(x, z);
+        assert_eq!(tri.cell, Cell::containing(x, z));
     }
 }

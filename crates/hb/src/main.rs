@@ -400,13 +400,14 @@ fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
     let rgb = target.to_rgb(&level.palette);
     std::fs::write(out, png::rgb(w, h, &rgb)).map_err(|e| e.to_string())?;
     println!(
-        "{}: cell ({}, {}) yaw {yaw:#06x} - {} ground, {} box triangles, \
+        "{}: cell ({}, {}) yaw {yaw:#06x} - {} ground, {} box, {} chamber triangles, \
          {} of {} objects drawn ({} placed, {} drawable), {} clipped -> {}",
         level.stem,
         x / terrain::CELL_SIZE,
         z / terrain::CELL_SIZE,
         drawn.ground,
         drawn.boxes,
+        drawn.chambers,
         drawn.models,
         level.placements.len(),
         level.placements.len(),

@@ -6,3 +6,6 @@ rust-version.workspace = true
 
 [dependencies]
 hb-formats = { path = "../hb-formats" }
+
+[dev-dependencies]
+hb-formats = { path = "../hb-formats" }

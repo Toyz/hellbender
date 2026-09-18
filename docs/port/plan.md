@@ -2,7 +2,7 @@
 title: The Rust port
 status: partial
 covers: crates/
-worklog: 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18
+worklog: 7 to 20
 ---
 
 # The Rust port
@@ -65,17 +65,18 @@ the polygon node and the terrain right - the ship looks like a ship and FLOAT
 looks like floating platforms. Still to do: the colour ramps as strips, models
 to OBJ.
 
-**3. The world, headless.** Mostly done. `hb-world` has the cell geometry -
-wrapping indices, the 8.0-unit cell, the parity-dependent triangle split, the
-point-in-triangle test and the surface normal - plus `heightAtGrid` and the box
-span query. Still to do: the plane evaluation as a height lookup at an
-arbitrary point, the box and chamber intersection tests, and collision.
+**3. The world, headless.** Done for the queries the engine names. `hb-world`
+has the cell geometry, `heightAtGrid`, the box span query, the height at an
+arbitrary position through the containing triangle's plane, and the top of
+whatever is solid under a position. Still to do: the engine's actual collision,
+which is a system rather than a query.
 
 **4. A picture.** Done for the terrain, and it moves. `hb ground` draws a level
 from above, `hb fly` draws one frame from inside it, and `hb-fly` opens a window
 and flies through it at 60 frames a second in any of the game's three screen
-sizes, with the levels' placed objects in it. Still to do: chambers, sprites,
-the sky, the cockpit, and the `.TXT` animated model format.
+sizes, with the levels' placed objects and their chambers in it, and it will
+not let you fly through the ground. Still to do: sprites, the sky and the
+cockpit.
 
 **5. Models.** Done for static geometry. The MRGL meshes draw at the position,
 heading and scale each level's instance list gives them, each polygon with the

@@ -2,7 +2,7 @@
 title: The terrain grids
 status: partial
 covers: DATA\*.RAW, DATA\*.CLR, DATA\*.RA0-RA5, DATA\*.CL0-CL2
-worklog: 4, 8, 10, 11, 12, 15
+worklog: 4, 8, 10, 11, 12, 15, 20
 ---
 
 # The terrain grids
@@ -256,6 +256,19 @@ terrain loader opens the `DATA\` one without asking the manifest. 114,688 is a
 multiple of 256, so a ramp parser that checks only for that reads the shading
 database as a 448-row ramp and says nothing - which is what the old note in
 `colour-tables.md` about "448 rows" was.
+
+## The height anywhere, not just at a corner
+
+`heightAtGrid` answers only at a cell corner. For a position inside a cell the
+engine uses `groundTriangleInt`, which produces a point on the containing
+triangle and the triangle's normal - and a point plus a normal is a plane,
+which solves for the height at any position in that triangle.
+
+A port can reach the same plane from the three corner altitudes directly, which
+is shorter and avoids reproducing the engine's normalisation rounding. Either
+way the triangle has to be the one the
+[half test](#which-half-of-a-cell-a-point-is-in) picks, or the answer is taken
+from the wrong plane on half the grid.
 
 ## Which half of a cell a point is in
 

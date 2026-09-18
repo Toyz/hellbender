@@ -340,6 +340,56 @@ impl<'a> Grid<'a> {
         None
     }
 
+    /// The surface height at any world position, interpolated across the
+    /// triangle that contains it.
+    ///
+    /// This is what `groundTriangleInt` exists for: it produces a point on the
+    /// triangle and the triangle's normal, and a point and a normal is a
+    /// plane. Solving that plane for y at the query position gives the height.
+    /// The port evaluates it from the three corner altitudes instead, which is
+    /// the same plane by a shorter route and avoids reproducing the engine's
+    /// normalisation rounding.
+    ///
+    /// `None` for the box layers, which are not height fields.
+    pub fn height_at(&self, layer: Layer, x: i32, z: i32) -> Option<i32> {
+        let tri = triangle_containing(x, z);
+        let h = self.triangle_heights(layer, tri)?;
+        let (ox, oz) = tri.cell.origin();
+        // Barycentric weights over the triangle's corners, in cell fractions.
+        let p = [
+            (x.wrapping_sub(ox)) as f32 / CELL_SIZE as f32,
+            (z.wrapping_sub(oz)) as f32 / CELL_SIZE as f32,
+        ];
+        let corner = |i: usize| {
+            let (dx, dz) = tri.corners[i].offset();
+            [dx as f32, dz as f32]
+        };
+        let (a, b, c) = (corner(0), corner(1), corner(2));
+        let area = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+        if area.abs() < 1e-6 {
+            return Some(h[0]);
+        }
+        let w1 = ((p[0] - a[0]) * (c[1] - a[1]) - (p[1] - a[1]) * (c[0] - a[0])) / area;
+        let w2 = ((b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])) / area;
+        let w0 = 1.0 - w1 - w2;
+        Some((h[0] as f32 * w0 + h[1] as f32 * w1 + h[2] as f32 * w2) as i32)
+    }
+
+    /// The top of whatever is at a world position: the ground, or a box
+    /// standing on it. What a flying thing must stay above.
+    pub fn ceiling_of_solid(&self, x: i32, z: i32) -> i32 {
+        let cell = Cell::containing(x, z);
+        let mut top = self.height_at(Layer::Ground, x, z).unwrap_or(0);
+        for layer in Layer::BOX_LAYERS {
+            if self.has_box(layer, cell) {
+                if let Some((_, box_top)) = self.box_span(layer, cell) {
+                    top = top.max(box_top);
+                }
+            }
+        }
+        top
+    }
+
     /// Whether a cell carries a box in the given set.
     ///
     /// A box is absent when its bottom and top are equal, not when either is

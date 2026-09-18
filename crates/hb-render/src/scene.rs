@@ -55,6 +55,7 @@ pub fn draw_world(target: &mut Target, scene: &Scene, camera: &Camera) -> Drawn 
         for layer in [Layer::BoxA, Layer::BoxB] {
             draw_box(target, scene, camera, cell, origin, layer, &mut drawn);
         }
+        draw_chamber(target, scene, camera, cell, origin, &mut drawn);
     }
     draw_objects(target, scene, camera, &mut drawn);
     drawn
@@ -186,6 +187,7 @@ fn draw_mesh(
 pub struct Drawn {
     pub ground: usize,
     pub boxes: usize,
+    pub chambers: usize,
     pub models: usize,
     pub clipped: usize,
 }
@@ -286,6 +288,74 @@ fn draw_ground(
         }
         target.triangle(points, texture, &shade);
         drawn.ground += 1;
+    }
+}
+
+/// A chamber's floor and ceiling, triangulated exactly like the ground.
+///
+/// Both are height fields that `heightAtGrid` accepts as layers 2 and 3, so
+/// the same split and the same corner heights apply. The two textures in the
+/// cell's `.CL1` entry are the floor's and the ceiling's, in that order -
+/// which is the order the loader reads them and is not otherwise confirmed.
+fn draw_chamber(
+    target: &mut Target,
+    scene: &Scene,
+    camera: &Camera,
+    cell: Cell,
+    origin: (i32, i32),
+    drawn: &mut Drawn,
+) {
+    if !scene.grid.has_chamber(cell) {
+        return;
+    }
+    let intensity = scene
+        .grid
+        .terrain
+        .shading
+        .as_ref()
+        .map(|s| s.chambers[cell.index()][0])
+        .unwrap_or(255);
+    let shade = shade_for(scene, camera, intensity);
+
+    for (slot, layer) in [(0usize, Layer::ChamberFloor), (1, Layer::ChamberCeiling)] {
+        let word = scene.grid.terrain.chambers.textures.texture_at(cell.x, cell.z, slot);
+        let Some(Some(texture)) = scene.textures.get(word.index() as usize) else {
+            continue;
+        };
+        for half in [Half::First, Half::Second] {
+            let tri = triangle(cell, half);
+            let mut points = [Vertex { x: 0.0, y: 0.0, depth: 0.0, u: 0.0, v: 0.0 }; 3];
+            let mut visible = true;
+            for (point, corner) in points.iter_mut().zip(tri.corners) {
+                let (dx, dz) = corner.offset();
+                let (wx, wz) = corner_world(origin, corner);
+                let height = scene
+                    .grid
+                    .height_at_grid(layer, cell.x + dx, cell.z + dz)
+                    .unwrap_or(0);
+                match project(camera, target, wx, height, wz) {
+                    Some((x, y, depth)) => {
+                        *point = Vertex {
+                            x,
+                            y,
+                            depth,
+                            u: (dx * 255) as f32,
+                            v: (dz * 255) as f32,
+                        }
+                    }
+                    None => {
+                        visible = false;
+                        break;
+                    }
+                }
+            }
+            if !visible {
+                drawn.clipped += 1;
+                continue;
+            }
+            target.triangle(points, texture, &shade);
+            drawn.chambers += 1;
+        }
     }
 }
 
