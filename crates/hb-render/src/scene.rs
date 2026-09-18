@@ -504,3 +504,34 @@ pub fn ground_height(grid: &Grid, x: i32, z: i32) -> i32 {
 /// The number of cells on a side, re-exported so callers need not reach past
 /// this crate for it.
 pub const GRID_SIDE: usize = SIDE;
+
+/// A bright point in the world - a shot in flight - drawn as a small square
+/// that shrinks with distance and respects the depth buffer.
+///
+/// The engine's own shot is a model (`bullet.bin` is in STARTUP.POD) and this
+/// is a stand-in until weapons are read properly.
+pub fn draw_spark(target: &mut Target, camera: &Camera, position: [f32; 3], index: u8) {
+    let at = [
+        (position[0] * 65536.0) as i32,
+        (position[1] * 65536.0) as i32,
+        (position[2] * 65536.0) as i32,
+    ];
+    let Some((sx, sy, depth)) = project_onto(camera, target.width, target.height, at[0], at[1], at[2])
+    else {
+        return;
+    };
+    let size = (target.width as f32 * 0.9 / depth).clamp(1.0, 5.0) as isize;
+    let (cx, cy) = (sx as isize, sy as isize);
+    for y in cy - size / 2..=cy + size / 2 {
+        for x in cx - size / 2..=cx + size / 2 {
+            if x < 0 || y < 0 || x as usize >= target.width || y as usize >= target.height {
+                continue;
+            }
+            let i = y as usize * target.width + x as usize;
+            if depth < target.depth[i] {
+                target.colour[i] = index;
+                target.depth[i] = depth;
+            }
+        }
+    }
+}

@@ -29,10 +29,10 @@ hb-fly - fly around a Hellbender level
 
   arrows        pitch and turn        w / s   throttle
   a / d         strafe                r / f   climb and dive
-  space         stop                  tab     cycle the level
+  x             stop                  tab     cycle the level
   c             collision on/off      k       cockpit on/off
   m             music on/off          h       hud on/off
-  esc           quit
+  space         fire                  esc     quit
 ";
 
 fn game_dir() -> PathBuf {
@@ -70,7 +70,9 @@ impl Flight {
             Angle(self.camera.pitch.0.wrapping_add((pitch * dt) as i32 as u16));
 
         self.speed += (turn(Key::W, 60.0) - turn(Key::S, 60.0)) * dt;
-        if window.is_key_down(Key::Space) {
+        // Space is the fire button - HELLBEND.INI binds fireKey=57, the space
+        // bar's scan code - so stopping moved to x.
+        if window.is_key_down(Key::X) {
             self.speed = 0.0;
         }
         self.speed = self.speed.clamp(-90.0, 90.0);
@@ -267,6 +269,23 @@ fn main() -> Result<(), String> {
     let mut live = level.placements.clone();
     println!("sim: {} of {} objects follow a course", followers.len(), live.len());
 
+    // Combat. The laser sound is the one the engine names; a destroyed
+    // object plays its type's own destroy sound, falling back to a blast.
+    let load_wav = |name: &str| -> Option<std::sync::Arc<hb_audio::Wav>> {
+        let bytes = startup.read("sound", name).or_else(|_| game.read("sound", name)).ok()?;
+        hb_audio::Wav::parse(bytes).ok().map(std::sync::Arc::new)
+    };
+    let laser = load_wav("laser.wav");
+    let blast = load_wav("blast4.wav");
+    let mut shots: Vec<hb_sim::combat::Shot> = Vec::new();
+    let mut health: Vec<hb_sim::combat::Health> = level
+        .placements
+        .iter()
+        .map(|p| hb_sim::combat::Health::for_kind(&level.kinds[p.kind]))
+        .collect();
+    let mut cooldown = 0.0f32;
+    let mut destroyed = 0usize;
+
     let started = Instant::now();
     let mut last = Instant::now();
     let mut tab_was_down = false;
@@ -288,6 +307,13 @@ fn main() -> Result<(), String> {
             play_music(&level);
             followers = followers_for(&level);
             live = level.placements.clone();
+            shots.clear();
+            destroyed = 0;
+            health = level
+                .placements
+                .iter()
+                .map(|p| hb_sim::combat::Health::for_kind(&level.kinds[p.kind]))
+                .collect();
             println!("sim: {} of {} objects follow a course", followers.len(), live.len());
         }
         tab_was_down = tab;
@@ -330,7 +356,50 @@ fn main() -> Result<(), String> {
             }
         }
         target.clear(0);
+        // Fire: a shot every tenth of a second while the button is held. The
+        // rate is this port's choice.
+        cooldown -= dt;
+        if window.is_key_down(Key::Space) && cooldown <= 0.0 && demo.is_none() {
+            cooldown = 0.1;
+            let eye = [
+                flight.camera.x as f32 / 65536.0,
+                flight.camera.y as f32 / 65536.0 - 0.5,
+                flight.camera.z as f32 / 65536.0,
+            ];
+            shots.push(hb_sim::combat::Shot::fire(eye, flight.camera.yaw.0, flight.camera.pitch.0));
+            if let (Some(music), Some(sound)) = (music.as_ref(), laser.as_ref()) {
+                music.effect(sound, 0.5);
+            }
+        }
+        for shot in &mut shots {
+            let hit = hb_sim::combat::first_hit(shot, dt, &live, |i| !health[i].destroyed);
+            if let Some(i) = hit {
+                shot.age = f32::MAX;
+                if health[i].hit() {
+                    destroyed += 1;
+                    let kind = level.placements[i].kind;
+                    // Become the wreck, or vanish if the type has none.
+                    live[i].kind = level.wreck_mesh[kind].unwrap_or(usize::MAX);
+                    if let Some(music) = music.as_ref() {
+                        let own = level.destroy_sound[kind]
+                            .as_ref()
+                            .and_then(|b| hb_audio::Wav::parse(b).ok())
+                            .map(std::sync::Arc::new);
+                        if let Some(sound) = own.as_ref().or(blast.as_ref()) {
+                            music.effect(sound, 0.8);
+                        }
+                    }
+                }
+            } else {
+                hb_sim::combat::advance(shot, dt);
+            }
+        }
+        shots.retain(|s| s.alive());
+
         for (i, follower) in &mut followers {
+            if health[*i].destroyed {
+                continue;
+            }
             follower.step(dt);
             let [x, y, z] = follower.position_fixed();
             let placed = &mut live[*i];
@@ -346,6 +415,10 @@ fn main() -> Result<(), String> {
         scene.frames = Some(&frames_now);
         scene.placements = &live;
         hb_render::draw_world(&mut target, &scene, &flight.camera);
+        for shot in &shots {
+            // Index 255 is in the reserved range, so no ramp dims it.
+            hb_render::scene::draw_spark(&mut target, &flight.camera, shot.position, 255);
+        }
         if show_cockpit {
             if let Some(art) = &cockpit {
                 target.overlay(art);
@@ -353,14 +426,12 @@ fn main() -> Result<(), String> {
         }
         if show_hud {
             if let Some(font) = &hud_font {
-                let cell = hb_world::Cell::containing(flight.camera.x, flight.camera.z);
                 let readout = format!(
-                    "{}  ALT {:.0}  SPD {:.0}  {:03},{:03}",
+                    "{}  ALT {:.0}  SPD {:.0}  KILLS {}",
                     level.stem.to_uppercase(),
                     flight.camera.y as f32 / 65536.0,
                     flight.speed,
-                    cell.x,
-                    cell.z
+                    destroyed
                 );
                 // The font is drawn at its authored size, which is 23 pixels
                 // tall - more than a tenth of a 200-line screen, so it sits in

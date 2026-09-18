@@ -90,8 +90,10 @@ empty level.
 
 **7. The game.** Started. `hb-sim` moves every placed object whose type names a
 course, joining the course at the nearest point exactly as the engine's first
-logic phase does. Still to do: the rest of the seven logic routines, speeds,
-weapons, damage, powerups, and mission success and failure.
+logic phase does, and anything can be shot: it takes hits against the value
+read as its hit points and becomes its wreck, with its destroy sound. Still to
+do: the rest of the seven logic routines, the engine's real weapons, enemies
+that shoot back, powerups, and mission success and failure.
 
 **8. The trimmings.** Music is done - `hb-audio` plays the `.MOD` files and the
 level's track starts with the level. Still to do: the sound effects, which
@@ -114,6 +116,13 @@ Reported from playing `hb-fly` and deliberately deferred:
   which was run first. If it is release, the obvious costs are walking every
   cell within 220 units each frame, projecting objects before culling them, and
   an `atan` per sky pixel.
+- **It looks crunchy.** Partly authentic: the default is the game's own 320x200
+  upscaled by whole pixels, the palette is 8-bit with only 16 light levels, and
+  the textures are 64x64 and point-sampled - `--mode 480` is far less blocky.
+  Partly the port being cruder than the original: it interpolates textures
+  affinely where the original has a `perspectiveFlag`, it does not dither where
+  the original has `ditherFlag=1` to hide the banding between shade levels, and
+  it never filters where the Direct3D path had `filterFlag`.
 
 ## What is still missing
 

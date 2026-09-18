@@ -62,6 +62,12 @@ pub struct Level {
     pub animations: Vec<Cycle>,
     /// The level's `.CRS` courses, which a type's `.DEF` line 15 names.
     pub courses: Vec<hb_formats::course::Course>,
+    /// For each type, the index in `meshes` of its wreck model, when it has a
+    /// real one. Wrecks are appended after the types so a destroyed placement
+    /// can point at one without the renderer knowing anything happened.
+    pub wreck_mesh: Vec<Option<usize>>,
+    /// For each type, the bytes of its destroy sound from `.DEF` line 24.
+    pub destroy_sound: Vec<Option<Vec<u8>>>,
 }
 
 /// An animated texture, with every name already resolved to a texture index.
@@ -189,7 +195,7 @@ impl Level {
             .map(|n| read("art", n).and_then(|b| Image::parse_guessed(&b).ok().flatten()))
             .collect();
         let mut extra: Vec<String> = Vec::new();
-        let mut index_of = |name: &str,
+        let index_of = |name: &str,
                             textures: &mut Vec<Option<Image>>,
                             extra: &mut Vec<String>|
          -> Option<usize> {
@@ -228,11 +234,51 @@ impl Level {
             })
             .unwrap_or_default();
 
+        // Wrecks go after the types in the same mesh list. `cube.bin` means no
+        // wreck at all and is not loaded as one.
+        let mut meshes = meshes;
+        let mut mesh_textures = mesh_textures;
+        let mut wreck_mesh = Vec::with_capacity(kinds.len());
+        for kind in &kinds {
+            if kind.wreck.eq_ignore_ascii_case("cube.bin") {
+                wreck_mesh.push(None);
+                continue;
+            }
+            let model = read("models", &kind.wreck).and_then(|b| mrgl::Model::parse(&b).ok());
+            match model {
+                Some(model) => {
+                    let textures = model
+                        .materials
+                        .iter()
+                        .map(|n| read("art", n).and_then(|b| Image::parse_guessed(&b).ok().flatten()))
+                        .collect();
+                    meshes.push(Some(model));
+                    mesh_textures.push(textures);
+                    wreck_mesh.push(Some(meshes.len() - 1));
+                }
+                None => wreck_mesh.push(None),
+            }
+        }
+        // `.DEF` line 24 is the destroy sound. One type names `CRY-DES.DEF`
+        // where it means the `.WAV`; that one resolves to nothing.
+        let destroy_sound = kinds
+            .iter()
+            .map(|k| {
+                let name = k.raw.get(24)?.trim();
+                if name.eq_ignore_ascii_case("null") || name.is_empty() {
+                    return None;
+                }
+                read("sound", name)
+            })
+            .collect();
+
         let courses = read("data", &manifest.courses)
             .and_then(|b| hb_formats::course::parse(&b).ok())
             .unwrap_or_default();
 
         Ok(Level {
+            wreck_mesh,
+            destroy_sound,
             courses,
             animations,
             sky,

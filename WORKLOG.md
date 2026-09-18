@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-26 entries: audio 1, build 1, content 3, decomp 6, engine 1, format 19, port 20, render 13, test 3, tooling 2, ui 1, world 10.
+27 entries: audio 2, build 1, content 4, decomp 6, engine 2, format 19, port 21, render 13, test 3, tooling 2, ui 1, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -37,3 +37,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 24 | [The font, and a height that is only arithmetic](worklog/0024-the-font-and-a-height-that-is-only-arithmetic.md) | 2026-09-17 | format, ui, port |
 | 25 | [The original game's own flight, and the four bugs it found](worklog/0025-the-original-game-s-own-flight-and-the-four-bugs-it-found.md) | 2026-09-17 | format, world, render, port, test |
 | 26 | [Things move, and join their course at the nearest point](worklog/0026-things-move-and-join-their-course-at-the-nearest-point.md) | 2026-09-17 | engine, decomp, port |
+| 27 | [Shooting things, and a typo that shipped](worklog/0027-shooting-things-and-a-typo-that-shipped.md) | 2026-09-17 | engine, audio, port, content |

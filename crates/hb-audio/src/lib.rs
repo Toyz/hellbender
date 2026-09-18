@@ -5,8 +5,10 @@
 
 pub mod mixer;
 pub mod modfile;
+pub mod voices;
 pub mod wav;
 
 pub use mixer::Mixer;
 pub use modfile::Module;
+pub use voices::Voices;
 pub use wav::Wav;

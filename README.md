@@ -55,17 +55,18 @@ $ cargo run --release -p hb-fly -- hoth --mode 480 --scale 1
 hoth: 205/205 textures, 640x480 screen
 ```
 
-Arrows steer, `w`/`s` is the throttle, `a`/`d` strafes, `r`/`f` climbs and
-dives, `c` toggles collision, `k` the cockpit, `m` the music, `h` the readout,
-tab cycles the level, escape quits. It keeps you above the ground and above anything standing
+Arrows steer, `w`/`s` is the throttle, `x` stops, `a`/`d` strafes, `r`/`f`
+climbs and dives, **space fires**, `c` toggles collision, `k` the cockpit, `m`
+the music, `h` the readout, tab cycles the level, escape quits. Shoot a bunker
+and it becomes its ruin, with its own destroy sound. It keeps you above the ground and above anything standing
 on it, and it plays the level's ProTracker soundtrack.
 
 The 7,606 objects placed across the 26 levels are drawn too, from the instance
 list in each level's `.DEF`, and so are the chambers - the voids carved under
 the terrain that the levels are actually flown through - the sky, and the
 cockpit over the top of it, and the terrain's textures animate. Objects that
-follow a course fly it - 1,301 of them across the levels. Weapons, damage and
-the rest of the game are not there yet; see
+follow a course fly it - 1,301 of them across the levels - and anything can be
+shot and destroyed. Nothing shoots back yet, and there are no missions; see
 [docs/port/plan.md](docs/port/plan.md).
 
 ## Getting the data

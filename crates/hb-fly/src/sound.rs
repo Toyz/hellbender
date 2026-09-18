@@ -7,10 +7,11 @@
 use std::sync::{Arc, Mutex};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use hb_audio::{Mixer, Module};
+use hb_audio::{Mixer, Module, Voices, Wav};
 
 pub struct Music {
     mixer: Arc<Mutex<Option<Mixer>>>,
+    voices: Arc<Mutex<Voices>>,
     _stream: cpal::Stream,
     pub rate: u32,
 }
@@ -29,6 +30,8 @@ impl Music {
         let channels = config.channels() as usize;
         let mixer: Arc<Mutex<Option<Mixer>>> = Arc::new(Mutex::new(None));
         let shared = Arc::clone(&mixer);
+        let voices = Arc::new(Mutex::new(Voices::new(rate)));
+        let shared_voices = Arc::clone(&voices);
 
         // The mixer renders stereo; anything else is spread from it.
         let mut scratch: Vec<i16> = Vec::new();
@@ -44,6 +47,9 @@ impl Music {
                             mixer.render(&mut scratch);
                         }
                     }
+                    if let Ok(mut effects) = shared_voices.lock() {
+                        effects.mix_into(&mut scratch);
+                    }
                     for (frame, slot) in out.chunks_mut(channels).enumerate() {
                         let left = scratch[frame * 2] as f32 / 32768.0;
                         let right = scratch[frame * 2 + 1] as f32 / 32768.0;
@@ -57,7 +63,7 @@ impl Music {
             )
             .map_err(|e| format!("could not open the output stream: {e}"))?;
         stream.play().map_err(|e| format!("could not start audio: {e}"))?;
-        Ok(Music { mixer, _stream: stream, rate })
+        Ok(Music { mixer, voices, _stream: stream, rate })
     }
 
     pub fn play(&self, module: Module) {
@@ -69,6 +75,13 @@ impl Music {
     pub fn stop(&self) {
         if let Ok(mut guard) = self.mixer.lock() {
             *guard = None;
+        }
+    }
+
+    /// Start a one-shot effect over whatever else is sounding.
+    pub fn effect(&self, sound: &Arc<Wav>, volume: f32) {
+        if let Ok(mut voices) = self.voices.lock() {
+            voices.play(Arc::clone(sound), volume);
         }
     }
 
