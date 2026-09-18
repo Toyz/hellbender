@@ -18,6 +18,7 @@ hb - inspect Hellbender's data
   hb stats <pod>...                 counts and bytes by extension
   hb extract <pod> <dir> [--only G] unpack, optionally filtering by glob
   hb level <name>                   parse a .LVL and say what it names
+  hb nav <name>                     a level's mission, point by point
   hb terrain <name>                 load a level's thirteen terrain grids
   hb model <name.bin>               walk a model's MRGL nodes
   hb png <pod> <entry> <out.png>    a .RAW plus its palette, as a PNG
@@ -79,6 +80,7 @@ fn run(args: &[&str]) -> Result<(), String> {
             cmd_extract(pod, Path::new(dir), only)
         }
         ["level", name] => cmd_level(name),
+        ["nav", name] => cmd_nav(name),
         ["terrain", name] => cmd_terrain(name),
         ["model", name] => cmd_model(name),
         ["png", pod, entry, out] => cmd_png(pod, entry, Path::new(out)),
@@ -191,6 +193,46 @@ fn cmd_level(name: &str) -> Result<(), String> {
     let story: Vec<&str> =
         level.story_movies.iter().filter_map(|m| m.as_deref()).collect();
     println!("  story movies     {story:?}");
+    Ok(())
+}
+
+fn cmd_nav(name: &str) -> Result<(), String> {
+    use hb_formats::nav::{self, Data};
+    let pod = open_pod("game")?;
+    let data = pod.read("levels", &format!("{name}.lvl")).map_err(|e| e.to_string())?;
+    let level = lvl::Level::parse(data).map_err(|e| e.to_string())?;
+    let (dir, file) = level.slot("navigation").ok_or("no navigation slot")?;
+    let navs = nav::navs(pod.read(dir, file).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    println!("{file}: {} points", navs.len());
+    for (i, n) in navs.iter().enumerate() {
+        let [x, y, z] = n.position.map(|v| v as f64 / 65536.0);
+        let mut flags = String::new();
+        if !n.required() {
+            flags += " optional";
+        }
+        if n.time != 0 {
+            flags += &format!(" {:.1} s", n.time as f64 / 65536.0);
+        }
+        println!("{i:3} {:<11} ({x:7.1},{y:6.1},{z:7.1}){flags}  {}", format!("{:?}", n.kind), n.text);
+        let detail = match &n.data {
+            Data::None => String::new(),
+            Data::Targets(t) => format!("targets {t:?}"),
+            Data::Guardian { actor, music, shields } => {
+                format!("guardian {actor}, music {music}, shields {shields:?}")
+            }
+            Data::Start { angles } => format!("angles {angles:?}"),
+            Data::Warp { to, name } => format!("warp to {to:?} {name}"),
+            Data::Actor(a) => format!("placement {a}"),
+            Data::Pod(p) => format!("pod {p}"),
+        };
+        let sounds: Vec<String> = [("done", &n.completion_sound), ("near", &n.proximity_sound)]
+            .iter()
+            .filter_map(|(what, s)| s.as_ref().map(|s| format!("{what} {s}")))
+            .collect();
+        if !detail.is_empty() || !sounds.is_empty() {
+            println!("      {detail}{}{}", if detail.is_empty() || sounds.is_empty() { "" } else { "; " }, sounds.join(", "));
+        }
+    }
     Ok(())
 }
 

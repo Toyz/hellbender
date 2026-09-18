@@ -8,7 +8,7 @@
 
 use std::path::PathBuf;
 
-use hb_formats::{act, anim, colour, course, font, lvl, mrgl, raw, terrain, text};
+use hb_formats::{act, anim, colour, course, font, lvl, mrgl, nav, raw, terrain, text};
 use hb_pod::Pod;
 
 fn game_dir() -> PathBuf {
@@ -1096,4 +1096,57 @@ fn every_level_lists_textures_that_exist_and_enemies_that_have_models() {
         enemies += defs.len();
     }
     assert_eq!(enemies, 1848, "enemy and object definitions across all levels");
+}
+
+/// Every level's mission parses to its separator lines, and names only
+/// placements that exist.
+#[test]
+fn every_mission_parses_and_names_placements_that_exist() {
+    let pod = archive!("GAME.POD");
+    let mut census = std::collections::BTreeMap::<i64, usize>::new();
+    let (mut levels, mut optional, mut timed) = (0, 0, 0);
+    for e in pod.entries().iter().filter(|e| e.ext() == "lvl") {
+        let level = lvl::Level::parse(pod.bytes(e)).unwrap();
+        let (dir, name) = level.slot("navigation").unwrap();
+        let navs = nav::navs(pod.read(dir, name).unwrap())
+            .unwrap_or_else(|why| panic!("{name}: {why}"));
+        let def = pod.read("data", &format!("{}.def", level.stem())).unwrap();
+        let placed = text::placements(def).unwrap();
+        levels += 1;
+        // Every mission starts with the player's start and ends the list.
+        assert_eq!(navs[0].kind, nav::Kind::Start, "{name}");
+        assert_eq!(navs.last().unwrap().kind, nav::Kind::End, "{name}");
+        assert!(navs.len() <= 50, "{name}: {}", navs.len());
+        for n in &navs {
+            *census.entry(n.kind.code()).or_default() += 1;
+            if !n.required() {
+                // Only ever the end marker, so the loader's coin toss over
+                // optional points (`0x4712f6`) never touches a real one.
+                assert_eq!(n.kind, nav::Kind::End, "{name}: {n:?}");
+                optional += 1;
+            }
+            timed += usize::from(n.time != 0);
+            assert!(!n.text.is_empty(), "{name}: {n:?}");
+            let named: Vec<usize> = match &n.data {
+                nav::Data::Targets(t) => t.clone(),
+                nav::Data::Guardian { actor, shields, .. } => {
+                    std::iter::once(*actor).chain(shields.iter().copied()).collect()
+                }
+                nav::Data::Actor(a) => vec![*a],
+                _ => Vec::new(),
+            };
+            for i in named {
+                assert!(i < placed.len(), "{name}: placement {i} of {}", placed.len());
+            }
+        }
+    }
+    assert_eq!(levels, 26);
+    let census: Vec<(i64, usize)> = census.into_iter().collect();
+    assert_eq!(
+        census,
+        [(0, 179), (1, 17), (2, 61), (3, 16), (4, 14), (5, 5), (6, 47), (7, 69), (8, 2), (9, 26), (12, 3), (13, 1), (14, 1)]
+    );
+    // Two points in the whole game are against the clock.
+    assert_eq!(optional, 22);
+    assert_eq!(timed, 2);
 }

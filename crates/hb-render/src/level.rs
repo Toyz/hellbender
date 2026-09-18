@@ -78,6 +78,8 @@ pub struct Level {
     pub wreck_mesh: Vec<Option<usize>>,
     /// For each type, the bytes of its destroy sound from `.DEF` line 24.
     pub destroy_sound: Vec<Option<Vec<u8>>>,
+    /// The mission, as the `.NAV` file lists it.
+    pub navs: Vec<hb_formats::nav::Nav>,
 }
 
 impl Level {
@@ -313,6 +315,11 @@ impl Level {
             })
             .collect();
 
+        let navs = match manifest.slot("navigation").and_then(|(dir, file)| read(dir, file)) {
+            Some(bytes) => hb_formats::nav::navs(&bytes).map_err(|e| e.to_string())?,
+            None => Vec::new(),
+        };
+
         let courses = read("data", &manifest.courses)
             .and_then(|b| hb_formats::course::parse(&b).ok())
             .unwrap_or_default();
@@ -340,6 +347,7 @@ impl Level {
             .collect();
 
         Ok(Level {
+            navs,
             mips,
             wreck_mesh,
             destroy_sound,

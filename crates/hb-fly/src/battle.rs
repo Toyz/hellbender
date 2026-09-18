@@ -239,3 +239,32 @@ impl Battle {
         noises
     }
 }
+
+/// The placements as the mission sees them: where each stands now and what
+/// it has left.
+pub struct Standing<'a> {
+    pub health: &'a mut [Health],
+    pub live: &'a [Placement],
+    pub placed: &'a [Placement],
+}
+
+impl hb_sim::mission::World for Standing<'_> {
+    fn actor(&self, index: usize) -> Option<hb_sim::mission::Actor> {
+        let p = self.live.get(index)?;
+        let h = self.health.get(index)?;
+        Some(hb_sim::mission::Actor {
+            position: combat::position_of(p),
+            hit_points: if h.destroyed { 0.0 } else { h.hit_points },
+            max: self.placed.get(index)?.hit_points as f32 / 65536.0,
+        })
+    }
+
+    fn restore(&mut self, index: usize) {
+        let max = self.placed.get(index).map(|p| p.hit_points as f32 / 65536.0);
+        if let (Some(h), Some(max)) = (self.health.get_mut(index), max) {
+            if !h.destroyed {
+                h.hit_points = max;
+            }
+        }
+    }
+}

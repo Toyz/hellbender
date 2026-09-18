@@ -33,7 +33,13 @@ hb-fly - fly around a Hellbender level
   shift         afterburner           tab     cycle the level
   c             collision on/off      k       cockpit on/off
   m             music on/off          h       hud on/off
-  space         fire                  esc     quit
+  space         fire                  b       drop a beacon
+  esc           quit
+
+  The level's mission runs from its .NAV file: the HUD names the current
+  objective, how far it is, and an arrow points at it. Flying into the jump
+  zone, or finishing every objective, moves on to the next level; failing
+  starts the level again.
 ";
 
 fn game_dir() -> PathBuf {
@@ -226,9 +232,8 @@ fn main() -> Result<(), String> {
             None
         }
     };
-    let play_music = |level: &Level| {
-        let (Some(music), Some((dir, file))) = (music.as_ref(), level.manifest.slot("music"))
-        else {
+    let play_module = |dir: &str, file: &str| {
+        let Some(music) = music.as_ref() else {
             return;
         };
         match game
@@ -242,6 +247,11 @@ fn main() -> Result<(), String> {
                 music.play(module);
             }
             None => println!("music: {file} could not be loaded"),
+        }
+    };
+    let play_music = |level: &Level| {
+        if let Some((dir, file)) = level.manifest.slot("music") {
+            play_module(dir, file);
         }
     };
     play_music(&level);
@@ -268,12 +278,11 @@ fn main() -> Result<(), String> {
     .map_err(|e| e.to_string())?;
     window.set_target_fps(60);
 
-    let mut flight = Flight::new(start_of(&level));
     let mut buffer = vec![0u32; w * h];
-    // Placements that follow a course move; the rest stand still. `live` is
-    // the copy the renderer draws, rewritten from the followers each frame.
-    let mut followers = followers_for(&level);
-    let mut live = level.placements.clone();
+    // Everything that starts again with a level: the ship, the mission, the
+    // placements that follow a course (`live` is the copy the renderer draws,
+    // rewritten from them each frame), and the fight.
+    let (mut flight, mut mission, mut followers, mut live, mut battle, mut colours) = begin(&level);
     println!("sim: {} of {} objects follow a course", followers.len(), live.len());
 
     // Combat. The laser sound is the one the engine names; a destroyed
@@ -289,9 +298,12 @@ fn main() -> Result<(), String> {
             })
             .clone()
     };
-    let mut battle = battle::Battle::new(&level);
     let mut cooldown = 0.0f32;
-    let mut colours = ShotColours::for_palette(&level.palette);
+    // A line the mission flashes on the HUD, and for how much longer.
+    let mut flash: Option<(String, f32)> = None;
+    // Seconds since the mission ended, before the next level (or this one
+    // again) begins.
+    let mut ended = 0.0f32;
     // The ship's velocity, from how far the eye moved last frame; turrets
     // lead with it and the laser adds its magnitude.
     let mut last_eye = eye_of(&flight.camera);
@@ -310,17 +322,35 @@ fn main() -> Result<(), String> {
         last = now;
 
         let tab = window.is_key_down(Key::Tab);
-        if tab && !tab_was_down {
-            index = (index + 1) % LEVELS.len();
+        // The port's own: after a mission ends, three seconds with the result
+        // on the HUD, then the next level if it was won and this one again
+        // if not. What the engine does next - the debriefing, the story - is
+        // not read.
+        let next = match mission.outcome {
+            Some(outcome) if demo.is_none() => {
+                if ended == 0.0 {
+                    println!("mission {}", match outcome {
+                        hb_sim::mission::Outcome::Jumped => "over: jumped out",
+                        hb_sim::mission::Outcome::Complete => "complete",
+                        hb_sim::mission::Outcome::Failed => "failed",
+                    });
+                }
+                ended += dt;
+                (ended > 3.0).then_some(outcome != hb_sim::mission::Outcome::Failed)
+            }
+            _ => None,
+        };
+        if (tab && !tab_was_down) || next.is_some() {
+            if next != Some(false) {
+                index = (index + 1) % LEVELS.len();
+            }
             level = Level::load(&game, Some(&startup), LEVELS[index])?;
-            flight = Flight::new(start_of(&level));
             describe(&level);
             play_music(&level);
-            followers = followers_for(&level);
-            live = level.placements.clone();
-            battle = battle::Battle::new(&level);
-            colours = ShotColours::for_palette(&level.palette);
+            (flight, mission, followers, live, battle, colours) = begin(&level);
             last_eye = eye_of(&flight.camera);
+            ended = 0.0;
+            flash = None;
             println!(
                 "sim: {} of {} objects follow a course, {} turrets, {} flyers",
                 followers.len(),
@@ -343,6 +373,18 @@ fn main() -> Result<(), String> {
         }
         if window.is_key_pressed(Key::K, minifb::KeyRepeat::No) {
             show_cockpit = !show_cockpit && cockpit.is_some();
+        }
+        if window.is_key_pressed(Key::B, minifb::KeyRepeat::No) && demo.is_none() {
+            for event in mission.drop_beacon(eye_of(&flight.camera)) {
+                if let hb_sim::mission::Event::Voice(v) = event {
+                    flash = Some((v.text.replace('\n', " "), 3.0));
+                    if let (Some(music), Some(s)) = (music.as_ref(), sound(v.sound)) {
+                        music.effect(&s, 1.0);
+                    }
+                } else if let hb_sim::mission::Event::Message(m) = event {
+                    flash = Some((m.to_string(), 3.0));
+                }
+            }
         }
         if window.is_key_pressed(Key::C, minifb::KeyRepeat::No) {
             flight.collide = !flight.collide;
@@ -415,6 +457,12 @@ fn main() -> Result<(), String> {
         for noise in noises {
             let (name, volume) = match noise {
                 battle::Noise::Destroyed(kind) => {
+                    if level.kinds[kind].friendly {
+                        mission.friendly_lost();
+                        if level.kinds[kind].class() == 50 {
+                            mission.escort_lost();
+                        }
+                    }
                     let own = level.destroy_sound[kind]
                         .as_ref()
                         .and_then(|b| hb_audio::Wav::parse(b).ok())
@@ -439,9 +487,56 @@ fn main() -> Result<(), String> {
             // The port's own: start again where the level starts, whole. The
             // engine's death - an explosion, a wreck, the mission's end - has
             // not been read.
-            flight = Flight::new(start_of(&level));
+            flight = Flight::new(start_camera(&level, &mission));
             battle.pilot = hb_sim::combat::Pilot::default();
             last_eye = eye_of(&flight.camera);
+        }
+
+        // The mission.
+        if demo.is_none() {
+            let mut standing = battle::Standing {
+                health: &mut battle.health,
+                live: &live,
+                placed: &level.placements,
+            };
+            let events = mission.step(&mut standing, eye, flight.camera.yaw.0, dt, floor_of(&level));
+            for event in events {
+                use hb_sim::mission::Event;
+                let heard = match event {
+                    Event::Sound(name) => Some(name),
+                    Event::Voice(v) => {
+                        flash = Some((v.text.replace('\n', " "), 3.0));
+                        Some(v.sound.to_string())
+                    }
+                    Event::Message(m) => {
+                        flash = Some((m.to_string(), 3.0));
+                        None
+                    }
+                    Event::Music(name) => {
+                        play_module("music", &name);
+                        None
+                    }
+                    Event::MusicBack => {
+                        play_music(&level);
+                        None
+                    }
+                    Event::Warp(at) => {
+                        flight.ship.position = at;
+                        flight.sync_camera();
+                        last_eye = eye_of(&flight.camera);
+                        None
+                    }
+                };
+                if let (Some(music), Some(s)) = (music.as_ref(), heard.and_then(|n| sound(&n))) {
+                    music.effect(&s, 1.0);
+                }
+            }
+        }
+        if let Some((_, left)) = &mut flash {
+            *left -= dt;
+            if *left <= 0.0 {
+                flash = None;
+            }
         }
 
         for (i, follower) in &mut followers {
@@ -505,6 +600,30 @@ fn main() -> Result<(), String> {
                 // tall - more than a tenth of a 200-line screen, so it sits in
                 // the top corner and is meant to be read, not admired.
                 font.draw(&mut target.colour, w, h, 4, 3, &readout, Some(255));
+
+                // The objective, how far, and the clock if there is one.
+                if demo.is_none() {
+                    let status = match mission.outcome {
+                        Some(hb_sim::mission::Outcome::Failed) => "MISSION FAILED".to_string(),
+                        Some(_) => "MISSION COMPLETE".to_string(),
+                        None => {
+                            let mut line = format!("{}  {:.0}", mission.label, mission.distance);
+                            if let Some(t) = mission.time_left() {
+                                line += &format!("  {:.0} s", t.ceil());
+                            }
+                            line
+                        }
+                    };
+                    let line = hb_formats::font::HEIGHT + 4;
+                    font.draw(&mut target.colour, w, h, 4, (3 + line) as isize, &status, Some(255));
+                    if mission.outcome.is_none() {
+                        draw_arrow(&mut target.colour, w, h, (w / 2, 3 + line * 3 / 2), mission.arrow, mission.near);
+                    }
+                }
+                if let Some((text, _)) = &flash {
+                    let y = h.saturating_sub(hb_formats::font::HEIGHT + 4);
+                    font.draw(&mut target.colour, w, h, 4, y as isize, text, Some(255));
+                }
             }
         }
 
@@ -589,6 +708,86 @@ impl ShotColours {
             player: 255,
             enemy: nearest([255, 40, 20]),
             missile: nearest([255, 200, 40]),
+        }
+    }
+}
+
+/// A level's opening state: the ship at the mission's start, the mission,
+/// the course followers, the placements as drawn, the fight, and the shot
+/// colours for its palette.
+fn begin(
+    level: &Level,
+) -> (Flight, hb_sim::mission::Mission, Vec<(usize, hb_sim::Follower)>, Vec<hb_formats::text::Placement>, battle::Battle, ShotColours) {
+    let mut rng = hb_sim::turret::Rng::new(0x1996);
+    let mission = hb_sim::mission::Mission::new(level.navs.clone(), &level.placements, floor_of(level), &mut rng);
+    if !mission.is_empty() {
+        println!("mission: {} points - {}", mission.len(), mission.objective());
+    }
+    (
+        Flight::new(start_camera(level, &mission)),
+        mission,
+        followers_for(level),
+        level.placements.clone(),
+        battle::Battle::new(level),
+        ShotColours::for_palette(&level.palette),
+    )
+}
+
+/// The surface under a point, for the mission (`0x41c300` finds the floor
+/// under a point, tunnels included). This has only the top of the solid, so a
+/// point below zero - the engine's own test for underground - is left where
+/// it is.
+fn floor_of(level: &Level) -> impl Fn([f32; 3]) -> f32 + '_ {
+    move |p: [f32; 3]| {
+        if p[1] < 0.0 {
+            return p[1];
+        }
+        let grid = hb_world::Grid::new(&level.terrain);
+        grid.ceiling_of_solid((p[0] * 65536.0) as i32, (p[2] * 65536.0) as i32) as f32 / 65536.0
+    }
+}
+
+/// Where the mission starts the player, or the middle of the map when it has
+/// no start.
+fn start_camera(level: &Level, mission: &hb_sim::mission::Mission) -> Camera {
+    match mission.start {
+        Some(start) => {
+            let fixed = |v: f32| (v * 65536.0) as i32;
+            let [x, y, z] = start.position.map(fixed);
+            let mut camera = Camera::looking_at(x, y, z, Angle(start.angles[2]));
+            camera.pitch = Angle(start.angles[0]);
+            camera
+        }
+        None => start_of(level),
+    }
+}
+
+/// The HUD's nav arrow: a short line from `centre` toward the current point,
+/// brighter within 60 units. `arrow` is the engine's (`0x59d118`), which runs
+/// from the point to the player, so the way to go is half a turn from it.
+fn draw_arrow(pixels: &mut [u8], w: usize, h: usize, centre: (usize, usize), arrow: u16, near: bool) {
+    let turn = arrow.wrapping_add(0x8000) as f32 / 65536.0 * std::f32::consts::TAU;
+    let (dx, dy) = (turn.sin(), -turn.cos());
+    let colour = if near { 255 } else { 250 };
+    let mut plot = |x: f32, y: f32| {
+        let (x, y) = (x.round() as isize, y.round() as isize);
+        if x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h {
+            pixels[y as usize * w + x as usize] = colour;
+        }
+    };
+    let (cx, cy) = (centre.0 as f32, centre.1 as f32);
+    let length = 10.0;
+    for i in 0..=(length as usize * 2) {
+        let t = i as f32 / 2.0;
+        plot(cx + dx * t, cy + dy * t);
+    }
+    // The head: two short strokes back from the tip.
+    let (tx, ty) = (cx + dx * length, cy + dy * length);
+    for side in [-1.0f32, 1.0] {
+        let (bx, by) = (-dx * 0.7 + side * -dy * 0.7, -dy * 0.7 + side * dx * 0.7);
+        for i in 0..=8 {
+            let t = i as f32 / 2.0;
+            plot(tx + bx * t, ty + by * t);
         }
     }
 }

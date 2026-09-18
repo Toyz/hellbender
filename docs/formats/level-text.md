@@ -2,7 +2,7 @@
 title: The level text files - .DEF, .NAV, .TXT, .TEX, .ANI, .LVL family
 status: partial
 covers: DATA\*.DEF, DATA\*.NAV, DATA\*.TXT, DATA\*.TEX, DATA\*.ANI, DEMO\*.DMO
-worklog: 3, 15, 16, 22, 28
+worklog: 3, 15, 16, 22, 28, 34
 ---
 
 # The level text files
@@ -192,27 +192,80 @@ The loader reads a record's six integers with
 loader takes the whole `fmbbld.bin,cube.bin` token and splits it afterwards. It
 then checks `fscanf` returned 7.
 
-## .NAV - navigation courses
+## .NAV - the mission
 
-Count, then records. `FLOAT.NAV` declares 19. A record carries a position
-triple, a priority and time pair, a completion sound and text, a proximity
-sound, a display name, and a separator line of dashes.
+A count, then that many records, each a list of navigation points the player
+is sent to in turn. The reader is `0x470bd0`; it is `fscanf` driven, and each
+block that opens with `!`, `@` or `;` is optional - the loader peeks at the
+next line's first character and fills in a default when the block is absent.
+A record is 256 bytes in memory at `0x625140`, 50 of them.
 
 ```
 19                                           record count
-6
-14942208,491520,9699328                      position, 16.16 fixed point
-!priority,time
-0,0
-@Completion sound & completion text (39 chars max)
-null
-null: line ignored
-; Proximity Sound file
-null
-Start for Eyrie Level 1                      display name
-0,0,0
+6                                            kind (+0xc)
+14942208,491520,9699328                      position, 16.16 (+0x0)
+!priority,time                               optional block
+0,0                                          priority (+0x60), time (+0x64)
+@Completion sound & completion text (39 chars max)   optional block
+null                                         completion sound (+0x6c)
+null: line ignored                           completion text: read, discarded
+; Proximity Sound file                       optional block
+null                                         proximity sound (+0xa8)
+Start for Eyrie Level 1                      objective text (+0x10)
+0,0,0                                        kind-specific data (+0xbc...)
 -------------------------------------------------
 ```
+
+- **Priority** 0 is a required point, 1 an optional one; with no `!` block it
+  is 1. In the shipped files only the "End of Navs" records are optional.
+- **Time** is a limit in 16.16 seconds, 0 for none. Two points in the game
+  have one: `IOWAH3`'s damaged jump zone (32.3 s) and `SHIP2`'s escape
+  checkpoint (38.9 s).
+- **Sounds** are `%s` tokens, so a name stops at the first blank; `null` is
+  none. The completion sound defaults to `null` without the `@` block.
+- **Text** is the line as `fgets` reads it, `strncpy`'d to 79 bytes with the
+  last one dropped: the newline, or the 79th character of a longer line.
+- The **position**'s height is raised to the surface under it when below it
+  (`0x41c300`), before the kind's data is read.
+
+The kinds, with what follows the text and what completes them (see
+[the simulation](../engine/simulation.md#the-mission)):
+
+| Kind | Name (HUD) | Data | In the game |
+|---|---|---|---|
+| 0 | Destroy Target | count, then that many placement indices, one per line | 179 |
+| 1 | Enter Tunnel | - | 17 |
+| 2 | Fly to Checkpoint | - | 61 |
+| 3 | Fly to Jump Zone | - | 16 |
+| 4 | Exit Tunnel | - | 14 |
+| 5 | guardian | placement; a music module; a skipped line (`;place4`); then optionally `!NewH`, a count and that many placements | 5 |
+| 6 | start | pitch, roll, heading on one line | 47 |
+| 7 | sync point | - | 69 |
+| 8 | drop a rescue beacon | - | 2 |
+| 9 | end of the list | - | 26 |
+| 10 | warp | `x,y,z` destination, then a name | 0 |
+| 11 | beacon | never in a file; dropped by the player | 0 |
+| 12 | Escort Ship | placement | 3 |
+| 13 | Pick up Message Pod | pod index | 1 |
+| 14 | Destroy Target | placement | 1 |
+
+Anything above 14 stops the loader with "Bad nav type!". A destroy point's
+position is replaced by its first target's placement position. The network
+levels list eight starts and nothing else.
+
+After reading, the loader:
+
+1. appends a kind-9 end marker if the file has none (priority 1);
+2. inserts a sync point after every tunnel exit (4) not followed by one;
+3. inserts a sync point before every tunnel entry, jump zone and tunnel exit
+   (1, 3, 4) not preceded by one. An inserted record is zeroed - so required -
+   and named "Sync point: auto added". Every shipped file already carries
+   these, under the same name: the editor ran the same pass;
+4. marks each optional point of kind 9 or below done unless `rand() * 100 /
+   32767` is 33 or less - two in three optional points are dropped. Only the
+   end markers are optional, so this never touches an objective;
+5. if the first record is a start, puts the player on it at the surface plus 16
+   units, turned by its angles, marks it done and makes record 1 current.
 
 ## .TXT under DATA\ - the mission briefing
 
@@ -284,5 +337,5 @@ read from the shipped data.
 `.DEF` type field 4 (0x14), line 2 (0xe0-0xec), line 7's fourth value
 and line 10's middle two. What the 63 behaviour classes other than 10 and 47
 do. How the engine animates a group model such as the SAM site's. The record
-shape of `.PUP` and `.TDF`. Whether `.NAV`'s leading `6` is part of the header
-or the first record.
+shape of `.PUP` and `.TDF`. What a guardian's `;place4` line was for, and the
+name a warp point carries.

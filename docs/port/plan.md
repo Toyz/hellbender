@@ -91,9 +91,14 @@ empty level.
 **7. The game.** Started. `hb-sim` moves every placed object whose type names a
 course, joining the course at the nearest point exactly as the engine's first
 logic phase does, and anything can be shot: it takes hits against the value
-read as its hit points and becomes its wreck, with its destroy sound. Still to
-do: the rest of the seven logic routines, the engine's real weapons, enemies
-that shoot back, powerups, and mission success and failure.
+read as its hit points and becomes its wreck, with its destroy sound.
+Turrets, SAM sites and the dogfighting flyers shoot back (worklogs 28, 33).
+The mission runs from the level's `.NAV` (worklog 34): the player starts where
+the mission says, the HUD names the objective with its distance and an arrow,
+the voice lines play, and a level is won through its jump zone or by finishing
+every objective, and lost against the clock or by losing friendlies. Still to
+do: the rest of the logic routines, the escort shuttle's route, message pods
+and the other powerups, the player's death, and what comes between missions.
 
 **8. The trimmings.** Music is done - `hb-audio` plays the `.MOD` files and the
 level's track starts with the level. Still to do: the sound effects, which

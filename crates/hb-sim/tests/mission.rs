@@ -1,0 +1,324 @@
+//! The mission, on hand-made lists and on the shipped ones.
+
+use hb_formats::nav::{self, Data, Kind, Nav};
+use hb_formats::text::Placement;
+use hb_sim::mission::{self, Actor, Event, Mission, Outcome, World};
+use hb_sim::turret::Rng;
+
+fn point(kind: Kind, at: [f32; 3], data: Data) -> Nav {
+    let fixed = |v: f32| (v * 65536.0) as i32;
+    Nav {
+        kind,
+        position: at.map(fixed),
+        priority: 0,
+        time: 0,
+        completion_sound: Some(format!("{kind:?}.wav").to_lowercase()),
+        proximity_sound: None,
+        text: format!("{kind:?}"),
+        data,
+    }
+}
+
+fn placed(x: f32, z: f32) -> Placement {
+    let fixed = |v: f32| (v * 65536.0) as i32;
+    Placement { kind: 0, hit_points: 65536, x: fixed(x), y: 0, z: fixed(z), pitch: 0, roll: 0, heading: 0 }
+}
+
+struct Actors {
+    actors: Vec<Actor>,
+    restored: Vec<usize>,
+}
+
+impl Actors {
+    fn at(positions: &[[f32; 3]]) -> Actors {
+        Actors {
+            actors: positions.iter().map(|&position| Actor { position, hit_points: 1.0, max: 1.0 }).collect(),
+            restored: Vec::new(),
+        }
+    }
+}
+
+impl World for Actors {
+    fn actor(&self, index: usize) -> Option<Actor> {
+        self.actors.get(index).copied()
+    }
+    fn restore(&mut self, index: usize) {
+        self.actors[index].hit_points = self.actors[index].max;
+        self.restored.push(index);
+    }
+}
+
+fn flat(_: [f32; 3]) -> f32 {
+    0.0
+}
+
+fn start() -> Nav {
+    point(Kind::Start, [0.0, 0.0, 0.0], Data::Start { angles: [0, 0, 0x8000] })
+}
+
+fn kinds(m: &Mission) -> Vec<Kind> {
+    (0..m.len()).map(|i| m.nav(i).kind).collect()
+}
+
+#[test]
+fn the_loader_adds_an_end_and_fences_tunnels_and_jump_zones_with_sync_points() {
+    let navs = vec![
+        start(),
+        point(Kind::Destroy, [0.0; 3], Data::Targets(vec![0, 1])),
+        point(Kind::Checkpoint, [0.0; 3], Data::None),
+        point(Kind::ExitTunnel, [0.0; 3], Data::None),
+        point(Kind::JumpZone, [0.0; 3], Data::None),
+    ];
+    let m = Mission::new(navs, &[placed(10.0, 0.0), placed(20.0, 0.0)], flat, &mut Rng::new(1));
+    use Kind::*;
+    assert_eq!(kinds(&m), [Start, Destroy, Checkpoint, Sync, ExitTunnel, Sync, JumpZone, End]);
+    // The added sync points are required; the added end is not.
+    assert!(m.nav(3).required() && m.nav(5).required());
+    assert!(!m.nav(7).required());
+}
+
+#[test]
+fn the_player_starts_sixteen_units_over_the_start_facing_its_heading() {
+    let navs = vec![
+        point(Kind::Start, [100.0, 3.0, -50.0], Data::Start { angles: [0, 0, 0x8000] }),
+        point(Kind::Checkpoint, [0.0; 3], Data::None),
+    ];
+    let m = Mission::new(navs, &[], |_| 7.5, &mut Rng::new(1));
+    let s = m.start.unwrap();
+    assert_eq!(s.position, [100.0, 23.5, -50.0]);
+    assert_eq!(s.angles, [0, 0, 0x8000]);
+    assert_eq!(m.current, 1);
+    assert!(m.done(0));
+}
+
+#[test]
+fn a_level_is_played_through_to_its_jump_zone() {
+    let navs = vec![
+        start(),
+        point(Kind::Destroy, [0.0; 3], Data::Targets(vec![0, 1])),
+        point(Kind::Checkpoint, [0.0, 0.0, 200.0], Data::None),
+        point(Kind::ExitTunnel, [0.0, 0.0, 300.0], Data::None),
+        point(Kind::JumpZone, [0.0, 10.0, 400.0], Data::None),
+    ];
+    let mut world = Actors::at(&[[10.0, 0.0, 0.0], [20.0, 0.0, 0.0]]);
+    let mut m = Mission::new(navs, &[placed(10.0, 0.0), placed(20.0, 0.0)], flat, &mut Rng::new(1));
+    let dt = 1.0 / 30.0;
+
+    // The arrow follows the first target still standing.
+    let events = m.step(&mut world, [0.0, 5.0, 0.0], 0, dt, flat);
+    assert!(events.is_empty());
+    assert_eq!(m.label, "Destroy Target");
+    assert_eq!(m.distance, 10.0);
+    world.actors[0].hit_points = 0.0;
+    m.step(&mut world, [0.0, 5.0, 0.0], 0, dt, flat);
+    assert_eq!(m.distance, 20.0);
+    world.actors[1].hit_points = 0.0;
+    let events = m.step(&mut world, [0.0, 5.0, 0.0], 0, dt, flat);
+    assert_eq!(events, [Event::Sound("destroy.wav".into())]);
+    assert_eq!(m.nav(m.current).kind, Kind::Checkpoint);
+
+    // Forty units out is not close enough; thirty-nine is.
+    m.step(&mut world, [0.0, 5.0, 160.0], 0, dt, flat);
+    assert_eq!(m.nav(m.current).kind, Kind::Checkpoint);
+    let events = m.step(&mut world, [0.0, 5.0, 161.0], 0, dt, flat);
+    assert_eq!(events, [Event::Message("Checkpoint"), Event::Sound("checkpoint.wav".into())]);
+    // The sync point before the tunnel exit was passed on the way.
+    assert_eq!(m.nav(m.current).kind, Kind::ExitTunnel);
+
+    // A tunnel exit wants the player above ground.
+    m.step(&mut world, [0.0, -5.0, 300.0], 0, dt, flat);
+    assert_eq!(m.nav(m.current).kind, Kind::ExitTunnel);
+    let events = m.step(&mut world, [0.0, 5.0, 300.0], 0, dt, flat);
+    assert_eq!(
+        events,
+        [
+            Event::Message("Exit Tunnel"),
+            Event::Sound("exittunnel.wav".into()),
+            Event::Voice(mission::MISSION_COMPLETE)
+        ]
+    );
+    assert_eq!(m.nav(m.current).kind, Kind::JumpZone);
+    assert_eq!(m.label, "Exit Tunnel");
+
+    // The jump zone: within 15 units across, and between its height and 20
+    // units over it.
+    m.step(&mut world, [0.0, 5.0, 400.0], 0, dt, flat);
+    assert_eq!(m.outcome, None);
+    assert_eq!(m.label, "Fly to Jump Zone");
+    m.step(&mut world, [0.0, 31.0, 400.0], 0, dt, flat);
+    assert_eq!(m.outcome, None);
+    m.step(&mut world, [10.0, 20.0, 390.0], 0, dt, flat);
+    assert_eq!(m.outcome, Some(Outcome::Jumped));
+}
+
+#[test]
+fn the_arrow_is_the_bearing_from_the_point_to_the_player_less_the_heading() {
+    let navs = vec![start(), point(Kind::Checkpoint, [0.0, 0.0, 100.0], Data::None)];
+    let mut m = Mission::new(navs, &[], flat, &mut Rng::new(1));
+    let mut world = Actors::at(&[]);
+    // The point is due +z of the player, so the player is due -z of it.
+    m.step(&mut world, [0.0, 0.0, 0.0], 0, 0.0, flat);
+    assert_eq!(m.arrow, 0x8000);
+    m.step(&mut world, [0.0, 0.0, 0.0], 0x4000, 0.0, flat);
+    assert_eq!(m.arrow, 0x4000);
+    assert!(!m.near);
+    m.step(&mut world, [0.0, 0.0, 41.0], 0, 0.0, flat);
+    assert!(m.near);
+    // Distances wrap with the world.
+    m.step(&mut world, [0.0, 0.0, -1000.0], 0, 0.0, flat);
+    assert!((m.distance - 76.0).abs() < 1e-3, "{}", m.distance);
+}
+
+#[test]
+fn every_required_point_done_completes_a_level_without_a_jump_zone() {
+    let navs = vec![start(), point(Kind::Checkpoint, [0.0; 3], Data::None)];
+    let mut m = Mission::new(navs, &[], flat, &mut Rng::new(1));
+    let mut world = Actors::at(&[]);
+    m.step(&mut world, [0.0, 0.0, 100.0], 0, 0.1, flat);
+    assert_eq!(m.outcome, None);
+    m.step(&mut world, [0.0, 0.0, 0.0], 0, 0.1, flat);
+    assert_eq!(m.outcome, Some(Outcome::Complete));
+}
+
+#[test]
+fn a_timed_point_counts_down_aloud_and_fails_at_zero() {
+    let mut timed = point(Kind::Checkpoint, [0.0, 0.0, 500.0], Data::None);
+    timed.time = 21 << 16;
+    let navs = vec![start(), timed];
+    let mut m = Mission::new(navs, &[], flat, &mut Rng::new(1));
+    let mut world = Actors::at(&[]);
+    let mut heard = Vec::new();
+    for _ in 0..(22 * 30) {
+        for e in m.step(&mut world, [0.0; 3], 0, 1.0 / 30.0, flat) {
+            heard.push(e);
+        }
+    }
+    let mut want = vec![Event::Sound("20-sec.wav".into())];
+    want.extend(mission::COUNTDOWN.iter().map(|&v| Event::Voice(v)));
+    assert_eq!(heard, want);
+    assert_eq!(m.outcome, Some(Outcome::Failed));
+}
+
+#[test]
+fn a_guardian_is_kept_whole_while_its_shields_stand() {
+    let guardian = Data::Guardian { actor: 0, music: "boss.mod".into(), shields: vec![1, 2] };
+    let navs = vec![
+        start(),
+        point(Kind::Checkpoint, [0.0; 3], Data::None),
+        point(Kind::Guardian, [0.0; 3], guardian),
+    ];
+    let mut m = Mission::new(navs, &[], flat, &mut Rng::new(1));
+    let mut world = Actors::at(&[[0.0, 0.0, 50.0], [10.0, 0.0, 0.0], [20.0, 0.0, 0.0]]);
+    let events = m.step(&mut world, [0.0; 3], 0, 0.1, flat);
+    assert_eq!(
+        events,
+        [
+            Event::Message("Checkpoint"),
+            Event::Sound("checkpoint.wav".into()),
+            Event::Music("boss.mod".into()),
+            Event::Sound("warning.wav".into()),
+            Event::Message("Mission Goal Ahead!")
+        ]
+    );
+
+    // The arrow is on the last shield standing, and so is the readout.
+    world.actors[0].hit_points = 0.25;
+    world.actors[2].hit_points = 0.5;
+    m.step(&mut world, [0.0; 3], 0, 0.1, flat);
+    assert_eq!(m.distance, 20.0);
+    assert_eq!(m.label, "Guardian: 50%");
+    assert_eq!(world.actors[0].hit_points, 1.0);
+    assert_eq!(world.restored, [0]);
+
+    world.actors[1].hit_points = 0.0;
+    world.actors[2].hit_points = 0.0;
+    world.actors[0].hit_points = 0.75;
+    m.step(&mut world, [0.0; 3], 0, 0.1, flat);
+    assert_eq!(m.distance, 50.0);
+    assert_eq!(m.label, "Guardian: 75%");
+
+    world.actors[0].hit_points = 0.0;
+    let events = m.step(&mut world, [0.0; 3], 0, 0.1, flat);
+    assert_eq!(
+        events,
+        [Event::Message("Guardian Destroyed"), Event::MusicBack, Event::Sound("guardian.wav".into())]
+    );
+    assert_eq!(m.outcome, Some(Outcome::Complete));
+}
+
+#[test]
+fn a_rescue_beacon_counts_within_eight_units_on_the_same_side_of_the_ground() {
+    let navs = vec![start(), point(Kind::DropBeacon, [0.0, -20.0, 0.0], Data::None)];
+    let mut m = Mission::new(navs, &[], |p| p[1].min(-20.0), &mut Rng::new(1));
+    let mut world = Actors::at(&[]);
+    // Above ground, over the prison: the wrong layer.
+    assert_eq!(m.drop_beacon([0.0, 10.0, 0.0]), [Event::Message("Beacon launched")]);
+    m.step(&mut world, [0.0, 10.0, 0.0], 0, 0.1, flat);
+    assert!(!m.done(1));
+    // Underground, but nine units off.
+    m.drop_beacon([9.0, -10.0, 0.0]);
+    m.step(&mut world, [0.0, 10.0, 0.0], 0, 0.1, flat);
+    assert!(!m.done(1));
+    m.drop_beacon([7.0, -10.0, -7.0]);
+    let events = m.step(&mut world, [0.0, 10.0, 0.0], 0, 0.1, flat);
+    assert_eq!(events, [Event::Sound("dropbeacon.wav".into())]);
+    assert!(m.done(1));
+}
+
+#[test]
+fn the_eleventh_beacon_replaces_the_oldest() {
+    let navs = vec![start(), point(Kind::Checkpoint, [0.0, 0.0, 500.0], Data::None)];
+    let mut m = Mission::new(navs, &[], flat, &mut Rng::new(1));
+    let mut world = Actors::at(&[]);
+    let before = m.len();
+    for i in 0..11 {
+        assert_eq!(m.drop_beacon([i as f32, 0.0, 0.0]), [Event::Voice(mission::BEACON_LAUNCHED)]);
+        m.step(&mut world, [0.0; 3], 0, 0.1, flat);
+    }
+    assert_eq!(m.len(), before + 10);
+    let xs: Vec<i32> = (before..m.len()).map(|i| m.nav(i).position[0] >> 16).collect();
+    assert_eq!(xs, [10, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+}
+
+#[test]
+fn three_friendlies_lost_fail_the_mission() {
+    let mut m = Mission::new(vec![start(), point(Kind::Checkpoint, [0.0; 3], Data::None)], &[], flat, &mut Rng::new(1));
+    m.friendly_lost();
+    m.friendly_lost();
+    assert_eq!(m.outcome, None);
+    m.friendly_lost();
+    assert_eq!(m.outcome, Some(Outcome::Failed));
+}
+
+fn game_dir() -> std::path::PathBuf {
+    std::env::var_os("HB_GAME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original"))
+}
+
+/// Every shipped mission loads within the engine's 50 records, starts at its
+/// start, and every sync point the loader adds lands where the files already
+/// put one - the editor wrote "Sync point: auto added" into them.
+#[test]
+fn every_shipped_mission_already_carries_its_sync_points() {
+    let path = game_dir().join("system/GAME.POD");
+    if !path.exists() {
+        eprintln!("skipping: {} is not there", path.display());
+        return;
+    }
+    let pod = hb_pod::Pod::open(&path).unwrap();
+    let mut levels = 0;
+    for e in pod.entries().iter().filter(|e| e.ext() == "lvl") {
+        let level = hb_formats::lvl::Level::parse(pod.bytes(e)).unwrap();
+        let (dir, name) = level.slot("navigation").unwrap();
+        let navs = nav::navs(pod.read(dir, name).unwrap()).unwrap();
+        let def = pod.read("data", &format!("{}.def", level.stem())).unwrap();
+        let placements = hb_formats::text::placements(def).unwrap();
+        let count = navs.len();
+        let m = Mission::new(navs, &placements, flat, &mut Rng::new(1));
+        assert_eq!(m.len(), count, "{name}");
+        assert!(m.start.is_some(), "{name}");
+        levels += 1;
+    }
+    assert_eq!(levels, 26);
+}

@@ -2,7 +2,7 @@
 title: The simulation
 status: partial
 covers: HELLBEND.EXE logic phases, crates/hb-sim
-worklog: 26, 27, 28, 31, 32, 33
+worklog: 26, 27, 28, 31, 32, 33, 34
 ---
 
 # The simulation
@@ -335,11 +335,100 @@ The fire button is the space bar, because `HELLBEND.INI` binds `fireKey=57`,
 which is the space bar's scan code - and 636 of the 638 key presses in the
 recorded demos are it.
 
+## The mission
+
+A level's `.NAV` list ([format](../formats/level-text.md#nav---the-mission))
+is worked through one point at a time; the current one's index is
+`0x6283bc`. Each frame the game loop calls `0x471df0` (from `0x4823d4`),
+which finds where the current point is, points the HUD at it, and checks
+whether it is done.
+
+**Where it is.** By kind (`0x472a34`):
+
+- destroy (0): the first listed placement with hit points above zero and not
+  in the flyers' dying phase `0x12d`. With none left the point is done.
+- guardian (5): `0x4720d9`. While any listed shield placement stands, the
+  guardian's hit points are put back to their starting value (actor `+0x24`)
+  every frame and the arrow points at the last shield standing; otherwise at
+  the guardian. The HUD line is `Guardian: %d%%` of whichever it watches. When
+  the guardian falls: "Guardian Destroyed", the level's music back, an
+  explosion at it, and the point is done.
+- sync (7): done at once.
+- escort (12), kill (14): the placement's position.
+- drop beacon (8): done when a player beacon lies within 8 units on x and z
+  (wrapped) and on the same side of y = 0.
+- message pod (13): the pod's (`0x66fd60`, 24-byte records).
+- the rest: the point's own position.
+
+**The HUD.** From the player's position less the point's, wrapped: the arrow
+`0x59d118` is `atan2(dx, dz)` in the 16-bit circle less the player's heading -
+it runs from the point to the player - and the readout `0x6283c0` is the
+distance across, `sqrt(dx^2 + dz^2)`, height left out. `0x59d100` is 0x1f
+inside 60 units, 0x10 outside. The label `0x625110` is "Destroy Target",
+"Enter Tunnel", "Fly to Checkpoint", "Fly to Jump Zone", "Exit Tunnel",
+"Escort Ship" or "Pick up Message Pod" by kind; the others leave it alone.
+
+**Done**, all against that distance across (`0x4724a0`):
+
+| Kind | When | Then |
+|---|---|---|
+| jump zone (3) | under 15 units, and the player between the point's height and 20 above it | the level ends (`0x5125c8`) |
+| enter tunnel (1) | under 40, player below y = 0 | "Enter Tunnel" |
+| checkpoint (2) | under 40 | "Checkpoint" |
+| exit tunnel (4) | under 40, player above y = 0 | "Exit Tunnel" |
+| warp (10) | under 30 | the player is moved to its destination at the surface plus 16; the point is not advanced |
+| beacon (11) | under 40, and under 20 in height | "Objective complete" |
+| escort (12) | the placement's hit points at or below zero | |
+| message pod (13) | the pod collected (`+0x68`) | |
+| kill (14) | the placement's hit points at or below zero | |
+
+Done plays the point's completion sound and calls `0x4719d0`. Under 80 units
+the proximity sound plays once.
+
+**Advancing** (`0x4719d0`): the point is marked done (a beacon is not), its
+clock stopped, and the first sync point that no required point before it
+holds up is marked done too. Then `0x471770` chooses the next point: the one
+after the current that is not done, skipping the end marker, where reaching an
+unfinished sync point sends the choice back to the first required point still
+open. It will not leave a point whose clock is running. A guardian coming up
+switches to its music, plays `warning.wav` at the player and flashes "Mission
+Goal Ahead!"; a jump zone plays "Mission accomplished... Proceed to jump zone."
+or "Mission complete..." by whether its index is odd.
+
+**The level is won** when every required point before the end marker is done
+(`0x5125cc`); a level with a jump zone never gets there, and is left through
+it instead. **It is lost** (`0x512720`) when a point's clock runs out - it
+says "20 seconds" at 20 and counts down aloud from 10 - when the third
+placement of a friendly type (`+0x254`) is destroyed (`0x40d412`), or when a
+shot destroys the friendly class-50 actor - the escorted shuttle, which
+`0x424fc0` finds as the first actor of class 50 with the friendly flag
+(`0x40d7ca`). The flag also chooses the level's death movie afterwards
+(`0x45baf6`).
+
+**Beacons** (key `keyBeacon`, B): a point of kind 11 at the player, appended
+to the list; with ten out, the oldest is replaced. "Beacon launched".
+
+The voice lines are entries in a phrase table at `0x505c20`, 36 bytes each:
+a count, then items whose high word is a kind - 2 is a sound and a subtitle,
+the sound's name at `+0x14` and the text at `+0x1c`. `0x3c` is `objcomp.wav`,
+"Objective complete"; `0x57`/`0x58` the jump-zone lines; `0x5e` "Beacon
+launched."; `0xa1`-`0xaa` the countdown from `10-sec.wav` to `1.wav`. The
+mission's sounds are in `STARTUP.POD`.
+
+`hb_sim::mission` is this, point for point. What it leaves out: the map
+screen's markers (`0x410c60` marks them), the flash `0x4062f0` starts, the
+guardian's death explosion, message pods (no pods yet), the network kind 15,
+and the manual choice of point (`keyNavChoose`), which hb-fly's Tab already
+uses for changing level. hb-fly's floor for the loader's height check is the
+top of the solid, so a point below y = 0 is left where it is rather than put
+on the tunnel floor.
+
 ## Unknown
 
 Everything past phase 0 of the course follower: speeds, curve fitting, what
 happens at the end of a course, how the seven logic routines differ. The other
 63 behaviour classes, including the flyers (53, 56, 60) that make up most of
-what moves. The player's rate of fire. What happens at death. How the ship collides with the ground and boxes.
+what moves. The player's rate of fire. What happens at death, and what follows
+a won or lost mission. How the ship collides with the ground and boxes.
 How the engine picks which shot model to draw. Line 2 of the type record and
 line 7's first two values.

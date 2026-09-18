@@ -12,6 +12,7 @@ pub mod course;
 pub mod demo;
 pub mod lvl;
 pub mod mrgl;
+pub mod nav;
 pub mod png;
 pub mod raw;
 pub mod terrain;
