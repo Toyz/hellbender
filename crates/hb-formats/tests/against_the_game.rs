@@ -682,6 +682,43 @@ fn every_placed_object_has_a_model_in_the_archives() {
 }
 
 #[test]
+fn animation_frames_mostly_live_outside_the_levels_texture_list() {
+    let pod = archive!("GAME.POD");
+    let (mut total, mut outside, mut files) = (0usize, 0usize, 0usize);
+    for e in pod.entries().iter().filter(|e| e.ext() == "ani") {
+        let stem = e.file_name().trim_end_matches(".ani").to_string();
+        let Ok(tex) = pod.read("data", &format!("{stem}.tex")) else { continue };
+        let names = text::name_list(tex, "TEX").unwrap();
+        let listed = |n: &str| names.iter().any(|m| m.eq_ignore_ascii_case(n));
+
+        let cycles = text::animations(pod.bytes(e))
+            .unwrap_or_else(|why| panic!("{}: {why}", e.name));
+        files += 1;
+        for cycle in &cycles {
+            total += 1;
+            assert!(cycle.frames.len() >= 2, "{}: a cycle of one frame", e.name);
+            assert!(cycle.delay > 0, "{}: a cycle with no delay", e.name);
+            // Every frame is in the archive even when it is not in the .TEX.
+            for frame in &cycle.frames {
+                assert!(
+                    pod.find("art", frame).is_some(),
+                    "{}: frame {frame} is not in the archive",
+                    e.name
+                );
+            }
+            if !listed(&cycle.base) || cycle.frames.iter().any(|f| !listed(f)) {
+                outside += 1;
+            }
+        }
+    }
+    assert_eq!(files, 11, "levels with an .ANI");
+    assert_eq!(total, 146);
+    // The texture list is the terrain's set; animation frames are separate
+    // textures the engine registers into the same 1,024-entry table.
+    assert_eq!(outside, 140);
+}
+
+#[test]
 fn a_sky_palette_is_a_gradient_band_and_the_texture_indexes_it_biased() {
     let pod = archive!("GAME.POD");
     let mut with_texture = 0usize;

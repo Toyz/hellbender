@@ -58,6 +58,18 @@ pub struct Level {
     /// nearest index in the level's palette, which is exactly the question
     /// "what is this sky colour called here".
     pub sky_remap: Option<[u8; 256]>,
+    /// `.ANI` cycles, resolved to indices into [`Level::textures`].
+    pub animations: Vec<Cycle>,
+}
+
+/// An animated texture, with every name already resolved to a texture index.
+#[derive(Debug, Clone)]
+pub struct Cycle {
+    /// The texture that is replaced.
+    pub base: usize,
+    /// Seconds per frame.
+    pub delay: f32,
+    pub frames: Vec<usize>,
 }
 
 impl Level {
@@ -83,11 +95,6 @@ impl Level {
         let tex = read("data", &format!("{stem}.tex"))
             .ok_or_else(|| format!("no data\\{stem}.tex"))?;
         let texture_names = text::name_list(&tex, "TEX").map_err(|e| e.to_string())?;
-        let textures = texture_names
-            .iter()
-            .map(|n| read("art", n).and_then(|b| Image::parse_guessed(&b).ok().flatten()))
-            .collect();
-
         let (_, palette_name) =
             manifest.slot("ground_palette").ok_or("no ground palette slot")?;
         let palette_bytes = read("art", palette_name)
@@ -161,7 +168,63 @@ impl Level {
             Some(table)
         })();
 
+        // The animated textures.
+        //
+        // An animation's frames are mostly **not** in the level's `.TEX` list:
+        // 140 of the 146 across the 11 levels with an `.ANI` name at least one
+        // texture that is not. The engine keeps a single 1,024-entry texture
+        // table that both the terrain list and the animation frames register
+        // into - `"Too many flippin textures 1"` is its overflow check - so a
+        // frame is just another texture loaded by name from `ART\`.
+        //
+        // The port mirrors that by appending the frames to the texture list,
+        // so a slot index past the `.TEX` names is an animation frame.
+        let mut textures: Vec<Option<Image>> = texture_names
+            .iter()
+            .map(|n| read("art", n).and_then(|b| Image::parse_guessed(&b).ok().flatten()))
+            .collect();
+        let mut extra: Vec<String> = Vec::new();
+        let mut index_of = |name: &str,
+                            textures: &mut Vec<Option<Image>>,
+                            extra: &mut Vec<String>|
+         -> Option<usize> {
+            if let Some(i) = texture_names.iter().position(|n| n.eq_ignore_ascii_case(name)) {
+                return Some(i);
+            }
+            if let Some(i) = extra.iter().position(|n| n.eq_ignore_ascii_case(name)) {
+                return Some(texture_names.len() + i);
+            }
+            let image = read("art", name).and_then(|b| Image::parse_guessed(&b).ok().flatten())?;
+            extra.push(name.to_string());
+            textures.push(Some(image));
+            Some(textures.len() - 1)
+        };
+        let animations: Vec<Cycle> = manifest
+            .slot("animations")
+            .and_then(|(dir, file)| read(dir, file))
+            .and_then(|b| text::animations(&b).ok())
+            .map(|list| {
+                list.into_iter()
+                    .filter_map(|a| {
+                        // The base has to be a terrain texture; a frame need
+                        // only exist in the archive.
+                        let base = texture_names
+                            .iter()
+                            .position(|n| n.eq_ignore_ascii_case(&a.base))?;
+                        let frames: Vec<usize> = a
+                            .frames
+                            .iter()
+                            .filter_map(|f| index_of(f, &mut textures, &mut extra))
+                            .collect();
+                        Some(Cycle { base, delay: a.delay as f32 / 65536.0, frames })
+                    })
+                    .filter(|c| c.frames.len() > 1)
+                    .collect()
+            })
+            .unwrap_or_default();
+
         Ok(Level {
+            animations,
             sky,
             sky_remap,
             light: ramp("light"),
@@ -190,12 +253,30 @@ impl Level {
             palette: &self.palette,
             light: self.light.as_ref(),
             fog: self.fog.as_ref(),
+            frames: None,
             sky: self.sky.as_ref(),
             sky_remap: self.sky_remap.as_ref(),
             placements: &self.placements,
             meshes: &self.meshes,
             mesh_textures: &self.mesh_textures,
         }
+    }
+
+    /// Which texture index each slot resolves to at a given time, so the
+    /// renderer can stay ignorant of animation.
+    ///
+    /// The identity, except where an `.ANI` cycle replaces its base texture
+    /// with one of its frames.
+    pub fn texture_frames(&self, seconds: f32) -> Vec<u16> {
+        let mut out: Vec<u16> = (0..self.textures.len() as u16).collect();
+        for cycle in &self.animations {
+            if cycle.delay <= 0.0 || cycle.base >= out.len() {
+                continue;
+            }
+            let step = (seconds / cycle.delay) as usize % cycle.frames.len();
+            out[cycle.base] = cycle.frames[step] as u16;
+        }
+        out
     }
 
     /// How many placed objects have a mesh that could be loaded.

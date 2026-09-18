@@ -2,7 +2,7 @@
 title: The level text files - .DEF, .NAV, .TXT, .TEX, .ANI, .LVL family
 status: partial
 covers: DATA\*.DEF, DATA\*.NAV, DATA\*.TXT, DATA\*.TEX, DATA\*.ANI, DEMO\*.DMO
-worklog: 3, 15, 16
+worklog: 3, 15, 16, 22
 ---
 
 # The level text files
@@ -171,7 +171,8 @@ This is the table the terrain's per-cell texture indices point into.
 ## .ANI - animated textures
 
 Count, then per entry: the base texture name, a `frames,delay` pair, then that
-many frame texture names.
+many frame texture names. Eleven levels ship one, 146 cycles in all, of two to
+eight frames each.
 
 ```
 24
@@ -183,7 +184,15 @@ FDWATA3.RAW
 FDWATA4.RAW
 ```
 
-6553 is 0.1 in 16.16, so the delay is a tenth of a second.
+`delay` is 16.16 seconds: 6,553 is a tenth of a second, 16,384 a quarter,
+32,768 a half. The first frame is the base texture itself.
+
+**The frames are not in the level's `.TEX` list.** 140 of the 146 cycles name
+at least one texture the list does not contain, and every one of those is in
+`ART\` all the same. The `.TEX` list is the terrain's set; an animation frame
+is simply another texture, and the engine keeps one 1,024-entry table that both
+register into - `"Too many flippin textures 1"` at `0x00412874` is its overflow
+check, and "flippin" there means flip-book.
 
 ## .DMO - recorded demo
 

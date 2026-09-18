@@ -2,7 +2,7 @@
 title: The port's renderer
 status: partial
 covers: crates/hb-render
-worklog: 13, 16, 17, 20, 21
+worklog: 13, 16, 17, 20, 21, 22
 ---
 
 # The port's renderer
@@ -56,7 +56,14 @@ spans 127.5 units from the bottom of its range to the top.
 
 The sky, ground triangles, both sets of ground boxes, chamber floors and
 ceilings, the level's placed objects, and the cockpit over the top of it all.
-Not yet: sprites, the HUD, or anything that moves.
+Terrain textures animate on the wall clock where the level's
+[`.ANI`](../formats/level-text.md) says they should. Not yet: sprites, the HUD,
+or anything that moves through the world.
+
+Animation is kept out of the rasteriser: `Level::texture_frames` returns, for a
+given instant, which texture slot each slot resolves to - the identity except
+where a cycle is running - and the scene walk looks every index up through it.
+So the drawing code never knows a texture moves.
 
 A chamber's floor and ceiling are height fields that `heightAtGrid` accepts as
 layers 2 and 3, so they use the same triangle split and the same corner heights

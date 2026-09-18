@@ -61,8 +61,9 @@ quits. It keeps you above the ground and above anything standing on it.
 The 7,606 objects placed across the 26 levels are drawn too, from the instance
 list in each level's `.DEF`, and so are the chambers - the voids carved under
 the terrain that the levels are actually flown through - the sky, and the
-cockpit over the top of it. Sprites, the HUD and the simulation are not there
-yet; see [docs/port/plan.md](docs/port/plan.md).
+cockpit over the top of it, and the terrain's textures animate. Sprites, the
+HUD and the simulation are not there yet; see
+[docs/port/plan.md](docs/port/plan.md).
 
 ## Getting the data
 

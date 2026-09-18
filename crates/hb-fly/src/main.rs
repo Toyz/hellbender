@@ -148,13 +148,20 @@ fn main() -> Result<(), String> {
 
     let mut index = LEVELS.iter().position(|l| *l == level_name).unwrap_or(2);
     let mut level = Level::load(&game, Some(&startup), LEVELS[index])?;
-    println!(
-        "{}: {}/{} textures, {} screen",
-        level.stem,
-        level.resolved_textures(),
-        level.texture_names.len(),
-        format_args!("{w}x{h}")
-    );
+    let describe = |level: &Level| {
+        println!(
+            "{}: {} terrain textures plus {} animation frames, {} cycles, \
+             {} objects, {}x{} screen",
+            level.stem,
+            level.texture_names.len(),
+            level.textures.len() - level.texture_names.len(),
+            level.animations.len(),
+            level.placements.len(),
+            w,
+            h
+        );
+    };
+    describe(&level);
 
     // The cockpit is drawn for each of the three modes, in VGA.ACT, which a
     // level's own palette agrees with on 240 of 256 entries.
@@ -180,6 +187,7 @@ fn main() -> Result<(), String> {
 
     let mut flight = Flight::new(start_of(&level));
     let mut buffer = vec![0u32; w * h];
+    let started = Instant::now();
     let mut last = Instant::now();
     let mut tab_was_down = false;
     // The original's own floor was 8 frames a second - `autoMinFrameRate` in
@@ -196,7 +204,7 @@ fn main() -> Result<(), String> {
             index = (index + 1) % LEVELS.len();
             level = Level::load(&game, Some(&startup), LEVELS[index])?;
             flight = Flight::new(start_of(&level));
-            println!("{}", level.stem);
+            describe(&level);
         }
         tab_was_down = tab;
 
@@ -210,7 +218,10 @@ fn main() -> Result<(), String> {
         flight.step(&window, dt);
         flight.settle(&hb_world::Grid::new(&level.terrain));
         target.clear(0);
-        let scene = level.scene();
+        // Animated textures advance on the wall clock.
+        let frames_now = level.texture_frames(started.elapsed().as_secs_f32());
+        let mut scene = level.scene();
+        scene.frames = Some(&frames_now);
         hb_render::draw_world(&mut target, &scene, &flight.camera);
         if show_cockpit {
             if let Some(art) = &cockpit {

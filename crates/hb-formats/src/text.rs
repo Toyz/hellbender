@@ -69,6 +69,57 @@ pub fn optional_name(line: &str) -> Option<&str> {
     }
 }
 
+/// One `.ANI` entry: a texture that cycles through a list of frames.
+#[derive(Debug, Clone)]
+pub struct Animation {
+    /// The texture this replaces, by name.
+    pub base: String,
+    /// 16.16 seconds a frame. 6,553 is 0.1 s and 16,384 is 0.25 s.
+    pub delay: i32,
+    /// The frames, starting with the base itself.
+    pub frames: Vec<String>,
+}
+
+/// `.ANI`: a count, then per entry a base texture name, a `frames,delay` pair
+/// and that many frame names.
+pub fn animations(data: &[u8]) -> Result<Vec<Animation>> {
+    let lines = lines(data);
+    let count = int(&lines, 0, "ANI count")? as usize;
+    let mut out = Vec::with_capacity(count);
+    let mut at = 1;
+    for _ in 0..count {
+        let base = lines.get(at).cloned().ok_or(Error::BadLine {
+            what: "ANI base texture",
+            line: at + 1,
+            saw: String::new(),
+        })?;
+        let head = ints(&lines, at + 1, "ANI frames,delay")?;
+        if head.len() != 2 {
+            return Err(Error::BadLine {
+                what: "ANI frames,delay",
+                line: at + 2,
+                saw: lines[at + 1].clone(),
+            });
+        }
+        let frames = head[0].max(0) as usize;
+        let end = at + 2 + frames;
+        if end > lines.len() {
+            return Err(Error::BadLine {
+                what: "ANI frame list",
+                line: at + 3,
+                saw: format!("{frames} frames but the file ends"),
+            });
+        }
+        out.push(Animation {
+            base,
+            delay: head[1] as i32,
+            frames: lines[at + 2..end].to_vec(),
+        });
+        at = end;
+    }
+    Ok(out)
+}
+
 /// `.TEX`: a count, then that many texture filenames.
 pub fn name_list(data: &[u8], what: &'static str) -> Result<Vec<String>> {
     let lines = lines(data);

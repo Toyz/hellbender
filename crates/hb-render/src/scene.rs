@@ -15,6 +15,9 @@ pub struct Scene<'a> {
     pub palette: &'a Palette,
     pub light: Option<&'a Ramp>,
     pub fog: Option<&'a Ramp>,
+    /// Per-slot texture substitution for this instant, from
+    /// [`crate::Level::texture_frames`]. `None` leaves every texture static.
+    pub frames: Option<&'a [u16]>,
     pub sky: Option<&'a Image>,
     pub sky_remap: Option<&'a [u8; 256]>,
     /// The level's placed objects, and a mesh per kind.
@@ -269,6 +272,14 @@ fn project_onto(
     ))
 }
 
+/// A texture slot after animation.
+fn slot(scene: &Scene, index: u16) -> usize {
+    match scene.frames {
+        Some(frames) => *frames.get(index as usize).unwrap_or(&index) as usize,
+        None => index as usize,
+    }
+}
+
 fn shade_for<'a>(scene: &'a Scene, camera: &Camera, intensity: u8) -> Shade<'a> {
     Shade {
         light: scene.light,
@@ -288,7 +299,7 @@ fn draw_ground(
     drawn: &mut Drawn,
 ) {
     let word = TextureRef(scene.grid.terrain.colour.at(cell.x, cell.z, 0));
-    let Some(Some(texture)) = scene.textures.get(word.index() as usize) else {
+    let Some(Some(texture)) = scene.textures.get(slot(scene, word.index())) else {
         return;
     };
     let intensity = scene
@@ -363,9 +374,9 @@ fn draw_chamber(
         .unwrap_or(255);
     let shade = shade_for(scene, camera, intensity);
 
-    for (slot, layer) in [(0usize, Layer::ChamberFloor), (1, Layer::ChamberCeiling)] {
-        let word = scene.grid.terrain.chambers.textures.texture_at(cell.x, cell.z, slot);
-        let Some(Some(texture)) = scene.textures.get(word.index() as usize) else {
+    for (face, layer) in [(0usize, Layer::ChamberFloor), (1, Layer::ChamberCeiling)] {
+        let word = scene.grid.terrain.chambers.textures.texture_at(cell.x, cell.z, face);
+        let Some(Some(texture)) = scene.textures.get(slot(scene, word.index())) else {
             continue;
         };
         for half in [Half::First, Half::Second] {
@@ -434,17 +445,17 @@ fn draw_box(
         ([Corner::Origin, Corner::X, Corner::Far, Corner::Z], 4),
     ];
 
-    for (corners, slot) in faces {
+    for (corners, face) in faces {
         let word = scene
             .grid
-            .box_texture(layer, cell, hb_formats::terrain::BoxFace::ALL[slot])
+            .box_texture(layer, cell, hb_formats::terrain::BoxFace::ALL[face])
             .map(TextureRef)
             .unwrap_or_default();
-        let Some(Some(texture)) = scene.textures.get(word.index() as usize) else {
+        let Some(Some(texture)) = scene.textures.get(slot(scene, word.index())) else {
             continue;
         };
         // A side face uses bottom, bottom, top, top; the top face is flat.
-        let heights = if slot == 4 {
+        let heights = if face == 4 {
             [top, top, top, top]
         } else {
             [bottom, bottom, top, top]
@@ -455,7 +466,7 @@ fn draw_box(
             let (wx, wz) = corner_world(origin, corner);
             match project(camera, target, wx, heights[i], wz) {
                 Some((x, y, depth)) => {
-                    let (u, v) = match slot {
+                    let (u, v) = match face {
                         4 => {
                             let (dx, dz) = corner.offset();
                             ((dx * 255) as f32, (dz * 255) as f32)

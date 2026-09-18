@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-21 entries: build 1, content 3, decomp 5, format 15, port 15, render 11, test 2, tooling 2, world 9.
+22 entries: build 1, content 3, decomp 5, format 16, port 16, render 12, test 2, tooling 2, world 9.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -32,3 +32,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 19 | [The engine renormalises at load, so my rejection test proved nothing](worklog/0019-the-engine-renormalises-at-load-so-my-rejection-test-proved.md) | 2026-09-17 | format, decomp, port |
 | 20 | [Height anywhere, collision, and the chambers turn out to be underneath](worklog/0020-height-anywhere-collision-and-the-chambers-turn-out-to-be-un.md) | 2026-09-17 | world, render, port |
 | 21 | [A sky palette is not a palette, and the cockpit needs no remap](worklog/0021-a-sky-palette-is-not-a-palette-and-the-cockpit-needs-no-rema.md) | 2026-09-17 | format, render, port |
+| 22 | [Animated textures, and frames that are not in the texture list](worklog/0022-animated-textures-and-frames-that-are-not-in-the-texture-lis.md) | 2026-09-17 | format, render, port |
