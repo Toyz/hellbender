@@ -2,7 +2,7 @@
 title: The .TXT animated model
 status: partial
 covers: MODELS\*.TXT
-worklog: 18
+worklog: 18, 19
 ---
 
 # The .TXT animated model
@@ -65,12 +65,19 @@ A face's material index of **255** means no texture. Twelve faces use it, in
 `KRACKEN`, `GMRADAR` and `PROCES2`, and no model has anything near 255
 materials.
 
-## Normalisation
+## Normalisation, and why it is not a constraint
 
 Every one of the 18 models has a maximum absolute vertex component of exactly
-**32,767**, with no part offsets applied. That is twice the binary models'
-16,384, so the two formats normalise to different bounds and a `.TXT` mesh has
-to be halved before it can be drawn at a [placement's](level-text.md) scale.
+**32,767** as authored, with no part offsets applied. That is twice the binary
+models' 16,384, so a `.TXT` mesh has to be halved before it can be drawn at a
+[placement's](level-text.md) scale.
+
+The engine does not treat 32,767 as a bound the data must respect. `0x4664e0`
+walks every part of a loaded model, finds the largest absolute vertex component
+across all of them, and rescales the whole model so that maximum becomes
+`0x7fff`. So a transform that pushes the model past the bound is renormalised
+afterwards, and "the extent is too large" is not evidence that a transform is
+wrong.
 
 ## The contents
 
@@ -99,23 +106,54 @@ parts still had to be moved into place.
 
 But not every part. `TREX`'s head and jaw are centred on the origin
 (`-8505..8505` and `-7108..7107`) and clearly belong at the front of the body.
-Three candidate placements were tried and all three are wrong:
 
-| tried | result on `TREX` |
-| --- | --- |
-| raw vertices | max component 32,767 - the normalisation bound, correct |
-| plus `pivot` | 274,257 - eight times the bound |
-| plus `pivot` summed up the parent chain | 420,304 |
-| plus `pivot / 2` | 153,512 |
-| plus `centerList[0]` | 34,384 - close, but over |
+Summing each part's `pivot` up its parent chain and then renormalising gives a
+plausible-looking body - `front` at -6235..-4181, `mid1` at -4924..-3627,
+`mid2` at 2382..3390, `tail` at 15645..16535, chaining along x in order - but
+puts the head at -213..1114, between the two mid sections rather than beyond
+the nose. Adding `centerList[0]` as well moves everything slightly and does not
+fix it.
 
-So `pivot` is a rotation origin rather than a translation, `centerList` is a
-per-frame offset from the rest pose rather than the pose itself, and something
-else places the head. Rendering the rest pose gives a body and tail that
-assemble correctly with the head and jaw floating above them.
+So the translation part of the transform is not enough on its own, and the
+per-frame angles almost certainly have to be applied about each part's pivot
+before the chain is composed. That is the open question.
+
+## The in-memory model
+
+The engine's loaded form is 15,712 bytes, which is the size the
+[MRGL](mrgl.md) table gives a type 0x26 node, and it accounts exactly:
+
+```
+0x0000  header, 1,632 bytes
+0x0004  frameCount            0x0010  timePerFrame
+0x0018  materialCount         0x0024  material names, 24 bytes each
+0x061c  angle                 0x0628  center
+0x0658  magPower              0x065c  partCount
+0x0660  parts, 220 bytes each, 64 of them
+```
+
+`1632 + 64 * 220 = 15712`. So a model may have at most **64 parts**; the
+largest shipped has 25.
+
+A part:
+
+```
++0x00  name
++0x10  pivot x, y, z
++0x1c  pointer to the angle list
++0x20  pointer to the centre list
++0x24  parent, partHP, legFlag
++0x30  min x, y, z           +0x3c  max x, y, z
++0x84  vertexCount           +0x88  faceCount
++0x8c  pointer to the vertices, 36 bytes each in memory
+```
+
+`0x466680` interpolates between keyframes against `0x7fff`, so the animation is
+tweened rather than stepped.
 
 ## Unknown
 
-How a part is placed relative to its parent. The order the three per-frame
-angles compose in. What `magPower`, the model-level `angle` and `center`, and
-`legFlag` do.
+How a part is placed relative to its parent - the `pivot` chain alone puts
+`TREX`'s head in the wrong place. The order the three per-frame angles compose
+in. What `magPower`, the model-level `angle` and `center`, and `legFlag` do.
+What the 24 bytes beyond the coordinates of an in-memory vertex are.

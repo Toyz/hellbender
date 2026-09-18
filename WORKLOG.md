@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-18 entries: build 1, content 3, decomp 4, format 13, port 12, render 9, test 2, tooling 2, world 8.
+19 entries: build 1, content 3, decomp 5, format 14, port 13, render 9, test 2, tooling 2, world 8.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -29,3 +29,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 16 | [The instance list was in the same file all along](worklog/0016-the-instance-list-was-in-the-same-file-all-along.md) | 2026-09-17 | format, content, render, port |
 | 17 | [Materials bind to polygons by position, and four models say nothing at all](worklog/0017-materials-bind-to-polygons-by-position-and-four-models-say-n.md) | 2026-09-17 | format, render, port |
 | 18 | [The animated model format, and a T-Rex whose head will not sit down](worklog/0018-the-animated-model-format-and-a-t-rex-whose-head-will-not-si.md) | 2026-09-17 | format, render, port |
+| 19 | [The engine renormalises at load, so my rejection test proved nothing](worklog/0019-the-engine-renormalises-at-load-so-my-rejection-test-proved.md) | 2026-09-17 | format, decomp, port |
