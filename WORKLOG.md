@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-15 entries: build 1, content 2, decomp 4, format 10, port 9, render 6, test 2, tooling 2, world 8.
+16 entries: build 1, content 3, decomp 4, format 11, port 10, render 7, test 2, tooling 2, world 8.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -26,3 +26,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 13 | [A perspective frame, and two convention bugs the picture found](worklog/0013-a-perspective-frame-and-two-convention-bugs-the-picture-foun.md) | 2026-09-17 | render, port, world |
 | 14 | [A window, and the first dependency in the workspace](worklog/0014-a-window-and-the-first-dependency-in-the-workspace.md) | 2026-09-17 | port, render, build |
 | 15 | [The world is centred, and .DEF is a table of types not a list of things](worklog/0015-the-world-is-centred-and-def-is-a-table-of-types-not-a-list.md) | 2026-09-17 | format, world, content, port |
+| 16 | [The instance list was in the same file all along](worklog/0016-the-instance-list-was-in-the-same-file-all-along.md) | 2026-09-17 | format, content, render, port |

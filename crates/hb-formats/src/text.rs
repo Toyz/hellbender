@@ -107,6 +107,62 @@ pub struct EnemyDef {
     pub raw: Vec<String>,
 }
 
+/// One placed object: an index into the level's type table, a scale, a
+/// position and a heading.
+///
+/// The loader reads these with `fscanf(file, "%d,%d,%d,%d,%d,%d,%d,%d")` at
+/// `HELLBEND.EXE:0x405938` and refuses more than 500 per level.
+#[derive(Debug, Clone, Copy)]
+pub struct Placement {
+    /// Index into the record list from [`enemy_defs`]. Always in range across
+    /// all 7,606 shipped instances.
+    pub kind: usize,
+    /// 16.16. 1.0 is the model's own size; most objects are smaller, with
+    /// 0.625, 0.125 and 0.0625 the three commonest values.
+    pub scale: i32,
+    /// 16.16 world position. The world is centred, so x and z run to +/-512.
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
+    /// Zero in every shipped instance.
+    pub unknown_5: i32,
+    pub unknown_6: i32,
+    /// A heading in the engine's 16-bit circle.
+    pub heading: u16,
+}
+
+/// The instance list, which lives in the same `.DEF` file after the type
+/// records: a count, then that many eight-integer lines.
+pub fn placements(data: &[u8]) -> Result<Vec<Placement>> {
+    let lines = lines(data);
+    let types = int(&lines, 0, "DEF count")? as usize;
+    let at = 1 + types * DEF_RECORD_LINES;
+    let count = int(&lines, at, "DEF placement count")? as usize;
+    let mut out = Vec::with_capacity(count);
+    for i in 0..count {
+        let row = at + 1 + i;
+        let v = ints(&lines, row, "DEF placement")?;
+        if v.len() != 8 {
+            return Err(Error::BadLine {
+                what: "DEF placement",
+                line: row + 1,
+                saw: lines.get(row).cloned().unwrap_or_default(),
+            });
+        }
+        out.push(Placement {
+            kind: v[0].max(0) as usize,
+            scale: v[1] as i32,
+            x: v[2] as i32,
+            y: v[3] as i32,
+            z: v[4] as i32,
+            unknown_5: v[5] as i32,
+            unknown_6: v[6] as i32,
+            heading: v[7] as u16,
+        });
+    }
+    Ok(out)
+}
+
 pub fn enemy_defs(data: &[u8]) -> Result<Vec<EnemyDef>> {
     let lines = lines(data);
     let count = int(&lines, 0, "DEF count")? as usize;

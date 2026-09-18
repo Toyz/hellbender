@@ -2,7 +2,7 @@
 title: The level text files - .DEF, .NAV, .TXT, .TEX, .ANI, .LVL family
 status: partial
 covers: DATA\*.DEF, DATA\*.NAV, DATA\*.TXT, DATA\*.TEX, DATA\*.ANI, DEMO\*.DMO
-worklog: 3, 15
+worklog: 3, 15, 16
 ---
 
 # The level text files
@@ -22,18 +22,14 @@ The biggest of them. First line is a record count; each record is exactly 25
 lines. `FLOAT.DEF` declares 83 and has 83. Across all 26 levels there are 1,848
 records. The loader at `0x00404fc5` refuses more than 100 per level.
 
-**These are types, not placements.** Field 2 of a record's first line is a
-function of its model: 242 of the 250 models used take exactly one value, and
-`wbunker.bin` takes two across 439 records. A position would be unique per
-record. The display names say the same thing - "Extra" appears 395 times and
-"none" 156 - which is a fixed-size table with unused slots, not a list of
-things standing somewhere.
+**These records are types, not placements.** Field 2 of a record's first line
+is a function of its model: 242 of the 250 models used take exactly one value,
+and `wbunker.bin` takes two across 439 records. The display names say the same
+thing - "Extra" appears 395 times and "none" 156 - which is a fixed-size table
+with unused slots.
 
-Where instances are placed is **not known**. It is not in this file, not in
-[.CRS](courses.md), and not in any per-level file that has been read. The
-likeliest candidate is the spare byte in each [ground box cell](terrain.md) at
-+0x11, which nothing yet accounts for and which is the right size for an index
-into a 100-entry table.
+The placements are in the **same file**, in a second section after the type
+records. See below.
 
 ```
  0  0,0,782409,0,0,0,fmbbld.bin,cube.bin    six ints, then two model names
@@ -82,6 +78,41 @@ Field 7 is the wrecked form of field 6: `wbunker.bin` is paired with
 
 The loader is at `HELLBEND.EXE:0x00404fc5`, which emits
 `"Unable to open enemy description file"` and `"Too many enemy defs"`.
+
+### The instance list
+
+After the last type record the file continues with a count and that many
+eight-integer lines. `0x405938` reads them with
+`fscanf(file, "%d,%d,%d,%d,%d,%d,%d,%d")` and refuses more than 500.
+
+```
+293
+0,81920,-21493030,-3768320,19365510,0,0,0
+0,81920,-22517262,-5439488,20000101,0,0,32703
+1,65536,-21759556,-3768320,18127669,0,0,32632
+```
+
+```
+0  kind        index into the type records above
+1  scale       16.16; 1.0 is the model's own size
+2  x           16.16 world position, signed, the world is centred
+3  y
+4  z
+5  unknown     zero in all 7,606 shipped instances
+6  unknown     zero in all 7,606
+7  heading     the engine's 16-bit circle
+```
+
+Measured across all 26 levels: 7,606 instances, **no** kind index out of range,
+x and z between -512.0 and +511.9 units, y between -125.5 and +127.5 - which is
+exactly the world's horizontal bounds and exactly the terrain's own vertical
+span of 127.5 units. `HOTH` places 476, `SHIP` 290, `FLOAT` 293.
+
+The commonest scales are 0.625, 0.125 and 0.0625, so most objects are drawn
+much smaller than their model's own size. A model is normalised - see
+[MRGL](mrgl.md) - so the scale is the object's half-extent in world units.
+
+### The type record
 
 The loader reads a record's six integers with
 `fscanf(file, "%d,%d,%d,%d,%d,%d,%s", ...)` into struct offsets 0x0c, 0x1c,
@@ -179,7 +210,7 @@ read from the shipped data.
 
 ## Unknown
 
-Where object instances are placed - see the note under `.DEF` above. The
-meaning of `.DEF` fields 0, 2 and 4, and of its lines 1 to 7 and 10. The record
+The meaning of `.DEF` type fields 0, 2 and 4, and of its lines 1 to 7 and 10.
+What instance fields 5 and 6 are, given they are zero everywhere. The record
 shape of `.PUP` and `.TDF`. Whether `.NAV`'s leading `6` is part of the header
 or the first record.

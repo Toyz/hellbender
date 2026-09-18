@@ -2,7 +2,7 @@
 title: The .BIN model and its MRGL nodes
 status: partial
 covers: MODELS\*.BIN
-worklog: 5, 9
+worklog: 5, 9, 16
 ---
 
 # The .BIN model and its MRGL nodes
@@ -79,6 +79,16 @@ ends exactly at end of file - `tools/mrgl.py check`.
 +0x08  i32  count
 +0x0c  i32[3] * count      x, y, z per vertex
 ```
+
+**Model space is normalised.** 235 of the 238 `.BIN` models in GAME.POD have a
+maximum absolute vertex component of exactly 16,383 or 16,384, and none exceeds
+16,384. So a coordinate is 2.14 fixed point spanning -1.0 to +1.0, and the
+`scale` on a [placement](level-text.md) is the object's half-extent in world
+units: a vertex becomes a 16.16 world offset as `(vertex * scale) >> 14`.
+
+The three exceptions are two empty models and `CUBE.BIN`, whose components are
+±2595 and ±2662 - a test model that was never run through the exporter's
+normalisation, which is why it was such a legible first example.
 
 ### 0x0d, material
 

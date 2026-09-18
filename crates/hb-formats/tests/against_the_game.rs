@@ -425,6 +425,66 @@ fn every_course_parses_and_stays_inside_the_world() {
 }
 
 #[test]
+fn the_def_file_also_holds_the_instance_list() {
+    let pod = archive!("GAME.POD");
+    let (mut levels, mut instances) = (0usize, 0usize);
+    let (mut max_xz, mut min_y, mut max_y) = (0i32, 0i32, 0i32);
+    for e in pod.entries().iter().filter(|e| e.ext() == "lvl") {
+        let level = lvl::Level::parse(pod.bytes(e)).unwrap();
+        let stem = level.stem().to_string();
+        let def = pod.read("data", &format!("{stem}.def")).unwrap();
+        let types = text::enemy_defs(def).unwrap();
+        let placed = text::placements(def)
+            .unwrap_or_else(|why| panic!("{stem}: {why}"));
+        levels += 1;
+        instances += placed.len();
+        // The engine caps the list at 500.
+        assert!(placed.len() <= 500, "{stem} places {}", placed.len());
+        for p in &placed {
+            assert!(p.kind < types.len(), "{stem}: type {} of {}", p.kind, types.len());
+            // Always zero in the shipped data.
+            assert_eq!(p.unknown_5, 0);
+            assert_eq!(p.unknown_6, 0);
+            max_xz = max_xz.max(p.x.abs()).max(p.z.abs());
+            min_y = min_y.min(p.y);
+            max_y = max_y.max(p.y);
+        }
+    }
+    assert_eq!(levels, 26);
+    assert_eq!(instances, 7_606);
+    // The world's own bounds: objects reach to within a hundredth of a unit of
+    // 512 either side of the origin, and never past it.
+    assert!(max_xz < 512 << 16, "{} units", max_xz >> 16);
+    assert!(max_xz > 511 << 16, "only reaches {} units", max_xz >> 16);
+    // And the terrain's own vertical span: the top is exactly 127.5 units,
+    // which is altitude byte 255 scaled by 2^15.
+    assert_eq!(max_y, 255 << 15);
+    assert!(min_y >= -(126 << 16), "{} units", min_y >> 16);
+}
+
+#[test]
+fn every_placed_object_has_a_model_in_the_archives() {
+    let pod = archive!("GAME.POD");
+    let mut placed_models = 0usize;
+    for e in pod.entries().iter().filter(|e| e.ext() == "lvl") {
+        let level = lvl::Level::parse(pod.bytes(e)).unwrap();
+        let stem = level.stem().to_string();
+        let def = pod.read("data", &format!("{stem}.def")).unwrap();
+        let types = text::enemy_defs(def).unwrap();
+        for p in text::placements(def).unwrap() {
+            let kind = &types[p.kind];
+            assert!(
+                pod.find("models", &kind.model).is_some(),
+                "{stem}: placed {} which is not in the archive",
+                kind.model
+            );
+            placed_models += 1;
+        }
+    }
+    assert_eq!(placed_models, 7_606);
+}
+
+#[test]
 fn the_shipped_data_has_dangling_course_references() {
     // The engine has a diagnostic for this - "Bad course ID for enemy" - and
     // the shipped levels trip it. Six of the 26 name a course their own .CRS

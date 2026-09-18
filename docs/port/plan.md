@@ -2,7 +2,7 @@
 title: The Rust port
 status: partial
 covers: crates/
-worklog: 7, 8, 9, 10, 11, 12, 13, 14
+worklog: 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
 ---
 
 # The Rust port
@@ -74,10 +74,13 @@ arbitrary point, the box and chamber intersection tests, and collision.
 **4. A picture.** Done for the terrain, and it moves. `hb ground` draws a level
 from above, `hb fly` draws one frame from inside it, and `hb-fly` opens a window
 and flies through it at 60 frames a second in any of the game's three screen
-sizes. Still to do: chambers, models, sprites, the sky and the cockpit.
+sizes, with the levels' placed objects in it. Still to do: chambers, sprites,
+the sky, the cockpit, and the `.TXT` animated model format.
 
-**5. Models.** Draw the MRGL meshes. Needs the remaining node types read - type
-0x18 above all, which is 98% of all nodes and is still an inference.
+**5. Models.** Mostly done. The MRGL meshes draw, at the position, heading and
+scale each level's instance list gives them. Still to do: bind a mesh's
+materials to its polygons properly rather than by running index, and parse the
+`.TXT` animated model format, which about 5% of placements need.
 
 **6. Flight.** `hb-sim`: the ship, the controls from `HELLBEND.INI`'s bindings,
 and collision against `hb-world`. Playable in the sense of flying around an

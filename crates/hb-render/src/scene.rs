@@ -15,6 +15,11 @@ pub struct Scene<'a> {
     pub palette: &'a Palette,
     pub light: Option<&'a Ramp>,
     pub fog: Option<&'a Ramp>,
+    /// The level's placed objects, and a mesh per kind.
+    pub placements: &'a [hb_formats::text::Placement],
+    pub meshes: &'a [Option<hb_formats::mrgl::Model>],
+    /// Which texture each mesh material names, resolved once.
+    pub mesh_textures: &'a [Vec<Option<Image>>],
 }
 
 /// Draws the ground and both box sets from the camera's position.
@@ -51,13 +56,129 @@ pub fn draw_world(target: &mut Target, scene: &Scene, camera: &Camera) -> Drawn 
             draw_box(target, scene, camera, cell, origin, layer, &mut drawn);
         }
     }
+    draw_objects(target, scene, camera, &mut drawn);
     drawn
+}
+
+/// The level's placed objects, back to front.
+///
+/// A placement's position is in the world's signed coordinates, so it has to be
+/// rebased onto the same unwrapped frame the terrain walk uses - otherwise an
+/// object at -300 units lands 1024 units away from the ground it stands on.
+fn draw_objects(target: &mut Target, scene: &Scene, camera: &Camera, drawn: &mut Drawn) {
+    let eye = Cell::containing(camera.x, camera.z);
+    let mut order: Vec<(i64, usize)> = Vec::new();
+    for (i, p) in scene.placements.iter().enumerate() {
+        let (wx, wz) = rebase(eye, p.x, p.z);
+        let [_, _, depth] = camera.to_view(wx, p.y, wz);
+        if depth <= 0.0 || depth > (camera.far >> 16) as f32 {
+            continue;
+        }
+        order.push((-(depth * 256.0) as i64, i));
+    }
+    order.sort();
+
+    for (_, i) in order {
+        let p = &scene.placements[i];
+        let Some(Some(mesh)) = scene.meshes.get(p.kind) else {
+            continue;
+        };
+        let textures = &scene.mesh_textures[p.kind];
+        let (wx, wz) = rebase(eye, p.x, p.z);
+        if draw_mesh(target, scene, camera, mesh, textures, wx, p.y, wz, p.scale, p.heading) {
+            drawn.models += 1;
+        }
+    }
+}
+
+/// Move a signed world coordinate into the unwrapped frame the terrain walk
+/// uses, choosing the copy of the wrapping world nearest the eye.
+fn rebase(eye: Cell, x: i32, z: i32) -> (i32, i32) {
+    let one = |eye_cell: i32, coord: i32| {
+        let cell = (coord >> 19) & (SIDE as i32 - 1);
+        // The nearest equivalent cell index to the eye's, modulo 128.
+        let mut delta = cell - (eye_cell & (SIDE as i32 - 1));
+        if delta > SIDE as i32 / 2 {
+            delta -= SIDE as i32;
+        } else if delta < -(SIDE as i32) / 2 {
+            delta += SIDE as i32;
+        }
+        ((eye_cell + delta) << 19) | (coord & (CELL_SIZE - 1))
+    };
+    (one(eye.x, x), one(eye.z, z))
+}
+
+/// One MRGL mesh, at a position, scale and heading.
+#[allow(clippy::too_many_arguments)]
+fn draw_mesh(
+    target: &mut Target,
+    scene: &Scene,
+    camera: &Camera,
+    mesh: &hb_formats::mrgl::Model,
+    textures: &[Option<Image>],
+    x: i32,
+    y: i32,
+    z: i32,
+    scale: i32,
+    heading: u16,
+) -> bool {
+    let (sy, cy) = hb_formats::Angle(heading).to_radians().sin_cos();
+    // Model space is 2.14 and spans -1.0 to +1.0, so `Vertex::world` turns a
+    // vertex into a 16.16 world offset at the placement's scale.
+    let (width, height) = (target.width, target.height);
+    let place = |v: &hb_formats::mrgl::Vertex| -> Option<(f32, f32, f32)> {
+        let [mx, my, mz] = v.world(scale);
+        let (mx, mz) = (mx as f32, mz as f32);
+        let rx = mx * cy + mz * sy;
+        let rz = -mx * sy + mz * cy;
+        project_onto(camera, width, height, x + rx as i32, y + my, z + rz as i32)
+    };
+
+    let shade = Shade {
+        light: scene.light,
+        fog: scene.fog,
+        intensity: 255,
+        fog_distance: (camera.far / 65536) as f32,
+        index_zero_is_clear: false,
+    };
+    let mut any = false;
+    let mut material = 0usize;
+    for poly in &mesh.polygons {
+        // Materials appear in the node stream before the polygons that use
+        // them, and the parser keeps them in order, so the running index is the
+        // best available guess until the node stream is walked properly.
+        let texture = textures.get(material).and_then(Option::as_ref);
+        material = (material + 1).min(textures.len().saturating_sub(1));
+        let Some(texture) = texture else { continue };
+        let corners: Option<Vec<Vertex>> = poly
+            .corners
+            .iter()
+            .map(|c| {
+                let v = mesh.vertices.get(c.vertex as usize)?;
+                let (sx, sy, depth) = place(v)?;
+                Some(Vertex {
+                    x: sx,
+                    y: sy,
+                    depth,
+                    u: (c.u >> 16) as f32,
+                    v: (c.v >> 16) as f32,
+                })
+            })
+            .collect();
+        let Some(corners) = corners else { continue };
+        for i in 1..corners.len().saturating_sub(1) {
+            target.triangle([corners[0], corners[i], corners[i + 1]], texture, &shade);
+        }
+        any = true;
+    }
+    any
 }
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Drawn {
     pub ground: usize,
     pub boxes: usize,
+    pub models: usize,
     pub clipped: usize,
 }
 
@@ -67,16 +188,27 @@ fn corner_world(origin: (i32, i32), corner: Corner) -> (i32, i32) {
 }
 
 fn project(camera: &Camera, target: &Target, x: i32, y: i32, z: i32) -> Option<(f32, f32, f32)> {
+    project_onto(camera, target.width, target.height, x, y, z)
+}
+
+fn project_onto(
+    camera: &Camera,
+    width: usize,
+    height: usize,
+    x: i32,
+    y: i32,
+    z: i32,
+) -> Option<(f32, f32, f32)> {
     let [vx, vy, vz] = camera.to_view(x, y, z);
     // Near plane at a tenth of a cell.
     if vz <= 0.8 {
         return None;
     }
     let half_fov = camera.fov.to_radians() / 2.0;
-    let scale = (target.width as f32 / 2.0) / half_fov.tan();
+    let scale = (width as f32 / 2.0) / half_fov.tan();
     Some((
-        target.width as f32 / 2.0 + vx * scale / vz,
-        target.height as f32 / 2.0 - vy * scale / vz,
+        width as f32 / 2.0 + vx * scale / vz,
+        height as f32 / 2.0 - vy * scale / vz,
         vz,
     ))
 }

@@ -57,8 +57,9 @@ hoth: 205/205 textures, 640x480 screen
 Arrows steer, `w`/`s` is the throttle, `a`/`d` strafes, `r`/`f` climbs and
 dives, tab cycles the level, escape quits.
 
-Chambers, models, sprites, the sky and the cockpit are not drawn yet, and there
-is no simulation - see [docs/port/plan.md](docs/port/plan.md).
+The 7,606 objects placed across the 26 levels are drawn too, from the instance
+list in each level's `.DEF`. Chambers, sprites, the sky and the cockpit are not,
+and there is no simulation - see [docs/port/plan.md](docs/port/plan.md).
 
 ## Getting the data
 

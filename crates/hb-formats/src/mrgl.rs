@@ -131,11 +131,26 @@ impl Iterator for Walk<'_> {
     }
 }
 
+/// Model coordinates are normalised: 235 of the 238 `.BIN` models in GAME.POD
+/// have a maximum absolute component of exactly 16,383 or 16,384 and none
+/// exceeds 16,384. So model space is 2.14 fixed point, spanning -1.0 to +1.0,
+/// and a placement's `scale` is the object's half-extent in world units.
+pub const MODEL_ONE: i32 = 16_384;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Vertex {
     pub x: i32,
     pub y: i32,
     pub z: i32,
+}
+
+impl Vertex {
+    /// This vertex as a 16.16 world offset from the object's origin, for an
+    /// object placed at the given 16.16 scale.
+    pub fn world(self, scale: i32) -> [i32; 3] {
+        let one = |v: i32| ((v as i64 * scale as i64) >> 14) as i32;
+        [one(self.x), one(self.y), one(self.z)]
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
