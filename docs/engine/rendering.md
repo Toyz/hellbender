@@ -2,7 +2,7 @@
 title: The port's renderer
 status: partial
 covers: crates/hb-render
-worklog: 13, 16, 17, 20, 21, 22, 25, 28, 29
+worklog: 13, 16, 17, 20, 21, 22, 25, 28, 29, 30
 ---
 
 # The port's renderer
@@ -35,6 +35,13 @@ This page is about the port. What the original does is under
   the engine's, sign and all, and a side hidden by its neighbour's box is not
   drawn; nor is ground inside a box.
 - The three screen sizes the art is drawn for: 320x200, 320x400, 640x480.
+- The projection: 90 degrees across and 90 degrees down, whatever the screen's
+  shape, with the scales and centre the engine's viewport setup derives
+  (`Camera::screen`, from `0x485940`). At 320x200 that is 159 across and 99
+  down. Until worklog 30 the port used one scale for both, which drew
+  everything 1.6 times too tall.
+- The sky: a textured plane at altitude 128, one tile every 128 units,
+  drifting by the `.LVL`'s line 41 - see [the sky](../formats/sky.md).
 
 ## What is the renderer's own choice
 
@@ -47,12 +54,10 @@ port that later reads the engine should revisit them.
 | Texture space scales, not wraps | A coordinate is a texel in a 256-unit space and the textures are 64 x 64. Scaling makes a corner-to-corner face one tile; wrapping makes it four, and puts a fine grid over everything. |
 | Depth buffer | The engine's visibility scheme is not known. This sorts cells back to front by distance and settles the rest with a z-buffer. |
 | Heading 0 looks along +z and increases toward +x | No longer a choice: the recorded demo flight measures it to a median 0.8 degrees. The port had the direction backwards until then. |
-| 90-degree field of view | Not established. |
 | Draw distance of 220 units | Chosen so the fog ramp saturates before the edge. |
 | The 118 colourless polygons are skipped | Four models have polygons with neither a material nor a flat colour before them, so nothing says what colour they are. |
 | A chamber is lit flat by the low byte of its 24-bit shade | The value is not decomposed. |
 | Past the draw distance is the fog colour | The fog ramp's last row sends every colour to one index; the frame is filled with it before the sky, so the band between the last cell and the horizon is fog rather than a hole. |
-| The sky wraps once around the horizon and once from horizon to zenith | The engine's projection is not known - a `skyTextureFlag` and a `"Sky clip overflow!"` diagnostic is all there is. This is the simplest thing that turns with the camera. |
 
 ## The units
 
@@ -111,6 +116,11 @@ The sky is drawn first and writes no depth, so everything covers it. Its
 texture is brought into the level's palette through the level's `.MAP` - see
 [the sky](../formats/sky.md) - because a sky palette shares nothing with its
 level's.
+
+`hb-fly` shows the frame in a 4:3 window. The game drew 320x200 and 320x400
+for a 4:3 monitor, so its pixels were taller than wide; drawn with square
+pixels, the 90-by-90 projection would look squashed flatter than the original
+did.
 
 The cockpit is blitted last, with index 0 transparent. It needs no remap: it is
 drawn in `VGA.ACT` and a level's own palette agrees with `VGA.ACT` on 240 of

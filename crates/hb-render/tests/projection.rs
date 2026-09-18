@@ -164,3 +164,31 @@ fn light_is_interpolated_across_a_triangle() {
     assert_eq!(row[63], 15);
     assert!(row.windows(2).all(|w| w[0] <= w[1]), "{row:?}");
 }
+
+#[test]
+fn a_view_direction_turns_back_into_the_world_direction_it_came_from() {
+    let mut camera = Camera::looking_at(3 << 16, 5 << 16, -7 << 16, Angle(0x2345));
+    camera.pitch = Angle(0xf000);
+    for world in [[1.0f32, 0.0, 0.0], [0.0, 1.0, 0.0], [0.3, -0.4, 0.8]] {
+        let at = |k: usize| (world[k] * 10.0 * 65536.0) as i32;
+        let view = camera.to_view(camera.x + at(0), camera.y + at(1), camera.z + at(2));
+        let back = camera.to_world_direction(view);
+        for k in 0..3 {
+            assert!((back[k] - world[k] * 10.0).abs() < 1e-3, "{world:?} came back as {back:?}");
+        }
+    }
+}
+
+#[test]
+fn the_view_is_ninety_degrees_across_and_down_as_the_engine_sets_it() {
+    // `0x485940` from `setViewport(0, 0, W, H)`: half the size, rounded down
+    // to even, less one; centred one past the scale across, on the half down.
+    assert_eq!(Camera::screen(320, 200), ([159.0, 99.0], [160.0, 100.0]));
+    assert_eq!(Camera::screen(320, 400), ([159.0, 199.0], [160.0, 200.0]));
+    assert_eq!(Camera::screen(640, 480), ([319.0, 239.0], [320.0, 240.0]));
+    // A point 45 degrees up and 45 across lands on the corner of the frame.
+    let camera = Camera::looking_at(0, 0, 0, Angle(0));
+    let [x, y, z] = camera.to_view(10 << 16, 10 << 16, 10 << 16);
+    let ([sx, sy], [cx, cy]) = Camera::screen(320, 200);
+    assert!((cx + x * sx / z - 319.0).abs() < 1e-3 && (cy - y * sy / z - 1.0).abs() < 1e-3);
+}

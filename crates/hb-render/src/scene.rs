@@ -31,6 +31,9 @@ pub struct Scene<'a> {
     /// The level's ambient light, 0-255: `.LVL` line 19 over 256. A ground
     /// vertex whose shade word has bit 8 set takes this.
     pub ambient: u8,
+    /// How far the sky texture has drifted, in the 256-unit texture space:
+    /// [`crate::Level::sky_drift`] times the seconds elapsed.
+    pub sky_scroll: [f32; 2],
 }
 
 /// Draws the ground and both box sets from the camera's position.
@@ -85,46 +88,59 @@ pub fn draw_world(target: &mut Target, scene: &Scene, camera: &Camera) -> Drawn 
     drawn
 }
 
-/// The sky, as a cylinder around the eye.
+/// The sky: a textured plane at altitude 128.0, the engine's `0x44fd70`.
 ///
-/// The engine's own projection is not known - it has a `skyTextureFlag` and a
-/// `"Sky clip overflow!"` diagnostic and nothing else legible - so this wraps
-/// the 64 x 64 texture once around the horizon and once from the horizon to
-/// the zenith, which is the simplest thing that turns with the camera.
+/// The engine builds one quad at `(+-0x1fffff, 0, +-0x1fffff)` about the
+/// point `(0, [0x5055d4], 0)` - 128.0 - with the camera's offset from that
+/// point divided by 256, which projects exactly like a quad 8,192 units each
+/// way of the world's origin. Its corner coordinates span `+-0x3fffffff` about
+/// a scroll offset, so in world terms `u = scroll + 2x` and `v = scroll + 2z`
+/// in the 256-unit texture space: one tile of the texture every 128 units. The
+/// scroll advances by the `.LVL`'s line 41 every second. The sky is drawn at
+/// full intensity (`0x48a510(0xffff)`), so no light or fog ramp touches it.
 ///
-/// The sky is drawn before anything else and writes no depth, so everything
-/// else covers it.
+/// Drawn here by casting each pixel's ray onto the plane, which is what a
+/// perspective-correct rasteriser would produce from the quad. The engine
+/// draws the plane only while the eye is below 126.0 - the cloud layer is 2.0
+/// thick (`[0x5055d8]`), inside it the frame is cleared, and above it a
+/// different routine (`0x450d10`) draws the clouds from above, which this
+/// renderer does not have yet.
 fn draw_sky(target: &mut Target, scene: &Scene, camera: &Camera) {
+    const HEIGHT: f32 = 128.0;
+    const LAYER: f32 = 2.0;
+    const EXTENT: f32 = 8192.0;
     let (Some(sky), Some(remap)) = (scene.sky, scene.sky_remap) else {
         return;
     };
     let (w, h) = (sky.shape.width, sky.shape.height);
-    if w == 0 || h == 0 {
+    // The plane is centred on the world's origin and the engine's positions
+    // are always in the signed world (`shl 6; sar 6`), so the eye is wrapped
+    // into it first.
+    let wrap = |v: i32| ((v << 6) >> 6) as f32 / 65536.0;
+    let eye = [wrap(camera.x), camera.y as f32 / 65536.0, wrap(camera.z)];
+    if w == 0 || h == 0 || eye[1] >= HEIGHT - LAYER {
         return;
     }
-    let half_fov = camera.fov.to_radians() / 2.0;
-    let scale = (target.width as f32 / 2.0) / half_fov.tan();
-    let yaw = camera.yaw.to_radians();
-    // Signed: a nose-up pitch is a small negative angle, not nearly a turn.
-    let pitch = camera.pitch.to_signed_radians();
-
+    let ([sx, sy], [cx, cy]) = Camera::screen(target.width, target.height);
+    let above = HEIGHT - eye[1];
     for y in 0..target.height {
-        // Elevation of this scanline, from the screen offset and the focal
-        // length, with the camera's pitch added.
-        let dy = target.height as f32 / 2.0 - (y as f32 + 0.5);
-        let elevation = (dy / scale).atan() - pitch;
-        if elevation <= 0.0 {
-            continue;
-        }
-        let v = ((elevation / (std::f32::consts::PI / 2.0)) * h as f32) as isize;
-        let v = v.clamp(0, h as isize - 1) as usize;
+        let vy = (cy - (y as f32 + 0.5)) / sy;
         for x in 0..target.width {
-            let dx = x as f32 + 0.5 - target.width as f32 / 2.0;
-            let azimuth = (dx / scale).atan() + yaw;
-            let turns = azimuth / std::f32::consts::TAU;
-            let u = ((turns.rem_euclid(1.0)) * w as f32) as usize % w;
-            let at = y * target.width + x;
-            target.colour[at] = remap[sky.pixels[v * w + u] as usize];
+            let vx = (x as f32 + 0.5 - cx) / sx;
+            let d = camera.to_world_direction([vx, vy, 1.0]);
+            if d[1] <= 0.0 {
+                continue;
+            }
+            let t = above / d[1];
+            let (hx, hz) = (eye[0] + d[0] * t, eye[2] + d[2] * t);
+            if hx.abs() > EXTENT || hz.abs() > EXTENT {
+                continue;
+            }
+            let u = scene.sky_scroll[0] + 2.0 * hx;
+            let v = scene.sky_scroll[1] + 2.0 * hz;
+            let tx = ((u * w as f32 / 256.0).floor() as i64).rem_euclid(w as i64) as usize;
+            let ty = ((v * h as f32 / 256.0).floor() as i64).rem_euclid(h as i64) as usize;
+            target.colour[y * target.width + x] = remap[sky.pixels[ty * w + tx] as usize];
         }
     }
 }
@@ -279,13 +295,8 @@ fn project_onto(
     if vz <= 0.8 {
         return None;
     }
-    let half_fov = camera.fov.to_radians() / 2.0;
-    let scale = (width as f32 / 2.0) / half_fov.tan();
-    Some((
-        width as f32 / 2.0 + vx * scale / vz,
-        height as f32 / 2.0 - vy * scale / vz,
-        vz,
-    ))
+    let ([sx, sy], [cx, cy]) = Camera::screen(width, height);
+    Some((cx + vx * sx / vz, cy - vy * sy / vz, vz))
 }
 
 /// A texture slot after animation.

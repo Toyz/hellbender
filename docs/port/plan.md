@@ -106,7 +106,10 @@ Multiplayer is out of scope until everything above works.
 
 Reported from playing `hb-fly` and deliberately deferred:
 
-- **Everything feels too big.** Likely found in worklog 28: objects were
+- **Everything feels too big.** Two causes found. Worklog 30: the engine's
+  view is 90 degrees down as well as across, where the port's was 64 down at
+  320x200 - everything was drawn 1.6 times too tall - and the original showed
+  its frame on a 4:3 monitor, which `hb-fly` now does too. Worklog 28: objects were
   drawn at a median one twentieth of their real size, because the port read a
   placement's hit points as its scale. With them drawn at their type's radius
   the terrain has things of the right size on it. Still worth checking against
@@ -142,7 +145,7 @@ What remains:
 
 - What the chamber's 24-bit shading value decomposes into.
 - What separates polygon node 0x18 from 0x0e.
-- The sky's projection, and how a group model animates.
+- The sky above the clouds and in space, and how a group model animates.
 
 None of these block a first terrain render; all of them would make it wrong in
 some detail.

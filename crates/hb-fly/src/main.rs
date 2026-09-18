@@ -258,10 +258,14 @@ fn main() -> Result<(), String> {
     let mut show_hud = hud_font.is_some();
 
     let mut target = Target::new(w, h);
+    // The game drew 320x200 and 320x400 for a 4:3 monitor, so its pixels were
+    // taller than wide; the window is 4:3 and minifb stretches the frame to
+    // fill it, which gives the picture its original proportions. 640x480 is
+    // already 4:3.
     let mut window = Window::new(
         "Hellbender",
         w * scale,
-        h * scale,
+        w * scale * 3 / 4,
         WindowOptions { resize: true, ..WindowOptions::default() },
     )
     .map_err(|e| e.to_string())?;
@@ -456,6 +460,7 @@ fn main() -> Result<(), String> {
         let frames_now = level.texture_frames(started.elapsed().as_secs_f32());
         let mut scene = level.scene();
         scene.frames = Some(&frames_now);
+        scene.sky_scroll = level.sky_scroll(started.elapsed().as_secs_f32());
         scene.placements = &live;
         hb_render::draw_world(&mut target, &scene, &flight.camera);
         // Shots are drawn at the copy of their position nearest the eye.

@@ -75,6 +75,24 @@ pub struct Level {
     pub destroy_sound: Vec<Option<Vec<u8>>>,
 }
 
+impl Level {
+    /// How fast the sky drifts, texture units a second in u and v: the
+    /// `.LVL`'s line 41, which the parser reads to `0x6670d0` and the sky
+    /// routine adds to its scroll every frame (`0x44fd98`). 10.0 in eleven
+    /// levels, which is a tile every 12.8 seconds, and still in fifteen.
+    pub fn sky_drift(&self) -> [f32; 2] {
+        let [u, v] = self.manifest.weather_params[0];
+        [u as f32 / 65536.0, v as f32 / 65536.0]
+    }
+
+    /// The sky's scroll after `seconds`.
+    pub fn sky_scroll(&self, seconds: f32) -> [f32; 2] {
+        let [u, v] = self.sky_drift();
+        [(u * seconds).rem_euclid(256.0), (v * seconds).rem_euclid(256.0)]
+    }
+}
+
+
 /// An animated texture, with every name already resolved to a texture index.
 #[derive(Debug, Clone)]
 pub struct Cycle {
@@ -336,6 +354,7 @@ impl Level {
             mesh_textures: &self.mesh_textures,
             mesh_radius: &self.mesh_radius,
             ambient: (self.manifest.ambient >> 8).clamp(0, 255) as u8,
+            sky_scroll: [0.0, 0.0],
         }
     }
 

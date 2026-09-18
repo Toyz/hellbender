@@ -20,9 +20,6 @@ pub struct Camera {
     pub yaw: Angle,
     /// Positive pitch tilts the view downward.
     pub pitch: Angle,
-    /// Horizontal field of view as a fraction of a turn. The engine's own is
-    /// not known; 90 degrees is this renderer's choice.
-    pub fov: Angle,
     /// How far the ground is drawn, in world units. Beyond it the fog ramp has
     /// saturated anyway.
     pub far: i32,
@@ -36,7 +33,6 @@ impl Camera {
             z,
             yaw,
             pitch: Angle(0),
-            fov: Angle(0x4000),
             far: 220 << 16,
         }
     }
@@ -60,5 +56,32 @@ impl Camera {
         let ry = dy * cp - rz * sp;
         let rz = dy * sp + rz * cp;
         [rx, ry, rz]
+    }
+
+    /// How view space reaches a screen of this size: the scale on x and y and
+    /// the centre, as the engine's viewport setup at `0x485940` derives them
+    /// from the view rectangle - for the in-game view the whole screen,
+    /// `setViewport(0, 0, W, H)` at `0x45a0f1`.
+    ///
+    /// Each scale is half the rectangle's size, rounded down to even, less
+    /// one, and the projection is `x * sx / z + cx` and `y * sy / z + cy` with
+    /// clip codes that test `|x| <= z` and `|y| <= z` (`0x42a805`). So the
+    /// field of view is 90 degrees across **and 90 degrees down**, whatever
+    /// the screen's shape: at 320x200 the scales are 159 and 99.
+    pub fn screen(width: usize, height: usize) -> ([f32; 2], [f32; 2]) {
+        let half = |n: usize| ((n / 2) & !1) as f32;
+        let (sx, sy) = (half(width) - 1.0, half(height) - 1.0);
+        ([sx, sy], [sx + 1.0, half(height)])
+    }
+
+    /// A view-space direction turned back into world space: the inverse of
+    /// [`Camera::to_view`]'s rotation, without the translation.
+    pub fn to_world_direction(&self, view: [f32; 3]) -> [f32; 3] {
+        let (sy, cy) = self.yaw.to_radians().sin_cos();
+        let (sp, cp) = (-self.pitch.to_radians()).sin_cos();
+        let [rx, ry, rz] = view;
+        let dy = ry * cp + rz * sp;
+        let rz1 = -ry * sp + rz * cp;
+        [rx * cy + rz1 * sy, dy, -rx * sy + rz1 * cy]
     }
 }

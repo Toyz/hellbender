@@ -2,7 +2,7 @@
 title: The .LVL manifest
 status: partial
 covers: LEVELS\*.LVL
-worklog: 3, 29
+worklog: 3, 29, 30
 ---
 
 # The .LVL manifest
@@ -74,9 +74,13 @@ states itself. The sentinel on line 39 reads
 agrees: `HOTH`, `HOTH2`, `HOTH3` set 1, and `IOWAH`, `IOWAH2`, `IOWAH3`,
 `MORBOS`, `MORBOS2`, `MORBOS3` set 6. The other 17 levels set 0.
 
-Lines 41 and 42 are pairs of 16.16 fixed-point values. Line 42 is
-`983040,1966080` - 15.0 and 30.0 - in all 26 levels. Line 41 is `0,0` in 15
-levels and 5.0, 10.0 or 20.0 in the other 11.
+Lines 41 and 42 are pairs of 16.16 fixed-point values. Line 41 is the sky's
+drift, texture units a second in u and v: the parser reads it to `0x6670d0`
+and `0x6670d4`, and the sky routine adds it times the frame time to its scroll
+(`0x44fd8a`). It is `0,0` in 15 levels and 5.0, 10.0 or 20.0 in the other 11 -
+see [the sky](sky.md). Line 42 is `983040,1966080` - 15.0 and 30.0 - in all 26
+levels, read to `0x6670d8` and `0x6670dc` with those same values as defaults
+(`0x44bf52`).
 
 Lines 18 to 21 are light, not placement. The parser reads them at `0x44bb88`
 into the level struct at `0x666cb0` - line 18's three values to `+0x284`, which
