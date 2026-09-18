@@ -2,7 +2,7 @@
 title: The Rust port
 status: partial
 covers: crates/
-worklog: 7, 8, 9, 10
+worklog: 7, 8, 9, 10, 11, 12
 ---
 
 # The Rust port
@@ -68,10 +68,12 @@ point-in-triangle test and the surface normal - plus `heightAtGrid` and the box
 span query. Still to do: the plane evaluation as a height lookup at an
 arbitrary point, the box and chamber intersection tests, and collision.
 
-**4. A picture.** `hb-render` plus `hb-app`: a window, a camera, and the
-terrain drawn in 8-bit indexed colour through the level's palette and ramps,
-upscaled to whatever the display is. Textured, fogged, no enemies. This is the
-first point at which the port can be compared with a screenshot.
+**4. A picture.** Started from the top down rather than from the cockpit:
+`hb ground` draws a whole level textured, palettised and shaded, which proved
+the texture index, the texture list, the palette and the shading database work
+together. Still to do the real thing - `hb-render` plus `hb-app`: a window, a
+camera, and the terrain drawn in perspective in 8-bit indexed colour, fogged.
+That is the first point at which the port can be compared with a screenshot.
 
 **5. Models.** Draw the MRGL meshes. Needs the remaining node types read - type
 0x18 above all, which is 98% of all nodes and is still an inference.
@@ -97,12 +99,13 @@ z, 2 and 3 along x, 4 is the top and 5 the bottom.
 
 What remains:
 
-- Which member of each axis pair faces which way. The exposure test that
+- Which member of each box axis pair faces which way. The exposure test that
   settled the axes gives no signal on the sign, 81 against 77 and 82 against
-  63. Settling it needs the terrain renderer, or a rendered level compared with
-  a screenshot.
-- The third `u16` of a ground cell and the four spare bytes of a chamber cell.
-- What the `.CLR` high byte means.
+  63. Settling it needs perspective rendering, or a rendered level compared
+  with a screenshot.
+- Which of the four `.CLR` orientation bits is which mirror and which rotation.
+- Bit 8 of the ground shading word, and what the chamber's 24-bit shading value
+  decomposes into.
 - What separates polygon node 0x18 from 0x0e.
 
 None of these block a first terrain render; all of them would make it wrong in

@@ -37,12 +37,12 @@ ship.bin: 360 vertices, 490 polygons - 228 drawn, 262 back-facing
 ```
 
 Terrain decodes to a wrapping 128 x 128 grid of 8.0-unit cells, each split into
-two triangles whose diagonal alternates with the cell's parity, and
-`hb heightmap` draws a level lit by the engine's own per-triangle normal.
+two triangles whose diagonal alternates with the cell's parity, and `hb ground`
+draws a whole level textured, palettised and shaded from above.
 
 ```
-$ cargo run -p hb -- heightmap hoth /tmp/hoth.png
-hoth: 640x640, 696 box cells, 16359 roofed cells
+$ cargo run -p hb -- ground hoth /tmp/hoth.png
+hoth: 205/205 textures resolved, 0 cells without one, palette hoth.act, ramp yes
 ```
 
 There is no real renderer and no simulation yet - see
@@ -61,6 +61,7 @@ cargo run -p hb -- model cube.bin
 cargo run -p hb -- png startup art/ckpt200.raw /tmp/cockpit.png
 cargo run -p hb -- view startup:ship.bin /tmp/ship.png
 cargo run -p hb -- heightmap float /tmp/float.png
+cargo run -p hb -- ground jurasic /tmp/jurasic.png
 ```
 
 ## Tools

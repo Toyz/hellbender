@@ -2,7 +2,7 @@
 title: The terrain grids
 status: partial
 covers: DATA\*.RAW, DATA\*.CLR, DATA\*.RA0-RA5, DATA\*.CL0-CL2
-worklog: 4, 8, 10, 11
+worklog: 4, 8, 10, 11, 12
 ---
 
 # The terrain grids
@@ -171,6 +171,42 @@ is **not** two thirds - that would be `0xAAAB`. The 0.4%-of-a-cell difference
 changes which triangle a borderline query lands in, so it is reproduced rather
 than corrected.
 
+## The texture words are twelve bits of index and four of orientation
+
+Every texture word in the terrain - the ground's `.CLR` value, a box's six
+`.CL0`/`.CL2` slots, a chamber's two `.CL1` slots - has the same shape:
+
+```
+bits 0-11    index into the level's .TEX list
+bits 12-15   UV orientation code
+```
+
+`0x413c20` resolves one as `textureTable[word & 0xfff]`, where the table is
+1,024 entries of 24 bytes at `0x753cd0` - the same table the `.ANI` animated
+textures register into, which is why an animated texture is addressed exactly
+like a static one.
+
+The data agrees and is the stronger evidence. Across all 26 levels and 425,984
+ground cells, `word & 0xfff` is always a valid index into that level's texture
+list. The raw `u16` is out of range 3,658 times, and those 3,658 are exactly
+the cells with a non-zero orientation code.
+
+The orientation code is consumed in one place, `0x413940`, which takes the
+cell's four corners and permutes their texture coordinates in a table at
+`0x59d36c`:
+
+```
+code >> 2      tested first, a two-bit selector
+code & 2       swaps corner 0 with 1, and corner 3 with 2
+code & 1       a further swap of the same shape
+```
+
+So it is a mirror-and-rotate on the cell's UVs. 231 texture indices appear with
+more than one code, which is what you would expect of a tile placed at several
+orientations, and the code does not correlate with cell parity, so it is
+authored rather than derived. Ten of the sixteen codes appear in the ground
+data: 0 through 6, 8, 10 and 12.
+
 ## The shading database, DATA\*.LTE
 
 A fifth file, opened by the terrain loader itself at `0x413460` with
@@ -179,14 +215,27 @@ seven per cell, and the loader scatters those seven into the four cell arrays
 in this order:
 
 ```
-1  ground[+4]       one per triangle half
+1  ground[+4]       the two together are one little-endian value
 2  ground[+5]
 3  box A[+0x10]
-4  chamber[+8]      three of them
+4  chamber[+8]      the three together are one 24-bit value
 5  chamber[+9]
 6  chamber[+10]
 7  box B[+0x10]
 ```
+
+The ground's pair is **not** one byte per triangle half. Read as a
+little-endian `u16` it spans 0 to 511 in every level, so it is nine bits: an
+intensity in the low byte and one flag in bit 8. The intensity's ceiling is 255
+everywhere and its floor is per level - 64 in `HOTH`, 96 in `ROID`, 160 in
+`FLOAT` - which reads as that level's ambient minimum.
+
+Rendering settles it. Treating the two bytes as separate per-half shades
+produces a checkerboard of black over the whole map, because the second byte is
+only ever 0 or 1 and a ramp index taken from it is always row 0 while one taken
+from the first byte is usually row 15. Treating the pair as an intensity and
+indexing the ramp at `(255 - intensity) >> 4` produces hillsides lit from one
+direction, which is what a heightmap should look like.
 
 It is a **cache**, not source data. When the file is absent the engine prints
 `No .LTE file.  Shading database for the last time during loading.  Phew!` and
@@ -325,13 +374,14 @@ in the high bits, not as a colour. It is not confirmed.
 
 ## Unknown
 
-What the shade bytes mean numerically. They are not a 0-15 index into the
-[colour ramp](colour-tables.md): `FLOAT`'s first ground byte runs 160 to 255
-and its second is only ever 0 or 1, so the pair may be a `u16` that the ramp
-index is extracted from, or two separate quantities. The chamber's three behave
-the same way - one wide, one narrow, one tiny.
+What bit 8 of the ground shading word is. What the chamber's 24-bit shading
+value decomposes into - it spans about 24,000 to 240,000, so it is not the same
+shape as the ground's.
+
+Which of the four orientation bits is which mirror and which rotation. The
+corner argument order at `0x413940` would say, and it has not been pinned.
 
 The one remaining spare byte in each box cell (+17) and in each chamber cell
-(+11). The meaning of the `.CLR` high byte. Which member of each box side pair
-faces which way. Why `0xABB9` is not `0xAAAB`. What sets the light direction at
-`0x666f34`, which is in uninitialised data.
+(+11). Which member of each box side pair faces which way. Why `0xABB9` is not
+`0xAAAB`. What sets the light direction at `0x666f34`, which is in
+uninitialised data.

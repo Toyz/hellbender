@@ -23,6 +23,7 @@ hb - inspect Hellbender's data
   hb png <pod> <entry> <out.png>    a .RAW plus its palette, as a PNG
   hb view <name.bin> <out.png>      a model, flat shaded, as a PNG
   hb heightmap <level> <out.png>    a level's ground, lit, from above
+  hb ground <level> <out.png>       a level's ground, textured, from above
   hb check                          parse everything and report what fails
 
 <pod> is a path, or one of `game` and `startup` to use $HB_GAME (default
@@ -74,6 +75,7 @@ fn run(args: &[&str]) -> Result<(), String> {
         ["png", pod, entry, out] => cmd_png(pod, entry, Path::new(out)),
         ["view", name, out] => cmd_view(name, Path::new(out)),
         ["heightmap", name, out] => cmd_heightmap(name, Path::new(out)),
+        ["ground", name, out] => cmd_ground(name, Path::new(out)),
         ["check"] => cmd_check(),
         _ => Err(format!("unknown command\n\n{USAGE}")),
     }
@@ -306,6 +308,61 @@ fn cmd_heightmap(name: &str, out: &Path) -> Result<(), String> {
     let side = terrain::SIDE * scale;
     std::fs::write(out, png::rgb(side, side, &pixels)).map_err(|e| e.to_string())?;
     println!("{stem}: {side}x{side}, {boxes} box cells, {chambers} roofed cells -> {}", out.display());
+    Ok(())
+}
+
+fn cmd_ground(name: &str, out: &Path) -> Result<(), String> {
+    let pod = open_pod("game")?;
+    let startup = open_pod("startup")?;
+    let data = pod
+        .read("levels", &format!("{name}.lvl"))
+        .map_err(|e| e.to_string())?;
+    let level = lvl::Level::parse(data).map_err(|e| e.to_string())?;
+    let stem = level.stem().to_string();
+    let t = terrain::Terrain::load(|ext| {
+        pod.read("data", &format!("{stem}.{ext}")).ok().map(<[u8]>::to_vec)
+    })
+    .map_err(|e| e.to_string())?;
+
+    // The texture list, resolved to images. An entry may live in either
+    // archive, and a level names textures the front end also uses.
+    let names = text::name_list(
+        pod.read("data", &format!("{stem}.tex")).map_err(|e| e.to_string())?,
+        "TEX",
+    )
+    .map_err(|e| e.to_string())?;
+    let textures: Vec<Option<raw::Image>> = names
+        .iter()
+        .map(|n| {
+            let bytes = pod.read("art", n).or_else(|_| startup.read("art", n)).ok()?;
+            raw::Image::parse_guessed(bytes).ok().flatten()
+        })
+        .collect();
+
+    let (_, palette_name) = level.slot("ground_palette").ok_or("no ground palette")?;
+    let palette_bytes = pod
+        .read("art", palette_name)
+        .or_else(|_| startup.read("art", palette_name))
+        .map_err(|e| e.to_string())?;
+    let palette = act::Palette::parse(palette_bytes).map_err(|e| e.to_string())?;
+    let ramp = level
+        .slot("light")
+        .and_then(|(dir, file)| pod.read(dir, file).ok())
+        .and_then(|b| colour::Ramp::parse(b).ok());
+
+    let grid = hb_world::Grid::new(&t);
+    let scale = 5;
+    let (pixels, missing) = view::textured(&grid, &textures, &palette, ramp.as_ref(), scale);
+    let side = terrain::SIDE * scale;
+    std::fs::write(out, png::rgb(side, side, &pixels)).map_err(|e| e.to_string())?;
+    let resolved = textures.iter().filter(|t| t.is_some()).count();
+    println!(
+        "{stem}: {resolved}/{} textures resolved, {missing} cells without one, \
+         palette {palette_name}, ramp {} -> {}",
+        names.len(),
+        if ramp.is_some() { "yes" } else { "no" },
+        out.display()
+    );
     Ok(())
 }
 

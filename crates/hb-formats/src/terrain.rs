@@ -125,6 +125,51 @@ impl Altitudes {
     }
 }
 
+/// A terrain texture word: an index into the level's `.TEX` list in the low
+/// twelve bits, and a UV orientation code in the top four.
+///
+/// The same word appears in `.CLR` for the ground, in `.CL0` and `.CL2` for a
+/// box's six faces, and in `.CL1` for a chamber's two.
+///
+/// The split is proven by the data as well as by the code: across all 26
+/// levels and 425,984 ground cells, `word & 0xfff` is always a valid index into
+/// that level's texture list, while the raw `u16` is out of range 3,658 times.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextureRef(pub u16);
+
+impl TextureRef {
+    /// Index into the level's `.TEX` list. `HELLBEND.EXE:0x413c20` resolves it
+    /// as `textureTable[word & 0xfff]`, entries of 24 bytes at `0x753cd0`.
+    pub fn index(self) -> u16 {
+        self.0 & 0x0fff
+    }
+
+    /// The orientation code, 0 to 15.
+    ///
+    /// Consumed in exactly one place, `0x413940`, which takes a cell's four
+    /// corners and permutes their texture coordinates in the table at
+    /// `0x59d36c`:
+    ///
+    /// ```text
+    /// (code >> 2)     tested first, a 2-bit selector
+    /// code & 2        swaps corner 0 with 1 and corner 3 with 2
+    /// code & 1        a further swap
+    /// ```
+    ///
+    /// So it is a mirror-and-rotate applied to the cell's UVs. Which bit is
+    /// which mirror depends on the corner argument order at that call site,
+    /// which is not yet pinned - see the Unknown section of
+    /// `docs/formats/terrain.md`.
+    pub fn orientation(self) -> u8 {
+        (self.0 >> 12) as u8
+    }
+
+    /// Whether the texture is drawn in its authored orientation.
+    pub fn is_upright(self) -> bool {
+        self.orientation() == 0
+    }
+}
+
 /// A 128 x 128 plane of `n` `u16` per cell.
 ///
 /// The loader accepts a narrow form - one byte per value instead of two - and
@@ -157,6 +202,11 @@ impl Indices {
     pub fn at(&self, x: i32, z: i32, slot: usize) -> u16 {
         let cell = (z as usize & (SIDE - 1)) * SIDE + (x as usize & (SIDE - 1));
         self.values[cell * self.per_cell + slot]
+    }
+
+    /// The same value read as an index plus an orientation.
+    pub fn texture_at(&self, x: i32, z: i32, slot: usize) -> TextureRef {
+        TextureRef(self.at(x, z, slot))
     }
 }
 
@@ -269,6 +319,27 @@ impl Shading {
 
     pub fn ground_at(&self, x: i32, z: i32) -> [u8; 2] {
         self.ground[(z as usize & (SIDE - 1)) * SIDE + (x as usize & (SIDE - 1))]
+    }
+
+    /// The ground cell's two bytes read as one little-endian value.
+    ///
+    /// The range is 0 to 511 in every level, so it is nine bits: an intensity
+    /// in the low byte and a single flag in bit 8. The intensity's ceiling is
+    /// 255 everywhere and its floor is per level - 64 in `HOTH`, 96 in `ROID`,
+    /// 160 in `FLOAT` - which reads as the level's ambient minimum.
+    pub fn ground_word(&self, x: i32, z: i32) -> u16 {
+        let [lo, hi] = self.ground_at(x, z);
+        lo as u16 | ((hi as u16) << 8)
+    }
+
+    /// The low byte: 0 is dark, 255 is full brightness.
+    pub fn ground_intensity(&self, x: i32, z: i32) -> u8 {
+        self.ground_at(x, z)[0]
+    }
+
+    /// Bit 8, whatever it means.
+    pub fn ground_flag(&self, x: i32, z: i32) -> bool {
+        self.ground_at(x, z)[1] & 1 != 0
     }
 }
 

@@ -339,6 +339,47 @@ fn every_level_loads_its_thirteen_terrain_grids() {
 }
 
 #[test]
+fn a_texture_word_is_twelve_bits_of_index_and_four_of_orientation() {
+    let pod = archive!("GAME.POD");
+    let (mut cells, mut raw_out_of_range, mut oriented) = (0usize, 0usize, 0usize);
+    for e in pod.entries().iter().filter(|e| e.ext() == "lvl") {
+        let level = lvl::Level::parse(pod.bytes(e)).unwrap();
+        let stem = level.stem().to_string();
+        let names =
+            text::name_list(pod.read("data", &format!("{stem}.tex")).unwrap(), "TEX").unwrap();
+        let clr = terrain::Indices::parse(
+            pod.read("data", &format!("{stem}.clr")).unwrap(),
+            1,
+            "ground colour",
+        )
+        .unwrap();
+        for &word in &clr.values {
+            let texture = terrain::TextureRef(word);
+            cells += 1;
+            // The masked index always resolves; the raw word does not.
+            assert!(
+                (texture.index() as usize) < names.len(),
+                "{stem}: index {} of {}",
+                texture.index(),
+                names.len()
+            );
+            if word as usize >= names.len() {
+                raw_out_of_range += 1;
+            }
+            if !texture.is_upright() {
+                oriented += 1;
+            }
+        }
+    }
+    assert_eq!(cells, 26 * terrain::CELLS);
+    // If the raw word were the index, this many cells would point past the end
+    // of their level's texture list. That is what makes the 12-bit mask a
+    // measurement rather than a reading of the disassembly alone.
+    assert_eq!(raw_out_of_range, 3_658);
+    assert_eq!(oriented, 3_658);
+}
+
+#[test]
 fn every_level_ships_a_shading_database_of_seven_bytes_a_cell() {
     let pod = archive!("GAME.POD");
     let mut levels = 0;

@@ -276,3 +276,70 @@ pub fn heightmap(grid: &hb_world::Grid, scale: usize) -> (Vec<u8>, usize, usize)
     }
     (pixels, boxes, chambers)
 }
+
+/// A top-down textured view: each cell sampled from the texture its `.CLR`
+/// word names, through the level's palette, lit by the shading database.
+///
+/// This is the first drawing that uses the texture index, the palette and the
+/// per-cell shade together, so it is the check on all three at once.
+pub fn textured(
+    grid: &hb_world::Grid,
+    textures: &[Option<hb_formats::raw::Image>],
+    palette: &hb_formats::act::Palette,
+    ramp: Option<&hb_formats::colour::Ramp>,
+    scale: usize,
+) -> (Vec<u8>, usize) {
+    use hb_formats::terrain::{TextureRef, SIDE};
+
+    let side = SIDE * scale;
+    let mut pixels = vec![0u8; side * side * 3];
+    let mut missing = 0usize;
+
+    for z in 0..SIDE as i32 {
+        for x in 0..SIDE as i32 {
+            let word = TextureRef(grid.terrain.colour.at(x, z, 0));
+            let image = textures.get(word.index() as usize).and_then(Option::as_ref);
+            if image.is_none() {
+                missing += 1;
+            }
+            // The ground's two shading bytes are one little-endian value in
+            // 0..=511: a 0-255 intensity in the low byte and one flag in bit 8.
+            let shade = grid
+                .terrain
+                .shading
+                .as_ref()
+                .map(|s| s.ground_intensity(x, z))
+                .unwrap_or(255);
+
+            for sy in 0..scale {
+                for sx in 0..scale {
+                    let half = match hb_world::Cell::new(x, z).diagonal() {
+                        hb_world::Diagonal::Main if sy < sx => 1,
+                        hb_world::Diagonal::Main => 0,
+                        hb_world::Diagonal::Anti if sx + sy < scale => 1,
+                        hb_world::Diagonal::Anti => 0,
+                    };
+                    let index = match image {
+                        Some(img) => {
+                            let u = sx * img.shape.width / scale;
+                            let v = sy * img.shape.height / scale;
+                            img.pixels[v * img.shape.width + u]
+                        }
+                        None => 0,
+                    };
+                    // 255 is full brightness and the ramp's row 0 is the
+                    // identity, so the level is the complement.
+                    let _ = half;
+                    let index = match ramp {
+                        Some(r) => r.shade(((255 - shade as usize) >> 4).min(15), index),
+                        None => index,
+                    };
+                    let rgb = palette.rgb(index);
+                    let at = ((z as usize * scale + sy) * side + x as usize * scale + sx) * 3;
+                    pixels[at..at + 3].copy_from_slice(&rgb);
+                }
+            }
+        }
+    }
+    (pixels, missing)
+}
