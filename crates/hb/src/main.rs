@@ -197,6 +197,10 @@ fn cmd_terrain(name: &str) -> Result<(), String> {
     println!("  box A bottom/top  {} / {}", span(&t.boxes_a.bottom), span(&t.boxes_a.top));
     println!("  chamber floor/ceil {} / {}", span(&t.chambers.floor), span(&t.chambers.ceiling));
     println!("  box B bottom/top  {} / {}", span(&t.boxes_b.bottom), span(&t.boxes_b.top));
+    match &t.shading {
+        Some(sh) => println!("  shading           {} cells, 7 bytes each", sh.ground.len()),
+        None => println!("  shading           none shipped; the engine computes it"),
+    }
     let boxes_a = t.boxes_a.top.values.iter().filter(|&&v| v != 0).count();
     let boxes_b = t.boxes_b.top.values.iter().filter(|&&v| v != 0).count();
     println!("  cells with a box A: {boxes_a}, box B: {boxes_b}");

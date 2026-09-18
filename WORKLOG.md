@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-10 entries: content 1, decomp 4, format 7, port 4, render 3, test 1, tooling 2, world 4.
+11 entries: content 1, decomp 4, format 8, port 5, render 3, test 2, tooling 2, world 5.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -21,3 +21,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 8 | [Half the world was in the wrong hemisphere, and the diagonal alternates](worklog/0008-half-the-world-was-in-the-wrong-hemisphere-and-the-diagonal.md) | 2026-09-17 | world, decomp, port |
 | 9 | [The polygon node, and a ship that looks like a ship](worklog/0009-the-polygon-node-and-a-ship-that-looks-like-a-ship.md) | 2026-09-17 | format, render, port |
 | 10 | [The ground query closes, and a level that looks like its own name](worklog/0010-the-ground-query-closes-and-a-level-that-looks-like-its-own.md) | 2026-09-17 | world, decomp, port, render |
+| 11 | [The other .LTE is not a ramp, and a lenient parser was hiding it](worklog/0011-the-other-lte-is-not-a-ramp-and-a-lenient-parser-was-hiding.md) | 2026-09-17 | format, world, port, test |

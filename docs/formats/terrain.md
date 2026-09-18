@@ -2,7 +2,7 @@
 title: The terrain grids
 status: partial
 covers: DATA\*.RAW, DATA\*.CLR, DATA\*.RA0-RA5, DATA\*.CL0-CL2
-worklog: 4, 8, 10
+worklog: 4, 8, 10, 11
 ---
 
 # The terrain grids
@@ -63,27 +63,34 @@ arrays, not two.
 ground   0x0073bcc0   6 bytes per cell
   +0  i16  altitude          .RAW  byte << 7
   +2  u16  colour            .CLR  u16, unscaled
-  +4  u16  unknown
+  +4  u8   shade[2]          .LTE  one per triangle half
 
 box set A 0x00675fa0  18 bytes per cell
   +0  i16  bottom altitude   .RA0  byte << 7
   +2  i16  top altitude      .RA1  byte << 7
   +4  u16  texture[6]        .CL0
+  +16 u8   shade             .LTE
+  +17 u8   unknown
 
 chambers  0x006bdfb0  12 bytes per cell
   +0  i16  floor altitude    .RA2  (byte - 255) << 7
   +2  i16  ceiling altitude  .RA3  (byte - 255) << 7
   +4  u16  texture[2]        .CL1
-  +8  4 bytes unknown
+  +8  u8   shade[3]          .LTE
+  +11 u8   unknown
 
 box set B 0x006edfc0  18 bytes per cell
   +0  i16  bottom altitude   .RA4  (byte - 255) << 7
   +2  i16  top altitude      .RA5  (byte - 255) << 7
   +4  u16  texture[6]        .CL2
+  +16 u8   shade             .LTE
+  +17 u8   unknown
 ```
 
-18 is 2 + 2 + 12, which is what fixes the box texture count at six; 12 is
-2 + 2 + 4 + 4, which fixes the chamber count at two and leaves four bytes over.
+The box cell's 18 bytes are 2 + 2 + 12 for the altitudes and textures, which
+fixes the texture count at six, and two more that the shading pass fills. The
+chamber's 12 are 2 + 2 + 4, which fixes its texture count at two, and four more
+for the same reason.
 
 The arrays sit end to end with 16 bytes between them:
 `0x675fa0 + 16384 * 18 = 0x6bdfa0`, and the chambers start at `0x6bdfb0`;
@@ -163,6 +170,36 @@ gets every other cell wrong.
 is **not** two thirds - that would be `0xAAAB`. The 0.4%-of-a-cell difference
 changes which triangle a borderline query lands in, so it is reproduced rather
 than corrected.
+
+## The shading database, DATA\*.LTE
+
+A fifth file, opened by the terrain loader itself at `0x413460` with
+`sprintf("%s.lte")` against the `data` directory. It is 114,688 bytes, which is
+seven per cell, and the loader scatters those seven into the four cell arrays
+in this order:
+
+```
+1  ground[+4]       one per triangle half
+2  ground[+5]
+3  box A[+0x10]
+4  chamber[+8]      three of them
+5  chamber[+9]
+6  chamber[+10]
+7  box B[+0x10]
+```
+
+It is a **cache**, not source data. When the file is absent the engine prints
+`No .LTE file.  Shading database for the last time during loading.  Phew!` and
+computes the same values at `0x41c5d0`, walking the grid with a light direction
+held in four globals at `0x666f34`. All 26 levels ship one.
+
+This is not the same format as `FOG\<stem>.LTE`, which is 4,096 bytes and is
+the 16-row [colour ramp](colour-tables.md). The two files share an extension
+and nothing else: line 17 of the [.LVL](lvl.md) names the `FOG\` one, and the
+terrain loader opens the `DATA\` one without asking the manifest. 114,688 is a
+multiple of 256, so a ramp parser that checks only for that reads the shading
+database as a 448-row ramp and says nothing - which is what the old note in
+`colour-tables.md` about "448 rows" was.
 
 ## Which half of a cell a point is in
 
@@ -288,6 +325,13 @@ in the high bits, not as a colour. It is not confirmed.
 
 ## Unknown
 
-The third `u16` of the ground cell, and the four spare bytes of the chamber
-cell. The meaning of the `.CLR` high byte. Which member of each box side pair
-faces which way. Why `0xABB9` is not `0xAAAB`.
+What the shade bytes mean numerically. They are not a 0-15 index into the
+[colour ramp](colour-tables.md): `FLOAT`'s first ground byte runs 160 to 255
+and its second is only ever 0 or 1, so the pair may be a `u16` that the ramp
+index is extracted from, or two separate quantities. The chamber's three behave
+the same way - one wide, one narrow, one tiny.
+
+The one remaining spare byte in each box cell (+17) and in each chamber cell
+(+11). The meaning of the `.CLR` high byte. Which member of each box side pair
+faces which way. Why `0xABB9` is not `0xAAAB`. What sets the light direction at
+`0x666f34`, which is in uninitialised data.

@@ -207,6 +207,71 @@ pub struct ChamberLayer {
     pub textures: Indices,
 }
 
+/// `DATA\<stem>.LTE`: the precomputed shading database, seven bytes per cell.
+///
+/// Not the same format as `FOG\<stem>.LTE`, which is the 16-row
+/// [colour ramp](crate::colour::Ramp). The terrain loader opens this one
+/// itself with `sprintf("%s.lte")` against the `data` directory, at
+/// `HELLBEND.EXE:0x413460`, and the two files simply share an extension.
+///
+/// The loader reads the seven bytes in this order and scatters them into the
+/// four cell arrays, which is what fixes both the order and the destinations:
+///
+/// ```text
+/// ground[+4]    ground[+5]    two bytes, one per triangle half
+/// boxA[+0x10]   one byte
+/// chamber[+8]   chamber[+9]   chamber[+10]    three bytes
+/// boxB[+0x10]   one byte
+/// ```
+///
+/// It is a cache. When the file is missing the engine says so - "No .LTE file.
+/// Shading database for the last time during loading.  Phew!" - and computes
+/// the same values at `0x41c5d0` from the terrain and a light direction.
+#[derive(Debug, Clone)]
+pub struct Shading {
+    /// Two per cell, one per triangle half.
+    pub ground: Vec<[u8; 2]>,
+    /// One per cell.
+    pub box_a: Vec<u8>,
+    /// Three per cell.
+    pub chambers: Vec<[u8; 3]>,
+    /// One per cell.
+    pub box_b: Vec<u8>,
+}
+
+impl Shading {
+    /// Seven bytes per cell.
+    pub const PER_CELL: usize = 7;
+    pub const BYTES: usize = CELLS * Self::PER_CELL;
+
+    pub fn parse(data: &[u8]) -> Result<Shading> {
+        if data.len() != Self::BYTES {
+            return Err(Error::WrongSize {
+                what: "LTE shading database",
+                want: format!("{} bytes", Self::BYTES),
+                have: data.len(),
+            });
+        }
+        let mut out = Shading {
+            ground: Vec::with_capacity(CELLS),
+            box_a: Vec::with_capacity(CELLS),
+            chambers: Vec::with_capacity(CELLS),
+            box_b: Vec::with_capacity(CELLS),
+        };
+        for cell in data.chunks_exact(Self::PER_CELL) {
+            out.ground.push([cell[0], cell[1]]);
+            out.box_a.push(cell[2]);
+            out.chambers.push([cell[3], cell[4], cell[5]]);
+            out.box_b.push(cell[6]);
+        }
+        Ok(out)
+    }
+
+    pub fn ground_at(&self, x: i32, z: i32) -> [u8; 2] {
+        self.ground[(z as usize & (SIDE - 1)) * SIDE + (x as usize & (SIDE - 1))]
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Terrain {
     /// From `.RAW`.
@@ -219,6 +284,9 @@ pub struct Terrain {
     pub chambers: ChamberLayer,
     /// From `.RA4`, `.RA5`, `.CL2`.
     pub boxes_b: BoxLayer,
+    /// From `DATA\<stem>.LTE`. Absent when the level ships without one, in
+    /// which case the engine computes it at load time.
+    pub shading: Option<Shading>,
 }
 
 /// The thirteen files, in load order, as extension suffixes appended to the
@@ -268,6 +336,10 @@ impl Terrain {
                     BOX_TEXTURES,
                     "box B textures",
                 )?,
+            },
+            shading: match fetch("lte") {
+                Some(bytes) => Some(Shading::parse(&bytes)?),
+                None => None,
             },
         })
     }

@@ -52,15 +52,22 @@ impl Ramp {
     pub const LEVELS: usize = 16;
     pub const BYTES: usize = Self::LEVELS * 256;
 
+    /// Every ramp in both archives is exactly 16 rows.
+    ///
+    /// The size is checked exactly rather than as "a multiple of 256", because
+    /// `DATA\<stem>.LTE` is 114,688 bytes, which is also a multiple of 256 and
+    /// is not a ramp at all - it is the
+    /// [shading database](crate::terrain::Shading). A lenient parser reads it
+    /// as a 448-row ramp and says nothing.
     pub fn parse(data: &[u8]) -> Result<Ramp> {
-        if data.is_empty() || data.len() % 256 != 0 {
+        if data.len() != Self::BYTES {
             return Err(Error::WrongSize {
                 what: "LTE/FOG ramp",
-                want: "a multiple of 256".into(),
+                want: format!("{} bytes", Self::BYTES),
                 have: data.len(),
             });
         }
-        Ok(Ramp { levels: data.len() / 256, table: data.to_vec() })
+        Ok(Ramp { levels: Self::LEVELS, table: data.to_vec() })
     }
 
     pub fn shade(&self, level: usize, index: u8) -> u8 {

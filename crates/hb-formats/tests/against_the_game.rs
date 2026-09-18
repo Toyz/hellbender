@@ -339,6 +339,49 @@ fn every_level_loads_its_thirteen_terrain_grids() {
 }
 
 #[test]
+fn every_level_ships_a_shading_database_of_seven_bytes_a_cell() {
+    let pod = archive!("GAME.POD");
+    let mut levels = 0;
+    for e in pod.entries().iter().filter(|e| e.ext() == "lvl") {
+        let level = lvl::Level::parse(pod.bytes(e)).unwrap();
+        let stem = level.stem().to_string();
+        let lte = pod
+            .read("data", &format!("{stem}.lte"))
+            .unwrap_or_else(|_| panic!("{stem} has no data\\{stem}.lte"));
+        assert_eq!(lte.len(), terrain::Shading::BYTES, "{stem}");
+        let shading = terrain::Shading::parse(lte).unwrap();
+        assert_eq!(shading.ground.len(), terrain::CELLS);
+        assert_eq!(shading.box_a.len(), terrain::CELLS);
+        assert_eq!(shading.chambers.len(), terrain::CELLS);
+        assert_eq!(shading.box_b.len(), terrain::CELLS);
+        levels += 1;
+    }
+    assert_eq!(levels, 26);
+}
+
+#[test]
+fn the_two_lte_extensions_are_different_formats() {
+    // FOG\<stem>.lte is a 16-row colour ramp; DATA\<stem>.lte is the shading
+    // database. The .LVL names the first; the terrain loader opens the second.
+    let pod = archive!("GAME.POD");
+    let fog = pod.read("fog", "float.lte").unwrap();
+    let data = pod.read("data", "float.lte").unwrap();
+    assert_eq!(fog.len(), colour::Ramp::BYTES);
+    assert_eq!(data.len(), terrain::Shading::BYTES);
+    colour::Ramp::parse(fog).expect("the fog one is a ramp");
+    terrain::Shading::parse(data).expect("the data one is a shading database");
+    // And each refuses the other. 114,688 is a multiple of 256, so a ramp
+    // parser that only checked that would read the shading database as a
+    // 448-row ramp without complaining.
+    assert_eq!(data.len() % 256, 0, "the trap is real");
+    assert!(colour::Ramp::parse(data).is_err());
+    assert!(terrain::Shading::parse(fog).is_err());
+
+    let level = lvl::Level::parse(pod.read("levels", "float.lvl").unwrap()).unwrap();
+    assert_eq!(level.slot("light"), Some(("fog", "float.lte")));
+}
+
+#[test]
 fn the_ramps_are_sixteen_rows_that_fade_to_opposite_ends() {
     let pod = archive!("GAME.POD");
     let lte = colour::Ramp::parse(pod.read("fog", "float.lte").unwrap()).unwrap();

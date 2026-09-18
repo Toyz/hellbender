@@ -2,7 +2,7 @@
 title: The colour tables - .MAP, .LTE, .FOG, .MIX
 status: partial
 covers: FOG\*.MAP, FOG\*.LTE, FOG\*.FOG, FOG\*.MIX, DATA\*.LTE
-worklog: 6
+worklog: 6, 11
 ---
 
 # The colour tables
@@ -51,9 +51,14 @@ Indices 240 to 255 are **reserved** and every level passes them through
 unchanged. See below.
 
 There is a second, much larger `.LTE` per level under `DATA\` at 114,688
-bytes, which is 448 rows of 256. Line 17 of the [.LVL](lvl.md) names a `.lte`
-without a directory, and both directories hold one, so which of the two the
-engine opens is not yet established.
+bytes. It is **not a ramp**: it is the
+[terrain shading database](terrain.md), seven bytes per cell. 114,688 happens
+to be a multiple of 256, so a parser that checks only for that reads it as a
+448-row ramp without complaining - `Ramp::parse` in the port checks for exactly
+4,096 bytes for that reason.
+
+Line 17 of the [.LVL](lvl.md) names the `FOG\` one. The terrain loader opens
+the `DATA\` one itself, without asking the manifest.
 
 ## .FOG - the fog ramp
 
@@ -117,6 +122,6 @@ indices included.
 
 ## Unknown
 
-Which `.LTE` line 17 of a `.LVL` resolves to, and what the 448 rows of the
-`DATA\` variant are - 448 is 28 x 16, so it may be 28 ramps of 16 rows. What
-`KREASH.MIX`'s 7,936 bytes are. How `.MAP` was generated.
+What `KREASH.MIX`'s 7,936 bytes are. How `.MAP` was generated. How the terrain
+shading database's per-cell bytes index into these ramps, given that they are
+not in 0-15 - see [terrain](terrain.md).
