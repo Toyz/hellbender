@@ -324,115 +324,34 @@ fn cmd_heightmap(name: &str, out: &Path) -> Result<(), String> {
 }
 
 fn cmd_ground(name: &str, out: &Path) -> Result<(), String> {
-    let pod = open_pod("game")?;
+    let game = open_pod("game")?;
     let startup = open_pod("startup")?;
-    let data = pod
-        .read("levels", &format!("{name}.lvl"))
-        .map_err(|e| e.to_string())?;
-    let level = lvl::Level::parse(data).map_err(|e| e.to_string())?;
-    let stem = level.stem().to_string();
-    let t = terrain::Terrain::load(|ext| {
-        pod.read("data", &format!("{stem}.{ext}")).ok().map(<[u8]>::to_vec)
-    })
-    .map_err(|e| e.to_string())?;
-
-    // The texture list, resolved to images. An entry may live in either
-    // archive, and a level names textures the front end also uses.
-    let names = text::name_list(
-        pod.read("data", &format!("{stem}.tex")).map_err(|e| e.to_string())?,
-        "TEX",
-    )
-    .map_err(|e| e.to_string())?;
-    let textures: Vec<Option<raw::Image>> = names
-        .iter()
-        .map(|n| {
-            let bytes = pod.read("art", n).or_else(|_| startup.read("art", n)).ok()?;
-            raw::Image::parse_guessed(bytes).ok().flatten()
-        })
-        .collect();
-
-    let (_, palette_name) = level.slot("ground_palette").ok_or("no ground palette")?;
-    let palette_bytes = pod
-        .read("art", palette_name)
-        .or_else(|_| startup.read("art", palette_name))
-        .map_err(|e| e.to_string())?;
-    let palette = act::Palette::parse(palette_bytes).map_err(|e| e.to_string())?;
-    let ramp = level
-        .slot("light")
-        .and_then(|(dir, file)| pod.read(dir, file).ok())
-        .and_then(|b| colour::Ramp::parse(b).ok());
-
-    let grid = hb_world::Grid::new(&t);
+    let level = hb_render::Level::load(&game, Some(&startup), name)?;
+    let grid = hb_world::Grid::new(&level.terrain);
     let scale = 5;
-    let (pixels, missing) = view::textured(&grid, &textures, &palette, ramp.as_ref(), scale);
+    let (pixels, missing) = view::textured(
+        &grid,
+        &level.textures,
+        &level.palette,
+        level.light.as_ref(),
+        scale,
+    );
     let side = terrain::SIDE * scale;
     std::fs::write(out, png::rgb(side, side, &pixels)).map_err(|e| e.to_string())?;
-    let resolved = textures.iter().filter(|t| t.is_some()).count();
     println!(
-        "{stem}: {resolved}/{} textures resolved, {missing} cells without one, \
-         palette {palette_name}, ramp {} -> {}",
-        names.len(),
-        if ramp.is_some() { "yes" } else { "no" },
+        "{}: {}/{} textures resolved, {missing} cells without one -> {}",
+        level.stem,
+        level.resolved_textures(),
+        level.texture_names.len(),
         out.display()
     );
     Ok(())
 }
 
-/// Everything a level needs to be drawn, loaded out of the archives.
-struct Loaded {
-    stem: String,
-    terrain: terrain::Terrain,
-    textures: Vec<Option<raw::Image>>,
-    palette: act::Palette,
-    light: Option<colour::Ramp>,
-    fog: Option<colour::Ramp>,
-}
-
-fn load_level(name: &str) -> Result<(Pod, Loaded), String> {
-    let pod = open_pod("game")?;
-    let startup = open_pod("startup")?;
-    let data = pod
-        .read("levels", &format!("{name}.lvl"))
-        .map_err(|e| e.to_string())?;
-    let level = lvl::Level::parse(data).map_err(|e| e.to_string())?;
-    let stem = level.stem().to_string();
-    let terrain = terrain::Terrain::load(|ext| {
-        pod.read("data", &format!("{stem}.{ext}")).ok().map(<[u8]>::to_vec)
-    })
-    .map_err(|e| e.to_string())?;
-
-    let names = text::name_list(
-        pod.read("data", &format!("{stem}.tex")).map_err(|e| e.to_string())?,
-        "TEX",
-    )
-    .map_err(|e| e.to_string())?;
-    let textures = names
-        .iter()
-        .map(|n| {
-            let bytes = pod.read("art", n).or_else(|_| startup.read("art", n)).ok()?;
-            raw::Image::parse_guessed(bytes).ok().flatten()
-        })
-        .collect();
-
-    let (_, palette_name) = level.slot("ground_palette").ok_or("no ground palette")?;
-    let palette_bytes = pod
-        .read("art", palette_name)
-        .or_else(|_| startup.read("art", palette_name))
-        .map_err(|e| e.to_string())?;
-    let palette = act::Palette::parse(palette_bytes).map_err(|e| e.to_string())?;
-    let ramp = |slot: &str| {
-        level
-            .slot(slot)
-            .and_then(|(dir, file)| pod.read(dir, file).ok())
-            .and_then(|b| colour::Ramp::parse(b).ok())
-    };
-    let light = ramp("light");
-    let fog = ramp("fog");
-    Ok((pod, Loaded { stem, terrain, textures, palette, light, fog }))
-}
-
 fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
-    let (_pod, level) = load_level(name)?;
+    let game = open_pod("game")?;
+    let startup = open_pod("startup")?;
+    let level = hb_render::Level::load(&game, Some(&startup), name)?;
     let grid = hb_world::Grid::new(&level.terrain);
 
     // Default to the middle of the map, a little above the ground.
@@ -462,13 +381,7 @@ fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
     target.clear(0);
     let mut camera = hb_render::Camera::looking_at(x, y, z, hb_formats::Angle(yaw));
     camera.pitch = hb_formats::Angle(pitch as u16);
-    let scene = hb_render::scene::Scene {
-        grid,
-        textures: &level.textures,
-        palette: &level.palette,
-        light: level.light.as_ref(),
-        fog: level.fog.as_ref(),
-    };
+    let scene = level.scene();
     let drawn = hb_render::draw_world(&mut target, &scene, &camera);
     let rgb = target.to_rgb(&level.palette);
     std::fs::write(out, png::rgb(w, h, &rgb)).map_err(|e| e.to_string())?;

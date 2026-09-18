@@ -2,7 +2,7 @@
 title: The Rust port
 status: partial
 covers: crates/
-worklog: 7, 8, 9, 10, 11, 12, 13
+worklog: 7, 8, 9, 10, 11, 12, 13, 14
 ---
 
 # The Rust port
@@ -29,8 +29,10 @@ observed fact. Everything else describes what the data and the binary do.
 - **Every documented claim gets a test.** `crates/hb-formats/tests/` checks the
   documentation against the shipped archives, and skips when the archives are
   not present.
-- **No dependencies until one is unavoidable.** The data layer has none, so the
-  workspace builds offline. Windowing and audio will need some.
+- **No dependencies until one is unavoidable.** Every crate that reads or draws
+  the game's data has none, so that half of the workspace builds offline and
+  will keep building. `hb-fly` is the exception and the only one: a window and a
+  keyboard are not worth writing by hand.
 
 ## Crates
 
@@ -38,16 +40,17 @@ observed fact. Everything else describes what the data and the binary do.
 hb-pod       the POD container                      done
 hb-formats   act raw lvl terrain mrgl colour text   data layer done
 hb-world     cell geometry and height queries       started
-hb-render    the software rasteriser, 8-bit indexed  terrain done
-hb           the `hb` inspection tool               growing
+hb-render    the software rasteriser, plus the       terrain done
+             level loader both binaries share
+hb           the `hb` inspection tool, no deps       growing
+hb-fly       a window and a keyboard, via minifb     flies
 ```
 
-Planned, none of them started:
+Planned, neither started:
 
 ```
 hb-sim       flight model, weapons, enemy logic phases
 hb-audio     the mixer, .MOD playback, .WAV effects
-hb-app       window, input, the frame loop
 ```
 
 ## Stages
@@ -68,10 +71,10 @@ point-in-triangle test and the surface normal - plus `heightAtGrid` and the box
 span query. Still to do: the plane evaluation as a height lookup at an
 arbitrary point, the box and chamber intersection tests, and collision.
 
-**4. A picture.** Done for the terrain. `hb ground` draws a level from above
-and `hb fly` draws a perspective frame from inside it, both in 8-bit indexed
-colour through the level's palette and ramps. Still to do: chambers, models,
-sprites, the sky, the cockpit, and a window to put them in.
+**4. A picture.** Done for the terrain, and it moves. `hb ground` draws a level
+from above, `hb fly` draws one frame from inside it, and `hb-fly` opens a window
+and flies through it at 60 frames a second in any of the game's three screen
+sizes. Still to do: chambers, models, sprites, the sky and the cockpit.
 
 **5. Models.** Draw the MRGL meshes. Needs the remaining node types read - type
 0x18 above all, which is 98% of all nodes and is still an inference.
@@ -116,6 +119,8 @@ cargo test                      needs the disc; skips without it
 cargo run -p hb -- check
 cargo run -p hb -- level float
 HB_GAME=/path/to/disc cargo run -p hb -- terrain hoth
+
+cargo run --release -p hb-fly -- hoth --mode 480 --scale 1
 ```
 
 `HB_GAME` points at the directory holding `system/GAME.POD`. It defaults to

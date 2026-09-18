@@ -7,7 +7,8 @@ it to Rust.
 original/            symlink to the game disc - read only, never modified
 docs/                the reference: formats, engine, content, port plan
 worklog/             how each of those was worked out, newest last
-crates/              the Rust port - hb-pod, hb-formats, hb-world, hb
+crates/              the Rust port - hb-pod, hb-formats, hb-world,
+                     hb-render, hb (tools), hb-fly (the window)
 tools/               Python: pod.py, pe.py, mrgl.py, worklog.py, docs.py
 work/                scratch - extracted archives, dumps. Not checked in.
 ```
@@ -45,8 +46,19 @@ $ cargo run -p hb -- ground hoth /tmp/hoth.png
 hoth: 205/205 textures resolved, 0 cells without one, palette hoth.act, ramp yes
 ```
 
-There is no real renderer and no simulation yet - see
-[docs/port/plan.md](docs/port/plan.md).
+`hb-fly` opens a window and flies through a level at 60 frames a second, in any
+of the game's three screen sizes.
+
+```
+$ cargo run --release -p hb-fly -- hoth --mode 480 --scale 1
+hoth: 205/205 textures, 640x480 screen
+```
+
+Arrows steer, `w`/`s` is the throttle, `a`/`d` strafes, `r`/`f` climbs and
+dives, tab cycles the level, escape quits.
+
+Chambers, models, sprites, the sky and the cockpit are not drawn yet, and there
+is no simulation - see [docs/port/plan.md](docs/port/plan.md).
 
 ## Getting the data
 
@@ -62,6 +74,8 @@ cargo run -p hb -- png startup art/ckpt200.raw /tmp/cockpit.png
 cargo run -p hb -- view startup:ship.bin /tmp/ship.png
 cargo run -p hb -- heightmap float /tmp/float.png
 cargo run -p hb -- ground jurasic /tmp/jurasic.png
+cargo run -p hb -- fly hoth /tmp/frame.png 40 100 12288 60 4096
+cargo run --release -p hb-fly -- hoth
 ```
 
 ## Tools

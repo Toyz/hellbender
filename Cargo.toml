@@ -6,6 +6,7 @@ members = [
     "crates/hb-world",
     "crates/hb-render",
     "crates/hb",
+    "crates/hb-fly",
 ]
 
 [workspace.package]

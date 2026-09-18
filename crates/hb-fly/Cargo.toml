@@ -1,0 +1,15 @@
+[package]
+name = "hb-fly"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+# The only crate in the workspace with an external dependency. Everything that
+# reads or draws the game's data is dependency-free and builds offline; this
+# one needs a window and a keyboard, which is not worth writing by hand.
+[dependencies]
+hb-pod = { path = "../hb-pod" }
+hb-formats = { path = "../hb-formats" }
+hb-world = { path = "../hb-world" }
+hb-render = { path = "../hb-render" }
+minifb = "0.28"

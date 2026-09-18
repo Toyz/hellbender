@@ -8,9 +8,11 @@
 //! renderer's own rather than the engine's, the comment says so.
 
 pub mod camera;
+pub mod level;
 pub mod raster;
 pub mod scene;
 
 pub use camera::Camera;
+pub use level::Level;
 pub use raster::Target;
 pub use scene::draw_world;
