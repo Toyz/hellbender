@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-12 entries: content 1, decomp 4, format 9, port 6, render 4, test 2, tooling 2, world 6.
+13 entries: content 1, decomp 4, format 9, port 7, render 5, test 2, tooling 2, world 7.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -23,3 +23,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 10 | [The ground query closes, and a level that looks like its own name](worklog/0010-the-ground-query-closes-and-a-level-that-looks-like-its-own.md) | 2026-09-17 | world, decomp, port, render |
 | 11 | [The other .LTE is not a ramp, and a lenient parser was hiding it](worklog/0011-the-other-lte-is-not-a-ramp-and-a-lenient-parser-was-hiding.md) | 2026-09-17 | format, world, port, test |
 | 12 | [A texture word is twelve bits and four, and the map draws itself](worklog/0012-a-texture-word-is-twelve-bits-and-four-and-the-map-draws-its.md) | 2026-09-17 | format, world, render, port |
+| 13 | [A perspective frame, and two convention bugs the picture found](worklog/0013-a-perspective-frame-and-two-convention-bugs-the-picture-foun.md) | 2026-09-17 | render, port, world |

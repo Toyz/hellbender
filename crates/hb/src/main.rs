@@ -24,6 +24,7 @@ hb - inspect Hellbender's data
   hb view <name.bin> <out.png>      a model, flat shaded, as a PNG
   hb heightmap <level> <out.png>    a level's ground, lit, from above
   hb ground <level> <out.png>       a level's ground, textured, from above
+  hb fly <level> <out.png> [x z yaw height pitch]   one frame from in-level
   hb check                          parse everything and report what fails
 
 <pod> is a path, or one of `game` and `startup` to use $HB_GAME (default
@@ -76,6 +77,7 @@ fn run(args: &[&str]) -> Result<(), String> {
         ["view", name, out] => cmd_view(name, Path::new(out)),
         ["heightmap", name, out] => cmd_heightmap(name, Path::new(out)),
         ["ground", name, out] => cmd_ground(name, Path::new(out)),
+        ["fly", name, out, rest @ ..] => cmd_fly(name, Path::new(out), rest),
         ["check"] => cmd_check(),
         _ => Err(format!("unknown command\n\n{USAGE}")),
     }
@@ -203,9 +205,19 @@ fn cmd_terrain(name: &str) -> Result<(), String> {
         Some(sh) => println!("  shading           {} cells, 7 bytes each", sh.ground.len()),
         None => println!("  shading           none shipped; the engine computes it"),
     }
-    let boxes_a = t.boxes_a.top.values.iter().filter(|&&v| v != 0).count();
-    let boxes_b = t.boxes_b.top.values.iter().filter(|&&v| v != 0).count();
-    println!("  cells with a box A: {boxes_a}, box B: {boxes_b}");
+    let grid = hb_world::Grid::new(&t);
+    let count = |f: &dyn Fn(hb_world::Cell) -> bool| {
+        (0..terrain::SIDE as i32)
+            .flat_map(|z| (0..terrain::SIDE as i32).map(move |x| hb_world::Cell::new(x, z)))
+            .filter(|c| f(*c))
+            .count()
+    };
+    println!(
+        "  cells with a box A: {}, box B: {}, chamber: {}",
+        count(&|c| grid.has_box_a(c)),
+        count(&|c| grid.has_box_b(c)),
+        count(&|c| grid.has_chamber(c))
+    );
 
     if let Ok(tex) = pod.read("data", &format!("{stem}.tex")) {
         let names = text::name_list(tex, "TEX").map_err(|e| e.to_string())?;
@@ -361,6 +373,113 @@ fn cmd_ground(name: &str, out: &Path) -> Result<(), String> {
          palette {palette_name}, ramp {} -> {}",
         names.len(),
         if ramp.is_some() { "yes" } else { "no" },
+        out.display()
+    );
+    Ok(())
+}
+
+/// Everything a level needs to be drawn, loaded out of the archives.
+struct Loaded {
+    stem: String,
+    terrain: terrain::Terrain,
+    textures: Vec<Option<raw::Image>>,
+    palette: act::Palette,
+    light: Option<colour::Ramp>,
+    fog: Option<colour::Ramp>,
+}
+
+fn load_level(name: &str) -> Result<(Pod, Loaded), String> {
+    let pod = open_pod("game")?;
+    let startup = open_pod("startup")?;
+    let data = pod
+        .read("levels", &format!("{name}.lvl"))
+        .map_err(|e| e.to_string())?;
+    let level = lvl::Level::parse(data).map_err(|e| e.to_string())?;
+    let stem = level.stem().to_string();
+    let terrain = terrain::Terrain::load(|ext| {
+        pod.read("data", &format!("{stem}.{ext}")).ok().map(<[u8]>::to_vec)
+    })
+    .map_err(|e| e.to_string())?;
+
+    let names = text::name_list(
+        pod.read("data", &format!("{stem}.tex")).map_err(|e| e.to_string())?,
+        "TEX",
+    )
+    .map_err(|e| e.to_string())?;
+    let textures = names
+        .iter()
+        .map(|n| {
+            let bytes = pod.read("art", n).or_else(|_| startup.read("art", n)).ok()?;
+            raw::Image::parse_guessed(bytes).ok().flatten()
+        })
+        .collect();
+
+    let (_, palette_name) = level.slot("ground_palette").ok_or("no ground palette")?;
+    let palette_bytes = pod
+        .read("art", palette_name)
+        .or_else(|_| startup.read("art", palette_name))
+        .map_err(|e| e.to_string())?;
+    let palette = act::Palette::parse(palette_bytes).map_err(|e| e.to_string())?;
+    let ramp = |slot: &str| {
+        level
+            .slot(slot)
+            .and_then(|(dir, file)| pod.read(dir, file).ok())
+            .and_then(|b| colour::Ramp::parse(b).ok())
+    };
+    let light = ramp("light");
+    let fog = ramp("fog");
+    Ok((pod, Loaded { stem, terrain, textures, palette, light, fog }))
+}
+
+fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
+    let (_pod, level) = load_level(name)?;
+    let grid = hb_world::Grid::new(&level.terrain);
+
+    // Default to the middle of the map, a little above the ground.
+    let cell = |n: i32| n * terrain::CELL_SIZE;
+    let mut x = cell(64);
+    let mut z = cell(64);
+    let mut yaw = 0x2000u16;
+    let mut height = 6i32;
+    let mut pitch = 0i32;
+    if let [sx, sz, syaw, more @ ..] = rest {
+        x = cell(sx.parse().map_err(|_| "x must be a cell index")?);
+        z = cell(sz.parse().map_err(|_| "z must be a cell index")?);
+        yaw = syaw.parse().map_err(|_| "yaw must be 0..65535")?;
+        if let [h, rest @ ..] = more {
+            height = h.parse().map_err(|_| "height must be world units")?;
+            if let [p, ..] = rest {
+                pitch = p.parse().map_err(|_| "pitch must be -32768..32767")?;
+            }
+        }
+    }
+    let ground = hb_render::scene::ground_height(&grid, x, z);
+    let y = ground + (height << 16);
+
+    let (w, h) = hb_render::Target::MODE_200;
+    let mut target = hb_render::Target::new(w, h);
+    // Index 0 is the transparent colour and also, here, the sky.
+    target.clear(0);
+    let mut camera = hb_render::Camera::looking_at(x, y, z, hb_formats::Angle(yaw));
+    camera.pitch = hb_formats::Angle(pitch as u16);
+    let scene = hb_render::scene::Scene {
+        grid,
+        textures: &level.textures,
+        palette: &level.palette,
+        light: level.light.as_ref(),
+        fog: level.fog.as_ref(),
+    };
+    let drawn = hb_render::draw_world(&mut target, &scene, &camera);
+    let rgb = target.to_rgb(&level.palette);
+    std::fs::write(out, png::rgb(w, h, &rgb)).map_err(|e| e.to_string())?;
+    println!(
+        "{}: cell ({}, {}) yaw {yaw:#06x} - {} ground, {} box triangles, {} clipped -> {}",
+        level.stem,
+        x / terrain::CELL_SIZE,
+        z / terrain::CELL_SIZE,
+        drawn.ground,
+        drawn.boxes,
+        drawn.clipped,
         out.display()
     );
     Ok(())

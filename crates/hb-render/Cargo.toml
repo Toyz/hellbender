@@ -1,11 +1,9 @@
 [package]
-name = "hb"
+name = "hb-render"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-hb-pod = { path = "../hb-pod" }
 hb-formats = { path = "../hb-formats" }
 hb-world = { path = "../hb-world" }
-hb-render = { path = "../hb-render" }

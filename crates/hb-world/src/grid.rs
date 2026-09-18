@@ -317,13 +317,34 @@ impl<'a> Grid<'a> {
         None
     }
 
-    /// Whether a cell carries a box in either set. A box with a zero top is
-    /// absent; box set B measures downward, so its absent value is zero too.
+    /// Whether a cell carries a box in the given set.
+    ///
+    /// A box is absent when its bottom and top are equal, not when either is
+    /// zero. That matters for box set B, whose altitudes are measured downward
+    /// so that its "nothing here" byte of 255 becomes an altitude of zero and
+    /// its byte 0 becomes -32,640: testing the top against zero calls almost
+    /// every cell a box. In `FLOAT`, bottom equals top in 15,242 cells for set
+    /// A and 15,308 for set B, which is the right order of magnitude for a
+    /// level with a few hundred structures.
+    pub fn has_box(&self, layer: Layer, cell: Cell) -> bool {
+        match self.box_span(layer, cell) {
+            Some((bottom, top)) => bottom != top,
+            None => false,
+        }
+    }
+
     pub fn has_box_a(&self, cell: Cell) -> bool {
-        self.terrain.boxes_a.top.at(cell.x, cell.z) != 0
+        self.has_box(Layer::BoxA, cell)
     }
 
     pub fn has_box_b(&self, cell: Cell) -> bool {
-        self.terrain.boxes_b.top.at(cell.x, cell.z) != 0
+        self.has_box(Layer::BoxB, cell)
+    }
+
+    /// Whether the cell has a chamber - a floor and ceiling that are not the
+    /// same altitude.
+    pub fn has_chamber(&self, cell: Cell) -> bool {
+        self.terrain.chambers.floor.at(cell.x, cell.z)
+            != self.terrain.chambers.ceiling.at(cell.x, cell.z)
     }
 }

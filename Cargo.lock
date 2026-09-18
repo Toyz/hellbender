@@ -8,6 +8,7 @@ version = "0.1.0"
 dependencies = [
  "hb-formats",
  "hb-pod",
+ "hb-render",
  "hb-world",
 ]
 
@@ -21,6 +22,14 @@ dependencies = [
 [[package]]
 name = "hb-pod"
 version = "0.1.0"
+
+[[package]]
+name = "hb-render"
+version = "0.1.0"
+dependencies = [
+ "hb-formats",
+ "hb-world",
+]
 
 [[package]]
 name = "hb-world"

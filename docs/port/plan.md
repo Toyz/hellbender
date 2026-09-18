@@ -2,7 +2,7 @@
 title: The Rust port
 status: partial
 covers: crates/
-worklog: 7, 8, 9, 10, 11, 12
+worklog: 7, 8, 9, 10, 11, 12, 13
 ---
 
 # The Rust port
@@ -38,13 +38,13 @@ observed fact. Everything else describes what the data and the binary do.
 hb-pod       the POD container                      done
 hb-formats   act raw lvl terrain mrgl colour text   data layer done
 hb-world     cell geometry and height queries       started
+hb-render    the software rasteriser, 8-bit indexed  terrain done
 hb           the `hb` inspection tool               growing
 ```
 
 Planned, none of them started:
 
 ```
-hb-render    the software rasteriser, 8-bit indexed, matching the originals
 hb-sim       flight model, weapons, enemy logic phases
 hb-audio     the mixer, .MOD playback, .WAV effects
 hb-app       window, input, the frame loop
@@ -68,12 +68,10 @@ point-in-triangle test and the surface normal - plus `heightAtGrid` and the box
 span query. Still to do: the plane evaluation as a height lookup at an
 arbitrary point, the box and chamber intersection tests, and collision.
 
-**4. A picture.** Started from the top down rather than from the cockpit:
-`hb ground` draws a whole level textured, palettised and shaded, which proved
-the texture index, the texture list, the palette and the shading database work
-together. Still to do the real thing - `hb-render` plus `hb-app`: a window, a
-camera, and the terrain drawn in perspective in 8-bit indexed colour, fogged.
-That is the first point at which the port can be compared with a screenshot.
+**4. A picture.** Done for the terrain. `hb ground` draws a level from above
+and `hb fly` draws a perspective frame from inside it, both in 8-bit indexed
+colour through the level's palette and ramps. Still to do: chambers, models,
+sprites, the sky, the cockpit, and a window to put them in.
 
 **5. Models.** Draw the MRGL meshes. Needs the remaining node types read - type
 0x18 above all, which is 98% of all nodes and is still an inference.

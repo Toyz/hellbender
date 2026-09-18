@@ -1,6 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["crates/hb-pod", "crates/hb-formats", "crates/hb-world", "crates/hb"]
+members = [
+    "crates/hb-pod",
+    "crates/hb-formats",
+    "crates/hb-world",
+    "crates/hb-render",
+    "crates/hb",
+]
 
 [workspace.package]
 version = "0.1.0"

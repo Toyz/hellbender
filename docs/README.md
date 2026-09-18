@@ -32,6 +32,7 @@ How the game works, subsystem by subsystem.
 | Page | Status | Covers |
 | --- | --- | --- |
 | [How the game is put together](engine/overview.md) | partial | HELLBEND.EXE |
+| [The port's renderer](engine/rendering.md) | partial | crates/hb-render |
 
 ## Content
 

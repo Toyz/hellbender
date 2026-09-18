@@ -224,10 +224,8 @@ pub fn heightmap(grid: &hb_world::Grid, scale: usize) -> (Vec<u8>, usize, usize)
             if grid.has_box_a(cell) {
                 boxes += 1;
             }
-            // A chamber whose ceiling is not at the default is a real chamber.
-            let roofed = grid
-                .height_at_grid(Layer::ChamberCeiling, x, z)
-                .is_some_and(|c| c != 0);
+            // A chamber is real when its floor and ceiling differ.
+            let roofed = grid.has_chamber(cell);
             if roofed {
                 chambers += 1;
             }
