@@ -141,6 +141,100 @@ fn cube_is_a_cube() {
 }
 
 #[test]
+fn every_polygon_binds_to_a_material_that_exists() {
+    let (mut bound, mut unbound) = (0usize, 0usize);
+    for name in ["STARTUP.POD", "GAME.POD"] {
+        let pod = archive!(name);
+        for e in pod.entries() {
+            if e.dir() != "models" || e.ext() != "bin" {
+                continue;
+            }
+            let model = mrgl::Model::parse(pod.bytes(e)).unwrap();
+            for poly in &model.polygons {
+                match poly.material {
+                    Some(m) => {
+                        assert!(
+                            m < model.materials.len(),
+                            "{}: material {m} of {}",
+                            e.name,
+                            model.materials.len()
+                        );
+                        bound += 1;
+                    }
+                    None => unbound += 1,
+                }
+            }
+        }
+    }
+    // Seven models are untextured throughout and account for every polygon
+    // that has no material before it. They carry a flat-colour node instead.
+    assert_eq!(unbound, 1_030, "polygons with no material before them");
+    assert_eq!(bound + unbound, 33_728);
+}
+
+#[test]
+fn an_untextured_polygon_carries_a_flat_colour_instead() {
+    let mut untextured: Vec<(String, usize)> = Vec::new();
+    let mut bare_and_colourless: Vec<(String, usize)> = Vec::new();
+    for name in ["STARTUP.POD", "GAME.POD"] {
+        let pod = archive!(name);
+        for e in pod.entries() {
+            if e.dir() != "models" || e.ext() != "bin" {
+                continue;
+            }
+            let model = mrgl::Model::parse(pod.bytes(e)).unwrap();
+            let bare = model
+                .polygons
+                .iter()
+                .filter(|p| p.material.is_none())
+                .collect::<Vec<_>>();
+            if bare.is_empty() {
+                continue;
+            }
+            // Where a colour is given it is in the palette's shadeable range
+            // once the flag bit is masked off.
+            for poly in &bare {
+                if let Some(colour) = poly.colour {
+                    assert!((colour & 0xff) < 240, "{}: colour {colour}", e.name);
+                }
+            }
+            let colourless = bare.iter().filter(|p| p.colour.is_none()).count();
+            untextured.push((e.file_name(), bare.len()));
+            if colourless > 0 {
+                bare_and_colourless.push((e.file_name(), colourless));
+            }
+        }
+    }
+    untextured.sort();
+    assert_eq!(
+        untextured,
+        [
+            ("fanbody.bin".to_string(), 28),
+            ("globe.bin".to_string(), 576),
+            ("iris1.bin".to_string(), 168),
+            ("iris4.bin".to_string(), 168),
+            ("jaw1.bin".to_string(), 30),
+            ("jaw2.bin".to_string(), 28),
+            ("shell.bin".to_string(), 32),
+        ]
+    );
+
+    // Four of those seven have polygons with no colour node before them
+    // either, so nothing in the stream says what colour they are. Pinned as a
+    // measurement: 118 polygons that a renderer has to decide about.
+    bare_and_colourless.sort();
+    assert_eq!(
+        bare_and_colourless,
+        [
+            ("fanbody.bin".to_string(), 28),
+            ("jaw1.bin".to_string(), 30),
+            ("jaw2.bin".to_string(), 28),
+            ("shell.bin".to_string(), 32),
+        ]
+    );
+}
+
+#[test]
 fn a_group_node_names_its_children() {
     let pod = archive!("STARTUP.POD");
     let data = pod.read("models", "aliensh.bin").expect("aliensh.bin");

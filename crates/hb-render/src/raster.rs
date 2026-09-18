@@ -3,7 +3,7 @@
 
 use hb_formats::act::Palette;
 use hb_formats::colour::Ramp;
-use hb_formats::raw::Image;
+use hb_formats::raw::{Image, Shape};
 
 /// A vertex as the rasteriser wants it: screen position, reciprocal depth for
 /// the perspective divide, and texture coordinates in texels.
@@ -52,6 +52,12 @@ impl Target {
             out.extend_from_slice(&palette.rgb(index));
         }
         out
+    }
+
+    /// One triangle in a single colour, shaded and fogged like a textured one.
+    pub fn flat_triangle(&mut self, tri: [Vertex; 3], index: u8, shade: &Shade) {
+        let one = Image { shape: Shape::new(1, 1), pixels: vec![index] };
+        self.triangle(tri, &one, shade);
     }
 
     /// One textured triangle, affinely mapped.

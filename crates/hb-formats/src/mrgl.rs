@@ -38,6 +38,15 @@ pub const ANIMATED: u32 = 0x26;
 /// why, not evidence for it.
 pub const POLYGON_ALT: u32 = 0x18;
 
+/// A flat colour, 12 bytes: a zero `i32` at +4 and a palette index at +8.
+///
+/// 267 of the 270 in both archives are between 9 and 239, which is exactly the
+/// [shadeable palette range](crate::colour) - none falls in the reserved 240 to
+/// 255. The other three are 270, 360 and 482, whose low bytes are 14, 104 and
+/// 226 and whose bit 8 is set, so the field looks like an index with a flag
+/// above it, the same shape as a terrain texture word.
+pub const FLAT_COLOUR: u32 = 0x17;
+
 /// Every node type that carries a polygon payload.
 pub const POLYGON_KINDS: [u32; 5] = [0x0E, 0x11, 0x18, 0x1E, 0x22];
 
@@ -182,6 +191,26 @@ pub struct Polygon {
     pub plane: i32,
     /// Three or four. Nothing in either archive has any other count.
     pub corners: Vec<Corner>,
+    /// The last [`FLAT_COLOUR`] node seen before this polygon, if any.
+    ///
+    /// A polygon with no material uses this instead. Seven models are
+    /// untextured throughout and between them account for all 1,030 polygons
+    /// with no material before them: `GLOBE.BIN` 576, `IRIS1.BIN` and
+    /// `IRIS4.BIN` 168 each, `SHELL.BIN` 32, `JAW1.BIN` 30, `FANBODY.BIN` and
+    /// `JAW2.BIN` 28 each.
+    ///
+    /// Four of those seven have no colour node before their polygons either -
+    /// `FANBODY`, `JAW1`, `JAW2` and `SHELL`, 118 polygons in all - so nothing
+    /// in the stream says what colour they are, and both fields are `None`.
+    pub colour: Option<u16>,
+    /// Which of [`Model::materials`] this polygon is textured with: the last
+    /// material node seen before it in the stream.
+    ///
+    /// Every polygon in the archives is preceded either by another polygon or
+    /// by a material, so "the most recent material" is always defined once the
+    /// first one has appeared. A run is 4 polygons long at the median and 168
+    /// at the longest.
+    pub material: Option<usize>,
 }
 
 impl Polygon {
@@ -231,6 +260,8 @@ pub struct Model {
 impl Model {
     pub fn parse(data: &[u8]) -> Result<Model> {
         let mut model = Model::default();
+        let mut material: Option<usize> = None;
+        let mut colour: Option<u16> = None;
         for node in Walk::new(data) {
             let node = node?;
             model.nodes.push(node);
@@ -247,7 +278,11 @@ impl Model {
                         });
                     }
                 }
-                MATERIAL => model.materials.push(cstr(&data[at + 8..at + 24])),
+                MATERIAL => {
+                    material = Some(model.materials.len());
+                    model.materials.push(cstr(&data[at + 8..at + 24]));
+                }
+                FLAT_COLOUR => colour = Some(i32_at(data, at + 8) as u16),
                 POLYGON | POLYGON_ALT | 0x11 | 0x1E | 0x22 => {
                     let count = i32_at(data, at + 4).max(0) as usize;
                     let mut corners = Vec::with_capacity(count);
@@ -260,6 +295,8 @@ impl Model {
                         });
                     }
                     model.polygons.push(Polygon {
+                        material,
+                        colour,
                         kind: node.kind,
                         normal: [
                             i32_at(data, at + 8),

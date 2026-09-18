@@ -142,14 +142,13 @@ fn draw_mesh(
         index_zero_is_clear: false,
     };
     let mut any = false;
-    let mut material = 0usize;
     for poly in &mesh.polygons {
-        // Materials appear in the node stream before the polygons that use
-        // them, and the parser keeps them in order, so the running index is the
-        // best available guess until the node stream is walked properly.
-        let texture = textures.get(material).and_then(Option::as_ref);
-        material = (material + 1).min(textures.len().saturating_sub(1));
-        let Some(texture) = texture else { continue };
+        // Each polygon records the material node that preceded it, or a flat
+        // colour when the mesh is untextured.
+        let texture = poly.material.and_then(|m| textures.get(m)).and_then(Option::as_ref);
+        if texture.is_none() && poly.colour.is_none() {
+            continue;
+        }
         let corners: Option<Vec<Vertex>> = poly
             .corners
             .iter()
@@ -167,7 +166,16 @@ fn draw_mesh(
             .collect();
         let Some(corners) = corners else { continue };
         for i in 1..corners.len().saturating_sub(1) {
-            target.triangle([corners[0], corners[i], corners[i + 1]], texture, &shade);
+            let tri = [corners[0], corners[i], corners[i + 1]];
+            match texture {
+                Some(texture) => target.triangle(tri, texture, &shade),
+                None => {
+                    // The low byte is the palette index; bit 8 is set in three
+                    // of the 270 flat-colour nodes and is not understood.
+                    let index = (poly.colour.unwrap_or(0) & 0xff) as u8;
+                    target.flat_triangle(tri, index, &shade);
+                }
+            }
         }
         any = true;
     }

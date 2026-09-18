@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-16 entries: build 1, content 3, decomp 4, format 11, port 10, render 7, test 2, tooling 2, world 8.
+17 entries: build 1, content 3, decomp 4, format 12, port 11, render 8, test 2, tooling 2, world 8.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -27,3 +27,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 14 | [A window, and the first dependency in the workspace](worklog/0014-a-window-and-the-first-dependency-in-the-workspace.md) | 2026-09-17 | port, render, build |
 | 15 | [The world is centred, and .DEF is a table of types not a list of things](worklog/0015-the-world-is-centred-and-def-is-a-table-of-types-not-a-list.md) | 2026-09-17 | format, world, content, port |
 | 16 | [The instance list was in the same file all along](worklog/0016-the-instance-list-was-in-the-same-file-all-along.md) | 2026-09-17 | format, content, render, port |
+| 17 | [Materials bind to polygons by position, and four models say nothing at all](worklog/0017-materials-bind-to-polygons-by-position-and-four-models-say-n.md) | 2026-09-17 | format, render, port |

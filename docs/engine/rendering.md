@@ -2,7 +2,7 @@
 title: The port's renderer
 status: partial
 covers: crates/hb-render
-worklog: 13, 16
+worklog: 13, 16, 17
 ---
 
 # The port's renderer
@@ -41,7 +41,7 @@ port that later reads the engine should revisit them.
 | Yaw 0 looks along +z | Nothing yet ties the engine's 16-bit heading to a world axis. |
 | 90-degree field of view | Not established. |
 | Draw distance of 220 units | Chosen so the fog ramp saturates before the edge. |
-| A mesh's materials assigned to its polygons by running index | The node stream puts a material before the polygons that use it, but this renderer walks the parsed lists rather than the stream, so it pairs them in order. Right for a single-material mesh and a guess for the rest. |
+| The 118 colourless polygons are skipped | Four models have polygons with neither a material nor a flat colour before them, so nothing says what colour they are. |
 
 ## The units
 
@@ -63,6 +63,9 @@ the terrain walk uses unwrapped indices around the eye, so a placement is
 rebased onto the nearest copy of the wrapping world before it is projected -
 otherwise an object at -300 units lands 1024 units from the ground it stands
 on.
+
+Each polygon is drawn with the material that precedes it in the node stream, or
+with its flat colour when it has no material - see [MRGL](../formats/mrgl.md).
 
 Objects whose kind names a `.TXT` model are skipped: that is the animated model
 format and it has no parser yet. `HOTH` places 476 objects of which 465 have a

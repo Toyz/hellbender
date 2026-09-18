@@ -2,7 +2,7 @@
 title: The .BIN model and its MRGL nodes
 status: partial
 covers: MODELS\*.BIN
-worklog: 5, 9, 16
+worklog: 5, 9, 16, 17
 ---
 
 # The .BIN model and its MRGL nodes
@@ -97,6 +97,43 @@ normalisation, which is why it was such a legible first example.
 +0x04  i32      ?
 +0x08  char[16] texture name, NUL-padded, e.g. "rustplat.raw"
 ```
+
+A material applies to every polygon after it until the next one. Across both
+archives every polygon is preceded either by another polygon or by a material,
+so "the most recent material" is always defined once the first has appeared. A
+run is four polygons long at the median and 168 at the longest; 3,013 runs in
+all.
+
+### 0x17, flat colour
+
+12 bytes. A zero `i32` at +4 and a palette index at +8.
+
+```
++0x00  u32  type = 0x17
++0x04  i32  0 in all 270
++0x08  i32  palette index
+```
+
+267 of the 270 in both archives are between 9 and 239, which is exactly the
+[shadeable palette range](colour-tables.md) - not one falls in the reserved 240
+to 255. The other three are 270, 360 and 482, whose low bytes are 14, 104 and
+226 and whose bit 8 is set, so the field reads as an index with a flag above
+it, the same shape as a terrain texture word.
+
+It binds to polygons the same way a material does, and an untextured polygon
+uses it instead. Seven models are untextured throughout and between them
+account for all 1,030 polygons with no material before them:
+
+```
+GLOBE.BIN 576    IRIS1.BIN 168    IRIS4.BIN 168    SHELL.BIN 32
+JAW1.BIN   30    FANBODY.BIN 28   JAW2.BIN   28
+```
+
+Four of those - `FANBODY`, `JAW1`, `JAW2` and `SHELL`, 118 polygons - have no
+colour node before their polygons either, so **nothing in the stream says what
+colour they are**. They begin `0x14, 0x02, polygon, polygon, ...` with nothing
+between. A renderer has to decide; this port skips them rather than invent a
+colour.
 
 ### 0x0e and its variants, polygon
 
@@ -239,9 +276,13 @@ What distinguishes 0x18 from 0x0e. Both have the same size formula and, as far
 as every measurement goes, the same payload; the binary has separate flat and
 Gouraud shading paths, which is a plausible reason and not evidence for one.
 
-Thirteen other record types appear in the data with no semantics: 0x04, 0x05,
-0x06, 0x0a, 0x0c, 0x0f, 0x12, 0x17, 0x19, 0x1d, 0x1f, and the `i32` at +4 of
-the vertex list and material records.
+What colour the 118 polygons in `FANBODY`, `JAW1`, `JAW2` and `SHELL` are, since
+the stream does not say.
+
+Ten other record types appear in the data with no semantics: 0x04, 0x05, 0x06,
+0x0a, 0x0c, 0x0f, 0x12, 0x19, 0x1d and 0x1f, and the `i32` at +4 of the vertex
+list and material records.
 
 Whether the 256-unit texture space is a repeat or a scale, given the textures
-are 64 x 64.
+are 64 x 64. This port scales - see
+[the renderer](../engine/rendering.md).
