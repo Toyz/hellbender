@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-32 entries: audio 2, build 1, content 4, decomp 11, engine 5, format 21, port 26, render 17, test 3, tooling 2, ui 1, world 10.
+33 entries: audio 2, build 1, content 4, decomp 12, engine 6, format 21, port 27, render 17, test 3, tooling 3, ui 1, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -43,3 +43,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 30 | [The view is ninety degrees down too, and the sky is a ceiling](worklog/0030-the-view-is-ninety-degrees-down-too-and-the-sky-is-a-ceiling.md) | 2026-09-17 | decomp,render,port |
 | 31 | [The player flies the engine's way](worklog/0031-the-player-flies-the-engine-s-way.md) | 2026-09-17 | decomp,engine,port |
 | 32 | [Eighty units: how far the engine draws, fogs and thinks](worklog/0032-eighty-units-how-far-the-engine-draws-fogs-and-thinks.md) | 2026-09-18 | decomp,render,engine,port |
+| 33 | [The flyers make passes, and a tracer for the x87 code](worklog/0033-the-flyers-make-passes-and-a-tracer-for-the-x87-code.md) | 2026-09-18 | decomp,engine,port,tooling |

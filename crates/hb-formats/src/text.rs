@@ -173,6 +173,12 @@ pub struct EnemyDef {
     /// 0x1b8 and 16.16 radii from 0x1d8. Empty means the model's own bounding
     /// box is the target - `0x40ce70` takes one branch or the other.
     pub hit_spheres: Vec<(u16, i32)>,
+    /// Line 7 (`!NewAtakRet`), type offsets 0x1f8, 0x1fc, 0x200 and one the
+    /// loader reads and drops. The first two are the attack and retreat
+    /// ranges, whole units, that the flyers' AI compares distances with
+    /// (`0x496f68`, `0x496ce7`); the loader's defaults without the line are 32
+    /// and 16.
+    pub attack_retreat: [i32; 4],
     /// Line 10 (`#New2ndweapon`), type offsets 0x20c, 0x210, 0x214, 0x218.
     pub second_weapon: SecondWeapon,
     /// Line 12, type offset 0x21c: played at the muzzle on every shot. `null`
@@ -355,6 +361,7 @@ pub fn enemy_defs(data: &[u8]) -> Result<Vec<EnemyDef>> {
             .map(|i| (hit_line[1 + i] as u16, hit_line[9 + i]))
             .collect();
         let second = fixed(10, 4, "DEF #New2ndweapon")?;
+        let attack = fixed(7, 4, "DEF !NewAtakRet")?;
         let sound = |at: usize| {
             let name = record[at].trim();
             (!name.is_empty() && !name.eq_ignore_ascii_case("null")).then(|| name.to_string())
@@ -367,6 +374,7 @@ pub fn enemy_defs(data: &[u8]) -> Result<Vec<EnemyDef>> {
             weapon: conduct[4],
             muzzles,
             hit_spheres,
+            attack_retreat: [attack[0], attack[1], attack[2], attack[3]],
             second_weapon: SecondWeapon {
                 barrels: second[0],
                 unknown_1: second[1],

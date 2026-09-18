@@ -5,7 +5,14 @@
 use hb_formats::text::Placement;
 use hb_render::Level;
 use hb_sim::combat::{self, Health, HitVolume, Pilot, Shot, Side, Stop};
+use hb_sim::flyer::{Flyer, Target};
 use hb_sim::turret::{Launch, Missile, Rng, Turret};
+
+/// The behaviour classes that fly. 7 and 53 run the dogfight routine
+/// `0x4967b0`; 56, 59 and 60 have routines of their own (`0x497050`,
+/// `0x497be0`, `0x4999a0`) that start the same way and are not read yet, so
+/// they borrow it.
+pub const FLYING: [i64; 5] = [7, 53, 56, 59, 60];
 
 /// Something the frame wants played.
 pub enum Noise {
@@ -38,6 +45,7 @@ pub struct Battle {
     pub health: Vec<Health>,
     volumes: Vec<HitVolume>,
     turrets: Vec<(usize, Turret)>,
+    flyers: Vec<(usize, Flyer)>,
     pub shots: Vec<Flying>,
     pub missiles: Vec<Missile>,
     pub pilot: Pilot,
@@ -61,10 +69,18 @@ impl Battle {
             .filter(|(_, p)| level.kinds.get(p.kind).is_some_and(|k| k.class() == 10))
             .map(|(i, p)| (i, Turret::new(p)))
             .collect();
+        let flyers = level
+            .placements
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| level.kinds.get(p.kind).is_some_and(|k| FLYING.contains(&k.class())))
+            .map(|(i, p)| (i, Flyer::new(p)))
+            .collect();
         Battle {
             health: level.placements.iter().map(Health::for_placement).collect(),
             volumes,
             turrets,
+            flyers,
             shots: Vec::new(),
             missiles: Vec::new(),
             pilot: Pilot::default(),
@@ -76,6 +92,10 @@ impl Battle {
 
     pub fn turret_count(&self) -> usize {
         self.turrets.len()
+    }
+
+    pub fn flyer_count(&self) -> usize {
+        self.flyers.len()
     }
 
     pub fn fire(&mut self, shot: Shot) {
@@ -91,8 +111,10 @@ impl Battle {
         live: &mut [Placement],
         player: [f32; 3],
         velocity: [f32; 3],
+        ship: Option<(&[[f32; 3]; 3], f32)>,
         dt: f32,
         solid: &impl Fn([f32; 3]) -> bool,
+        ground: &impl Fn(f32, f32) -> f32,
     ) -> Vec<Noise> {
         let mut noises = Vec::new();
         self.pilot.since_hit += dt;
@@ -117,6 +139,31 @@ impl Battle {
             }
             // The turret's heading is what the renderer shows.
             live[*i].heading = turret.heading as u16;
+        }
+
+        // The flyers, within the same 80 units.
+        if let (Some(player), Some((axes, speed))) = (target, ship) {
+            let seen = Target { position: player, right: axes[0], up: axes[1], forward: axes[2], speed };
+            for (i, flyer) in &mut self.flyers {
+                if self.health[*i].destroyed || !combat::in_range(player, flyer.position) {
+                    continue;
+                }
+                let def = &level.kinds[level.placements[*i].kind];
+                let mesh = level.meshes.get(level.placements[*i].kind).and_then(Option::as_ref);
+                match flyer.step(def, mesh, &seen, dt, ground, &mut self.rng) {
+                    Some(Launch::Shot(s)) => self.shots.push(Flying::new(s)),
+                    Some(Launch::Missile(m)) => self.missiles.push(m),
+                    None => {}
+                }
+                let fixed = |v: f32| (v * 65536.0) as i32;
+                let placed = &mut live[*i];
+                placed.x = fixed(flyer.position[0]);
+                placed.y = fixed(flyer.position[1]);
+                placed.z = fixed(flyer.position[2]);
+                placed.heading = flyer.heading as u16;
+                placed.pitch = flyer.pitch as i32;
+                placed.roll = flyer.roll as i32;
+            }
         }
 
         let health = &self.health;

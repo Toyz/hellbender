@@ -295,7 +295,7 @@ fn main() -> Result<(), String> {
     // The ship's velocity, from how far the eye moved last frame; turrets
     // lead with it and the laser adds its magnitude.
     let mut last_eye = eye_of(&flight.camera);
-    println!("sim: {} turrets", battle.turret_count());
+    println!("sim: {} turrets, {} flyers", battle.turret_count(), battle.flyer_count());
 
     let started = Instant::now();
     let mut last = Instant::now();
@@ -322,10 +322,11 @@ fn main() -> Result<(), String> {
             colours = ShotColours::for_palette(&level.palette);
             last_eye = eye_of(&flight.camera);
             println!(
-                "sim: {} of {} objects follow a course, {} turrets",
+                "sim: {} of {} objects follow a course, {} turrets, {} flyers",
                 followers.len(),
                 live.len(),
-                battle.turret_count()
+                battle.turret_count(),
+                battle.flyer_count()
             );
         }
         tab_was_down = tab;
@@ -404,10 +405,12 @@ fn main() -> Result<(), String> {
             (p[1] * 65536.0) as i32 <= grid.ceiling_of_solid(x, z)
         };
         // In a demo the recorded flight cannot dodge, so nothing shoots back.
+        let ground = |x: f32, z: f32| grid.ceiling_of_solid((x * 65536.0) as i32, (z * 65536.0) as i32) as f32 / 65536.0;
+        let axes = [flight.ship.right, flight.ship.up, flight.ship.forward];
         let noises = if demo.is_none() {
-            battle.step(&level, &mut live, eye, velocity, dt, &solid)
+            battle.step(&level, &mut live, eye, velocity, Some((&axes, flight.ship.speed())), dt, &solid, &ground)
         } else {
-            battle.step(&level, &mut live, [0.0, 1.0e6, 0.0], [0.0; 3], dt, &|_| false)
+            battle.step(&level, &mut live, [0.0, 1.0e6, 0.0], [0.0; 3], None, dt, &|_| false, &ground)
         };
         for noise in noises {
             let (name, volume) = match noise {
@@ -545,7 +548,12 @@ fn followers_for(level: &Level) -> Vec<(usize, hb_sim::Follower)> {
         .iter()
         .enumerate()
         .filter_map(|(i, p)| {
-            let c = level.kinds.get(p.kind)?.course;
+            let kind = level.kinds.get(p.kind)?;
+            // The flyers' routine does not read the course.
+            if battle::FLYING.contains(&kind.class()) {
+                return None;
+            }
+            let c = kind.course;
             let course = level.courses.get(usize::try_from(c).ok()?)?;
             Some((i, hb_sim::Follower::new(course, [p.x, p.y, p.z])?))
         })

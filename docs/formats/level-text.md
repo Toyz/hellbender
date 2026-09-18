@@ -102,7 +102,7 @@ record has both.
 | 2 | `%d,%d,%d,%d` | 0xe0 0xe4 0xe8 0xec | not read yet |
 | 3 | nine `%d` | 0x190, 0x194.. | muzzles: a count, then up to eight model vertex indices |
 | 5 | seventeen `%d` | 0x1b4, 0x1b8.., 0x1d8.. | hit spheres: a count, eight vertex indices, eight 16.16 half-sizes |
-| 7 | `%d,%d,%d,%d` | 0x1f8 0x1fc 0x200 - | defaults 32 and 16 in the first two; the third, when set, lets the actor play its line-13 sound at random |
+| 7 | `%d,%d,%d,%d` | 0x1f8 0x1fc 0x200 - | attack and retreat range in whole units (defaults 32 and 16), which the flyers' AI compares with; the third, when set, lets the actor play its line-13 sound at random |
 | 10 | `%d,%d,%d,%d` | 0x20c 0x210 0x214 0x218 | barrel mode, two unread, shot speed in 16.16 units a second |
 | 12 | `%s` | 0x21c | the sound played with each shot; `null` in every record |
 | 13 | `%s` | 0x230 | a sound the actor plays now and then |
@@ -281,7 +281,7 @@ read from the shipped data.
 
 ## Unknown
 
-`.DEF` type field 4 (0x14), line 2 (0xe0-0xec), line 7's first two values
+`.DEF` type field 4 (0x14), line 2 (0xe0-0xec), line 7's fourth value
 and line 10's middle two. What the 63 behaviour classes other than 10 and 47
 do. How the engine animates a group model such as the SAM site's. The record
 shape of `.PUP` and `.TDF`. Whether `.NAV`'s leading `6` is part of the header

@@ -187,7 +187,8 @@ fn draw_objects(target: &mut Target, scene: &Scene, camera: &Camera, drawn: &mut
         let textures = &scene.mesh_textures[p.kind];
         let radius = scene.mesh_radius.get(p.kind).copied().unwrap_or(1 << 16);
         let (wx, wz) = rebase(eye, p.x, p.z);
-        if draw_mesh(target, scene, camera, mesh, textures, wx, p.y, wz, radius, p.heading) {
+        let angles = [p.heading, p.pitch as u16, p.roll as u16];
+        if draw_mesh(target, scene, camera, mesh, textures, wx, p.y, wz, radius, angles) {
             drawn.models += 1;
         }
     }
@@ -223,18 +224,27 @@ fn draw_mesh(
     y: i32,
     z: i32,
     scale: i32,
-    heading: u16,
+    angles: [u16; 3],
 ) -> bool {
-    let (sy, cy) = hb_formats::Angle(heading).to_radians().sin_cos();
+    // The model's own right, up and forward in the world, from heading, pitch
+    // and roll with the camera's conventions: heading 0 along +z, positive
+    // pitch nose down, positive roll the left wing down.
+    let [heading, pitch, roll] = angles.map(|a| hb_formats::Angle(a).to_radians());
+    let (sh, ch) = heading.sin_cos();
+    let (sp, cp) = pitch.sin_cos();
+    let (sr, cr) = roll.sin_cos();
+    let forward = [sh * cp, -sp, ch * cp];
+    let up0 = [sh * sp, cp, ch * sp];
+    let right0 = [ch, 0.0, -sh];
+    let right: [f32; 3] = std::array::from_fn(|k| right0[k] * cr + up0[k] * sr);
+    let up: [f32; 3] = std::array::from_fn(|k| up0[k] * cr - right0[k] * sr);
     // Model space is 2.14 and spans -1.0 to +1.0, so `Vertex::world` turns a
     // vertex into a 16.16 world offset at the type's radius.
     let (width, height) = (target.width, target.height);
     let place = |v: &hb_formats::mrgl::Vertex| -> Option<(f32, f32, f32)> {
-        let [mx, my, mz] = v.world(scale);
-        let (mx, mz) = (mx as f32, mz as f32);
-        let rx = mx * cy + mz * sy;
-        let rz = -mx * sy + mz * cy;
-        project_onto(camera, width, height, x + rx as i32, y + my, z + rz as i32)
+        let [mx, my, mz] = v.world(scale).map(|c| c as f32);
+        let world: [f32; 3] = std::array::from_fn(|k| right[k] * mx + up[k] * my + forward[k] * mz);
+        project_onto(camera, width, height, x + world[0] as i32, y + world[1] as i32, z + world[2] as i32)
     };
 
     let shade = shade_for(scene, camera);

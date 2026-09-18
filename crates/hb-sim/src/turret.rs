@@ -119,6 +119,23 @@ impl Turret {
         self.heading = (self.heading + angle_error(wanted, self.heading) * ease).rem_euclid(65536.0);
         self.pitch += (0.0 - self.pitch) * ease;
 
+        self.trigger(def, mesh, at, player, dt, def.shot_speed() as f32 / 65536.0, rng)
+    }
+
+    /// `0x407770`: frame time accumulates, and past the fire interval the
+    /// weapon fires - a guided missile for weapon 19 (`0x4074e0`), a straight
+    /// shot otherwise (`0x406dc0`). Turrets fire at the type's shot speed;
+    /// the flyers call it with twice their own speed.
+    pub fn trigger(
+        &mut self,
+        def: &EnemyDef,
+        mesh: Option<&Model>,
+        at: [f32; 3],
+        player: [f32; 3],
+        dt: f32,
+        shot_speed: f32,
+        rng: &mut Rng,
+    ) -> Option<Launch> {
         self.waited += dt;
         let interval = def.fire_interval as f32 / 65536.0;
         if self.waited <= interval {
@@ -128,7 +145,7 @@ impl Turret {
         if def.weapon == GUIDED {
             self.launch_missile(def, mesh, at, rng).map(Launch::Missile)
         } else {
-            self.fire(def, mesh, at, player, rng).map(Launch::Shot)
+            self.fire(def, mesh, at, player, shot_speed, rng).map(Launch::Shot)
         }
     }
 
@@ -156,6 +173,7 @@ impl Turret {
         mesh: Option<&Model>,
         at: [f32; 3],
         player: [f32; 3],
+        speed: f32,
         rng: &mut Rng,
     ) -> Option<Shot> {
         let barrel = self.barrel;
@@ -164,7 +182,6 @@ impl Turret {
             2 if barrel < 4 => barrel + 1,
             _ => 0,
         };
-        let speed = def.shot_speed() as f32 / 65536.0;
         if speed <= 0.0 {
             // A zero-speed slot is a free slot to the shot update.
             return None;

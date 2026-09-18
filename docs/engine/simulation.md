@@ -2,7 +2,7 @@
 title: The simulation
 status: partial
 covers: HELLBEND.EXE logic phases, crates/hb-sim
-worklog: 26, 27, 28, 31, 32
+worklog: 26, 27, 28, 31, 32, 33
 ---
 
 # The simulation
@@ -90,6 +90,56 @@ its caller, the actor loop at `0x406650`, first calls the draw-and-cull routine
 which `0x42f710` does past `0x500000` on either axis (`0x42f7b9`). Worklog 28
 read only the inner routine and said every actor thinks every frame; worklog
 32 corrected it. Enemy shots already in flight carry on regardless.
+
+## The flyers
+
+Classes 7 and 53 - 1,108 placements, the hornets, fighters and gunships -
+run `0x4967b0`; 56, 59 and 60 run routines of their own that start the same
+way (`0x497050`, `0x497be0`, `0x4999a0`) and are not read. The decisions:
+
+```
+phase 0      initialise, go to 200
+phase 200    fly at the player (steering mode 0); within the turning reach
+             sqrt((R + r + 2)^2 - r^2) - R the radius, r speed / turn rate -
+             go to 2000 (0x49685b); within the retreat range go to 201
+phase 2000   fly AWAY (mode 1 negates the target direction, 0x494853) at no
+             less than twice the player's speed; past the attack range, 200
+phase 201    the same with an eighth of the turn rate
+phase 900    stop
+2008 / 2009  break-off points 16 units left / right of the player, 2011 16
+             above; phase 2012 flies to it until it stops closing, then 201
+```
+
+The situation that drives the break-offs comes from two cone tests -
+`0x492750`, is the flyer within 30 degrees of the player's nose across and up
+(1), ahead but outside (2), or behind (-2); `0x492940` the same the other way
+round - and whether the two fly the same way, headings and pitches within 30
+degrees:
+
+```
+both in each other's sights        head-on: under 32 units, go to 201
+same way, player in my sights       chasing
+same way, me in the player's        on my tail: break - up if level within 30
+                                     degrees, else toward the lower wing
+player behind me / ahead unaimed    ahead: match the player's speed in range
+```
+
+A flyer fires through the turrets' `0x407770` whenever the player is within
+its attack range and it is aimed (`+0x190`), at **twice its own speed**
+(`0x496f86` sets the type's shot speed to double the flyer's for the call).
+The attack and retreat ranges are the `.DEF`'s `!NewAtakRet` line, whole
+units - 30 to 50 and 8 to 32 across the shipped types.
+
+What it adds up to is a strafing run: in at the player, two or three shots,
+past, out to the attack range at twice the player's speed, round, and in again.
+
+The steering itself, `0x4944c0`, is not read beyond its outline: it predicts
+the next position from the velocity and lifts the target above the ground by a
+clearance (`type+0x98`) when that would be underground, takes the target's
+direction as a heading (`atan2(dx, dz)`) and a pitch, negates it for mode 1,
+and integrates a rigid body in x87. `hb_sim::flyer` turns heading and pitch
+toward the target at the type's turn rate (65,536 is a turn a second) and flies
+along its nose.
 
 ## Time
 
@@ -278,7 +328,8 @@ missiles and the player's health and shield. What is its own:
 | No view shake | The shake's amounts are not read. |
 | Shots and missiles are points | The engine draws models by kind (`0x4769cf`). |
 | A group model is its first child | Only the SAM site uses one. The engine's frame advance is not read. |
-| Turrets only among the 65 classes shoot | The rest are not read. |
+| Turrets and flyers only among the 65 classes shoot | The rest are not read. Classes 56, 59 and 60 borrow the class-53 routine. |
+| A flyer steers by turning heading and pitch at its turn rate | The engine's `0x4944c0` is an x87 rigid-body integrator not yet read. |
 
 The fire button is the space bar, because `HELLBEND.INI` binds `fireKey=57`,
 which is the space bar's scan code - and 636 of the 638 key presses in the
