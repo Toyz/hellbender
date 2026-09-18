@@ -2,7 +2,7 @@
 title: The port's renderer
 status: partial
 covers: crates/hb-render
-worklog: 13, 16, 17, 20, 21, 22
+worklog: 13, 16, 17, 20, 21, 22, 25
 ---
 
 # The port's renderer
@@ -38,7 +38,7 @@ port that later reads the engine should revisit them.
 | Affine texture interpolation | The engine has a `perspectiveFlag` with three settings, so it switches on some threshold. The threshold is unknown and at a cell's size the difference is small. |
 | Texture space scales, not wraps | A coordinate is a texel in a 256-unit space and the textures are 64 x 64. Scaling makes a corner-to-corner face one tile; wrapping makes it four, and puts a fine grid over everything. |
 | Depth buffer | The engine's visibility scheme is not known. This sorts cells back to front by distance and settles the rest with a z-buffer. |
-| Yaw 0 looks along +z | Nothing yet ties the engine's 16-bit heading to a world axis. |
+| Heading 0 looks along +z and increases toward +x | No longer a choice: the recorded demo flight measures it to a median 0.8 degrees. The port had the direction backwards until then. |
 | 90-degree field of view | Not established. |
 | Draw distance of 220 units | Chosen so the fog ramp saturates before the edge. |
 | The 118 colourless polygons are skipped | Four models have polygons with neither a material nor a flat colour before them, so nothing says what colour they are. |

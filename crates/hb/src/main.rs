@@ -26,6 +26,7 @@ hb - inspect Hellbender's data
   hb ground <level> <out.png>       a level's ground, textured, from above
   hb fly <level> <out.png> [x z yaw height pitch]   one frame from in-level
   hb font <out.png> [text]          a specimen of the front end's typeface
+  hb demo <n> <seconds> <out.png>   a frame of a recorded attract-mode flight
   hb check                          parse everything and report what fails
 
 <pod> is a path, or one of `game` and `startup` to use $HB_GAME (default
@@ -80,6 +81,7 @@ fn run(args: &[&str]) -> Result<(), String> {
         ["ground", name, out] => cmd_ground(name, Path::new(out)),
         ["fly", name, out, rest @ ..] => cmd_fly(name, Path::new(out), rest),
         ["font", out, rest @ ..] => cmd_font(Path::new(out), rest),
+        ["demo", n, at, out] => cmd_demo(n, at, Path::new(out)),
         ["check"] => cmd_check(),
         _ => Err(format!("unknown command\n\n{USAGE}")),
     }
@@ -478,6 +480,53 @@ fn cmd_font(out: &Path, rest: &[&str]) -> Result<(), String> {
         HEIGHT,
         font.widths.iter().min().unwrap(),
         font.widths.iter().max().unwrap(),
+        out.display()
+    );
+    Ok(())
+}
+
+fn cmd_demo(n: &str, at: &str, out: &Path) -> Result<(), String> {
+    let game = open_pod("game")?;
+    let startup = open_pod("startup")?;
+    let demo = hb_formats::demo::Demo::parse(
+        startup.read("demo", &format!("demo{n}.dmo")).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    let stem = demo.level.trim_end_matches(".lvl");
+    let level = hb_render::Level::load(&game, Some(&startup), stem)
+        .map_err(|_| format!("demo {n} was recorded on {}, which did not ship", demo.level))?;
+    let seconds: f32 = at.parse().map_err(|_| "seconds must be a number")?;
+    let pose = demo.pose_at(seconds).ok_or("no pose at that time")?;
+
+    let (w, h) = hb_render::Target::MODE_200;
+    let mut target = hb_render::Target::new(w, h);
+    target.clear(0);
+    let mut camera = hb_render::Camera::looking_at(
+        pose.x,
+        pose.y,
+        pose.z,
+        hb_formats::Angle(pose.angles[2] as u16),
+    );
+    camera.pitch = hb_formats::Angle(pose.angles[0] as u16);
+    let scene = level.scene();
+    hb_render::draw_world(&mut target, &scene, &camera);
+    if let Some(art) = startup
+        .read("art", "ckpt200.raw")
+        .ok()
+        .and_then(|b| raw::Image::parse_guessed(b).ok().flatten())
+    {
+        target.overlay(&art);
+    }
+    std::fs::write(out, png::rgb(w, h, &target.to_rgb(&level.palette)))
+        .map_err(|e| e.to_string())?;
+    println!(
+        "demo {n} at {seconds:.1}s of {:.1}: ({:.1}, {:.1}, {:.1}) heading {} pitch {} -> {}",
+        demo.seconds(),
+        pose.x as f32 / 65536.0,
+        pose.y as f32 / 65536.0,
+        pose.z as f32 / 65536.0,
+        pose.angles[2],
+        pose.angles[0],
         out.display()
     );
     Ok(())

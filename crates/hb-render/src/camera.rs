@@ -10,12 +10,13 @@ pub struct Camera {
     pub x: i32,
     pub y: i32,
     pub z: i32,
-    /// Heading. The engine's circle is 16 bits, so 0x4000 is a quarter turn.
+    /// Heading, in the engine's own convention. The circle is 16 bits, so
+    /// 0x4000 is a quarter turn.
     ///
-    /// Yaw 0 looks along +z and 0x4000 along -x. Which heading the engine
-    /// calls zero is not established - the `.LVL` headings and the model
-    /// format's angles are in the same 16-bit circle, but nothing yet ties one
-    /// of them to a world axis - so this is a convention of the renderer.
+    /// 0 looks along +z and the heading increases toward +x, so 0x4000 looks
+    /// along +x. That is measured, not chosen: in `DEMO1.DMO` the third angle
+    /// of each recorded pose equals `atan2(dx, dz)` of the direction the ship
+    /// is travelling, with a median error of 0.8 degrees over 790 samples.
     pub yaw: Angle,
     /// Positive pitch tilts the view downward.
     pub pitch: Angle,
@@ -48,7 +49,11 @@ impl Camera {
             (y - self.y) as f32 / 65536.0,
             (z - self.z) as f32 / 65536.0,
         );
-        let (sy, cy) = (-self.yaw.to_radians()).sin_cos();
+        // The engine's heading is 0 along +z and increases toward +x - the
+        // recorded demo flight says so, to a median of 0.8 degrees. So a
+        // point along the heading has to land on the view axis, which is a
+        // rotation by +yaw here, not -yaw.
+        let (sy, cy) = self.yaw.to_radians().sin_cos();
         let (sp, cp) = (-self.pitch.to_radians()).sin_cos();
         let rx = dx * cy - dz * sy;
         let rz = dx * sy + dz * cy;

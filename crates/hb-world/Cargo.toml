@@ -9,3 +9,4 @@ hb-formats = { path = "../hb-formats" }
 
 [dev-dependencies]
 hb-formats = { path = "../hb-formats" }
+hb-pod = { path = "../hb-pod" }

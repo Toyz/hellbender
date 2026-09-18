@@ -47,7 +47,8 @@ hoth: 205/205 textures resolved, 0 cells without one, palette hoth.act, ramp yes
 ```
 
 `hb-fly` opens a window and flies through a level at 60 frames a second, in any
-of the game's three screen sizes.
+of the game's three screen sizes. `hb-fly --demo 1` replays the original game's
+own recorded attract-mode flight through the port instead.
 
 ```
 $ cargo run --release -p hb-fly -- hoth --mode 480 --scale 1
@@ -82,6 +83,8 @@ cargo run -p hb -- heightmap float /tmp/float.png
 cargo run -p hb -- ground jurasic /tmp/jurasic.png
 cargo run -p hb -- fly hoth /tmp/frame.png 40 100 12288 60 4096
 cargo run --release -p hb-fly -- hoth
+cargo run --release -p hb-fly -- --demo 1
+cargo run -p hb -- demo 1 38 /tmp/demo.png
 ```
 
 ## Tools

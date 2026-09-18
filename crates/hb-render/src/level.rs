@@ -153,11 +153,14 @@ impl Level {
         let sky_remap = (|| {
             let (dir, name) = manifest.slot("sky_palette")?;
             let sky_palette = Palette::parse(&read(dir, name)?).ok()?;
-            // A level's own .MAP, else its family's - FLOAT2 has none and
-            // shares FLOAT's.
-            let family = stem.trim_end_matches(|c: char| c.is_ascii_digit());
-            let map = read("fog", &format!("{stem}.map"))
-                .or_else(|| read("fog", &format!("{family}.map")))?;
+            // The .MAP belongs to the level's palette, not to the level: it
+            // answers "the nearest index in this palette", so it is named
+            // after the palette. All 26 levels resolve that way - IOWAH,
+            // IOWAH2 and IOWAH3 use IOWA.ACT and so IOWA.MAP - where naming it
+            // after the level finds 11 and after the level family 21.
+            let (_, ground_palette) = manifest.slot("ground_palette")?;
+            let palette_stem = ground_palette.split('.').next()?;
+            let map = read("fog", &format!("{palette_stem}.map"))?;
             let map = ColourMap::parse(&map).ok()?;
             let mut table = [0u8; 256];
             for (i, slot) in table.iter_mut().enumerate() {

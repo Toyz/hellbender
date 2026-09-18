@@ -354,11 +354,15 @@ impl<'a> Grid<'a> {
     pub fn height_at(&self, layer: Layer, x: i32, z: i32) -> Option<i32> {
         let tri = triangle_containing(x, z);
         let h = self.triangle_heights(layer, tri)?;
-        let (ox, oz) = tri.cell.origin();
-        // Barycentric weights over the triangle's corners, in cell fractions.
+        // The position's fraction across its cell, taken from the low bits the
+        // way the engine takes it - `and eax, 0x7ffff` - rather than by
+        // subtracting the cell's origin. The subtraction is only right for
+        // coordinates in 0..1024; the world's own coordinates are signed and
+        // centred, and for those it produced fractions like -127.5. The
+        // engine's recorded demo flight found that.
         let p = [
-            (x.wrapping_sub(ox)) as f32 / CELL_SIZE as f32,
-            (z.wrapping_sub(oz)) as f32 / CELL_SIZE as f32,
+            (x & (CELL_SIZE - 1)) as f32 / CELL_SIZE as f32,
+            (z & (CELL_SIZE - 1)) as f32 / CELL_SIZE as f32,
         ];
         let corner = |i: usize| {
             let (dx, dz) = tri.corners[i].offset();

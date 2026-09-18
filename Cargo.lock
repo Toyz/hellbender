@@ -362,6 +362,7 @@ name = "hb-world"
 version = "0.1.0"
 dependencies = [
  "hb-formats",
+ "hb-pod",
 ]
 
 [[package]]

@@ -18,14 +18,31 @@ fn yaw_zero_looks_along_positive_z() {
 }
 
 #[test]
-fn a_quarter_turn_looks_along_negative_x() {
+fn a_quarter_turn_looks_along_positive_x() {
+    // The engine's heading increases toward +x - measured from the recorded
+    // demo flight. The port had this backwards until the demo said otherwise.
     let camera = Camera::looking_at(0, 0, 0, Angle(0x4000));
-    let view = camera.to_view(-10 << 16, 0, 0);
+    let view = camera.to_view(10 << 16, 0, 0);
     assert!(view[2] > 9.9, "{view:?}");
     // And three quarters looks the other way.
     let camera = Camera::looking_at(0, 0, 0, Angle(0xc000));
-    let view = camera.to_view(10 << 16, 0, 0);
+    let view = camera.to_view(-10 << 16, 0, 0);
     assert!(view[2] > 9.9, "{view:?}");
+}
+
+#[test]
+fn the_camera_looks_the_way_a_ship_on_that_heading_travels() {
+    // hb-fly moves along (sin h, cos h) in x and z for heading h. The camera
+    // has to look the same way or turning and then accelerating goes sideways,
+    // which is what it did before the heading convention was fixed.
+    for heading in [0u16, 0x2000, 0x4000, 0x6000, 0x8000, 0xa000, 0xc000, 0xe000] {
+        let camera = Camera::looking_at(0, 0, 0, Angle(heading));
+        let h = Angle(heading).to_radians();
+        let (dx, dz) = ((h.sin() * 10.0 * 65536.0) as i32, (h.cos() * 10.0 * 65536.0) as i32);
+        let view = camera.to_view(dx, 0, dz);
+        assert!(view[2] > 9.9, "heading {heading:#06x}: {view:?}");
+        assert!(view[0].abs() < 0.01, "heading {heading:#06x}: {view:?}");
+    }
 }
 
 #[test]
@@ -91,4 +108,16 @@ fn the_target_renders_through_a_palette() {
     palette.colours[1] = [10, 20, 30];
     palette.colours[2] = [40, 50, 60];
     assert_eq!(target.to_rgb(&palette), vec![10, 20, 30, 40, 50, 60]);
+}
+
+#[test]
+fn a_negative_pitch_reads_as_negative_when_it_is_used_linearly() {
+    // -5219 is the nose-up pitch the demo records at 38 seconds. Stored as a
+    // u16 it is 60317, which is 331 degrees; the signed reading is -28.7.
+    let up = Angle((-5219i32) as u16);
+    assert!((up.to_signed_radians().to_degrees() + 28.67).abs() < 0.05);
+    assert!(up.to_radians().to_degrees() > 330.0);
+    // And the sine and cosine agree either way, which is why only linear uses
+    // were affected.
+    assert!((up.to_radians().sin() - up.to_signed_radians().sin()).abs() < 1e-5);
 }

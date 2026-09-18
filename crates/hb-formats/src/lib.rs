@@ -9,6 +9,7 @@ pub mod anim;
 pub mod colour;
 pub mod font;
 pub mod course;
+pub mod demo;
 pub mod lvl;
 pub mod mrgl;
 pub mod png;
@@ -86,6 +87,18 @@ impl Angle {
 
     pub fn to_degrees(self) -> f32 {
         self.0 as f32 * 360.0 / 65536.0
+    }
+
+    /// The angle as a signed value, -half a turn to +half a turn.
+    ///
+    /// `to_radians` is right wherever the angle only goes into a sine or a
+    /// cosine, which do not care about the wrap. Anywhere it is added or
+    /// compared linearly - a pitch, a field of view - the unsigned reading of
+    /// a small negative angle is nearly a whole turn, and this is the one to
+    /// use. The sky was drawn with the unsigned one and vanished whenever the
+    /// nose came up.
+    pub fn to_signed_radians(self) -> f32 {
+        (self.0 as i16) as f32 * std::f32::consts::TAU / 65536.0
     }
 }
 

@@ -87,7 +87,8 @@ fn draw_sky(target: &mut Target, scene: &Scene, camera: &Camera) {
     let half_fov = camera.fov.to_radians() / 2.0;
     let scale = (target.width as f32 / 2.0) / half_fov.tan();
     let yaw = camera.yaw.to_radians();
-    let pitch = camera.pitch.to_radians();
+    // Signed: a nose-up pitch is a small negative angle, not nearly a turn.
+    let pitch = camera.pitch.to_signed_radians();
 
     for y in 0..target.height {
         // Elevation of this scanline, from the screen offset and the focal

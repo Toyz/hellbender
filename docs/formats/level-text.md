@@ -196,17 +196,8 @@ check, and "flippin" there means flip-book.
 
 ## .DMO - recorded demo
 
-Also text. First line a frame or tick count, then the level, then the recorded
-state per line.
-
-```
-1025
-iowah2.lvl
-0,0
-12845056,2686976,7077888
-0,0,16384,0
-0,...
-```
+Has [its own page](demo.md): a tagged stream of poses and key presses, and the
+source of the port's heading and pitch conventions.
 
 ## .PUP and .TDF
 

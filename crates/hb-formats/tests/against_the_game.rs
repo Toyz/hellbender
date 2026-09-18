@@ -818,6 +818,29 @@ fn a_level_palette_is_vga_with_sixteen_entries_changed() {
 }
 
 #[test]
+fn a_colour_map_is_named_after_its_palette_not_its_level() {
+    let pod = archive!("GAME.POD");
+    let (mut by_palette, mut by_level, mut levels) = (0, 0, 0);
+    for e in pod.entries().iter().filter(|e| e.ext() == "lvl") {
+        let level = lvl::Level::parse(pod.bytes(e)).unwrap();
+        let (_, palette) = level.slot("ground_palette").unwrap();
+        let palette_stem = palette.split('.').next().unwrap();
+        if pod.find("fog", &format!("{palette_stem}.map")).is_some() {
+            by_palette += 1;
+        }
+        if pod.find("fog", &format!("{}.map", level.stem())).is_some() {
+            by_level += 1;
+        }
+        levels += 1;
+    }
+    assert_eq!(levels, 26);
+    // A .MAP answers "nearest index in this palette", so it follows the
+    // palette. Named after the level, only 10 would be found.
+    assert_eq!(by_palette, 26);
+    assert_eq!(by_level, 10);
+}
+
+#[test]
 fn ground_textures_never_touch_the_reserved_range() {
     let pod = archive!("GAME.POD");
     let names = text::name_list(pod.read("data", "hoth.tex").unwrap(), "TEX").unwrap();

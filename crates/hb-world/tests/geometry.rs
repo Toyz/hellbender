@@ -269,3 +269,48 @@ fn the_interpolated_height_meets_the_corner_heights_at_the_corners() {
         assert_eq!(tri.cell, Cell::containing(x, z));
     }
 }
+
+#[test]
+fn the_height_is_right_for_negative_coordinates_too() {
+    // The world's own coordinates are signed and centred. height_at used to
+    // take the in-cell fraction as `x - cell.origin()`, which is only right for
+    // 0..1024 and gave fractions like -127.5 for anything negative. The
+    // engine's recorded demo flight found it; this pins it without the game.
+    use hb_formats::terrain::{Altitudes, BoxLayer, ChamberLayer, Indices, Layer, Scale, Terrain, CELLS, SIDE};
+    use hb_world::Grid;
+
+    let flat = |v: u8| Altitudes::parse(&vec![v; CELLS], Scale::Up).unwrap();
+    let down = |v: u8| Altitudes::parse(&vec![v; CELLS], Scale::Down).unwrap();
+    let indices = |per| Indices::parse(&vec![0u8; CELLS * per * 2], per, "t").unwrap();
+    let mut ramp = vec![0u8; CELLS];
+    for z in 0..SIDE {
+        for x in 0..SIDE {
+            ramp[z * SIDE + x] = (x * 2) as u8;
+        }
+    }
+    let terrain = Terrain {
+        ground: Altitudes::parse(&ramp, Scale::Up).unwrap(),
+        colour: indices(1),
+        boxes_a: BoxLayer { bottom: flat(0), top: flat(0), textures: indices(6) },
+        chambers: ChamberLayer { floor: down(255), ceiling: down(255), textures: indices(2) },
+        boxes_b: BoxLayer { bottom: down(255), top: down(255), textures: indices(6) },
+        shading: None,
+    };
+    let grid = Grid::new(&terrain);
+
+    // A signed position and the same position wrapped by a whole world
+    // (1024 units, which is 1 << 26) name the same cell and the same point in
+    // it, so they must return the same height.
+    let world = 1 << 26;
+    for units in [-500i32, -300, -129, -1, 3, 100, 400] {
+        for frac in [0, 1 << 17, 3 << 17] {
+            let x = (units << 16) + frac;
+            let z = 7 << 19;
+            let signed = grid.height_at(Layer::Ground, x, z).unwrap();
+            let wrapped = grid.height_at(Layer::Ground, x.wrapping_add(world), z).unwrap();
+            assert_eq!(signed, wrapped, "at {units} units + {frac}");
+            // And it stays inside the ramp's range.
+            assert!((0..=(255 << 15)).contains(&signed), "at {units} units: {signed}");
+        }
+    }
+}

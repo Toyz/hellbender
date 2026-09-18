@@ -20,11 +20,12 @@ use minifb::{Key, Window, WindowOptions};
 const USAGE: &str = "\
 hb-fly - fly around a Hellbender level
 
-  hb-fly [level] [--mode 200|400|480] [--scale N]
+  hb-fly [level] [--mode 200|400|480] [--scale N] [--demo 1|2|3]
 
   level    a level stem, default `hoth`
   --mode   the game's three screen sizes, default 200 (320x200)
   --scale  integer upscale of the window, default 3
+  --demo   replay one of the game's recorded attract-mode flights
 
   arrows        pitch and turn        w / s   throttle
   a / d         strafe                r / f   climb and dive
@@ -130,11 +131,13 @@ fn main() -> Result<(), String> {
     let mut level_name = "hoth".to_string();
     let mut mode = 200usize;
     let mut scale = 3usize;
+    let mut demo_number: Option<u32> = None;
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--mode" => mode = it.next().and_then(|v| v.parse().ok()).unwrap_or(200),
             "--scale" => scale = it.next().and_then(|v| v.parse().ok()).unwrap_or(3),
+            "--demo" => demo_number = it.next().and_then(|v| v.parse().ok()),
             other if !other.starts_with('-') => level_name = other.to_string(),
             other => return Err(format!("unknown option {other}\n\n{USAGE}")),
         }
@@ -148,6 +151,34 @@ fn main() -> Result<(), String> {
         400 => Target::MODE_400,
         480 => Target::MODE_480,
         _ => Target::MODE_200,
+    };
+
+    // A demo names its own level. Two of the three name one that did not ship.
+    let demo = match demo_number {
+        Some(n) => {
+            let bytes = startup
+                .read("demo", &format!("demo{n}.dmo"))
+                .map_err(|e| e.to_string())?;
+            let demo = hb_formats::demo::Demo::parse(bytes).map_err(|e| e.to_string())?;
+            let stem = demo.level.trim_end_matches(".lvl").to_string();
+            if !LEVELS.contains(&stem.as_str()) {
+                return Err(format!(
+                    "demo {n} was recorded on {}, which is not in GAME.POD - it is one of \
+                     the levels that did not ship",
+                    demo.level
+                ));
+            }
+            println!(
+                "demo {n}: {:.1} s on {}, {} poses, {} key presses",
+                demo.seconds(),
+                demo.level,
+                demo.poses().count(),
+                demo.keys().count()
+            );
+            level_name = stem;
+            Some(demo)
+        }
+        None => None,
     };
 
     let mut index = LEVELS.iter().position(|l| *l == level_name).unwrap_or(2);
@@ -269,8 +300,26 @@ fn main() -> Result<(), String> {
             flight.collide = !flight.collide;
             println!("collision {}", if flight.collide { "on" } else { "off" });
         }
-        flight.step(&window, dt);
-        flight.settle(&hb_world::Grid::new(&level.terrain));
+        match &demo {
+            // Replaying: the camera is wherever the original game recorded it,
+            // looping. The recorded angles are pitch, roll and heading in the
+            // engine's 16-bit circle; roll is not applied.
+            Some(demo) => {
+                let length = demo.seconds().max(0.1);
+                let t = started.elapsed().as_secs_f32() % length;
+                if let Some(pose) = demo.pose_at(t) {
+                    flight.camera.x = pose.x;
+                    flight.camera.y = pose.y;
+                    flight.camera.z = pose.z;
+                    flight.camera.pitch = Angle(pose.angles[0] as u16);
+                    flight.camera.yaw = Angle(pose.angles[2] as u16);
+                }
+            }
+            None => {
+                flight.step(&window, dt);
+                flight.settle(&hb_world::Grid::new(&level.terrain));
+            }
+        }
         target.clear(0);
         // Animated textures advance on the wall clock.
         let frames_now = level.texture_frames(started.elapsed().as_secs_f32());

@@ -2,7 +2,7 @@
 title: The sky
 status: partial
 covers: ART\SKY.RAW, ART\NEWSKY.RAW, ART\JURASKYY.RAW, ART\*SK*.ACT
-worklog: 21
+worklog: 21, 25
 ---
 
 # The sky
@@ -51,11 +51,14 @@ A sky palette shares nothing with its level's. `FLOAT.ACT` and `FLOATSK.ACT`
 agree on 17 of 256 entries, and 16 of those are the reserved 240 to 255. So the
 sky cannot be blitted into a frame that is in the level's palette.
 
-The level's [`.MAP`](colour-tables.md) is the table that bridges it: 15-bit
-colour to the nearest index in that level's palette, which is exactly the
-question "what is this sky colour called here". One `.MAP` per level family -
-`FLOAT.MAP` serves `FLOAT2` as well - so a reader falls back to the family's
-when the level has none.
+The [`.MAP`](colour-tables.md) of the level's palette is the table that
+bridges it: 15-bit colour to the nearest index in that palette, which is
+exactly the question "what is this sky colour called here".
+
+A `.MAP` is named after the **palette**, not the level. All 26 levels resolve
+that way - `IOWAH`, `IOWAH2` and `IOWAH3` use `IOWA.ACT` and so `IOWA.MAP` -
+while naming it after the level finds only 10. It follows from what the table
+is: an answer about a palette.
 
 ```
 sky texture index  ->  minus 48  ->  sky palette RGB  ->  level .MAP  ->  frame index
