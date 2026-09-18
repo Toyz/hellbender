@@ -134,10 +134,10 @@ fn scale(fraction: i32) -> i32 {
 
 /// The three corners of a half.
 ///
-/// The engine never spells these out - it computes a sample point and evaluates
-/// a plane. The corner sets here are the unique ones whose centroids are the
-/// sample points `0x428900` produces, which is a derivation rather than a
-/// transcription. [`sample_point`] is the transcribed part.
+/// Derived from the sample points `0x428900` produces, and then confirmed
+/// independently: the ground normal routine at `0x41b0b0` reads three corner
+/// altitudes per case, and the corners it reads are exactly these. See
+/// [`half_containing`] for the test it uses to choose between them.
 pub fn triangle(cell: Cell, half: Half) -> Triangle {
     let corners = match (cell.diagonal(), half) {
         // Anti diagonal, joining X to Z. Centroids (2/3, 2/3) and (1/3, 1/3).
@@ -162,6 +162,41 @@ pub fn centroid(tri: Triangle) -> (i32, i32) {
         sz += dz as i64 * CELL_SIZE as i64;
     }
     (ox + (sx / 3) as i32, oz + (sz / 3) as i32)
+}
+
+/// A position's fraction across its cell, 0 to 0xffff.
+///
+/// `0x41b0b0` computes it as `(p & 0x7ffff) * 0x10000 / 0x80000`, which is the
+/// low 19 bits scaled to 16 bits.
+pub fn cell_fraction(p: i32) -> i32 {
+    (p & (CELL_SIZE - 1)) >> 3
+}
+
+/// One whole cell as a fraction: the right-hand side of the anti-diagonal test.
+pub const FRACTION_ONE: i32 = 0x1_0000;
+
+/// Which half of its cell a world position falls in.
+///
+/// Transcribed from `0x41b0b0`, which branches on the cell's parity and then
+/// on the two fractions:
+///
+/// ```text
+/// parity 0    fz <  fx        the main diagonal, fx == fz
+/// parity 1    fx + fz < 1.0   the anti diagonal
+/// ```
+pub fn half_containing(x: i32, z: i32) -> Half {
+    let (fx, fz) = (cell_fraction(x), cell_fraction(z));
+    match Cell::containing(x, z).diagonal() {
+        Diagonal::Main if fz < fx => Half::Second,
+        Diagonal::Main => Half::First,
+        Diagonal::Anti if FRACTION_ONE - fx > fz => Half::Second,
+        Diagonal::Anti => Half::First,
+    }
+}
+
+/// The triangle a world position falls in.
+pub fn triangle_containing(x: i32, z: i32) -> Triangle {
+    triangle(Cell::containing(x, z), half_containing(x, z))
 }
 
 /// The terrain, with the queries the engine's own diagnostics name.
@@ -233,6 +268,53 @@ impl<'a> Grid<'a> {
             _ => return None,
         };
         Some(set.textures.at(cell.x, cell.z, face as usize))
+    }
+
+    /// The surface normal of one triangle, before normalisation.
+    ///
+    /// `0x41b0b0` builds `(h0 - h1, CELL_SIZE, h2 - h3)` from two pairs of
+    /// corner altitudes and hands it to the vector normaliser at `0x42bb80`.
+    /// Which pairs depends on the case, and in every case they are the two
+    /// axis-aligned edges of the triangle:
+    ///
+    /// ```text
+    /// Main,  Second  {Origin, X, Far}   (h(x,z)   - h(x+1,z),   h(x+1,z) - h(x+1,z+1))
+    /// Anti,  Second  {Origin, X, Z}     (h(x,z)   - h(x+1,z),   h(x,z)   - h(x,z+1))
+    /// ```
+    ///
+    /// The y component is the cell size, so the vector is a height gradient per
+    /// cell and +y is up.
+    pub fn triangle_normal(&self, layer: Layer, tri: Triangle) -> Option<[i32; 3]> {
+        let h = |dx: i32, dz: i32| {
+            self.height_at_grid(layer, tri.cell.x + dx, tri.cell.z + dz)
+        };
+        // The two axis-aligned edges of the triangle, as corner pairs. Each
+        // triangle has exactly one edge along x and one along z; the diagonal
+        // edge is the one that is left out.
+        let along_x = Self::edge(tri, |c| c.offset().1);
+        let along_z = Self::edge(tri, |c| c.offset().0);
+        let (ax, bx) = along_x?;
+        let (az, bz) = along_z?;
+        Some([
+            h(ax.offset().0, ax.offset().1)? - h(bx.offset().0, bx.offset().1)?,
+            CELL_SIZE,
+            h(az.offset().0, az.offset().1)? - h(bz.offset().0, bz.offset().1)?,
+        ])
+    }
+
+    /// The triangle's edge whose endpoints agree on `key` - the x-aligned edge
+    /// when `key` reads the z offset, and the z-aligned edge when it reads x.
+    /// Ordered so the lower coordinate comes first, which is the order the
+    /// engine subtracts in.
+    fn edge(tri: Triangle, key: fn(Corner) -> i32) -> Option<(Corner, Corner)> {
+        let c = tri.corners;
+        for (a, b) in [(c[0], c[1]), (c[1], c[2]), (c[2], c[0])] {
+            if key(a) == key(b) {
+                let (a, b) = if a.offset() < b.offset() { (a, b) } else { (b, a) };
+                return Some((a, b));
+            }
+        }
+        None
     }
 
     /// Whether a cell carries a box in either set. A box with a zero top is

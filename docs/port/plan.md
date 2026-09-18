@@ -2,7 +2,7 @@
 title: The Rust port
 status: partial
 covers: crates/
-worklog: 7, 8, 9
+worklog: 7, 8, 9, 10
 ---
 
 # The Rust port
@@ -55,15 +55,18 @@ hb-app       window, input, the frame loop
 **1. Data layer.** Done. Everything in both archives parses, or is a documented
 anomaly. `hb check` is the gate.
 
-**2. Look at it.** Partly done. `hb png` renders a `.RAW` through its palette
-and `hb view` renders a model flat shaded, which is what proved the polygon
-node right - the ship looks like a ship. Still to do: the terrain as a
-heightmap image, the colour ramps as strips, models to OBJ.
+**2. Look at it.** Mostly done. `hb png` renders a `.RAW` through its palette,
+`hb view` renders a model flat shaded, and `hb heightmap` renders a level's
+ground lit by the engine's own per-triangle normal. Between them they proved
+the polygon node and the terrain right - the ship looks like a ship and FLOAT
+looks like floating platforms. Still to do: the colour ramps as strips, models
+to OBJ.
 
-**3. The world, headless.** Started. `hb-world` has the cell geometry:
-wrapping indices, the 8.0-unit cell, the parity-dependent triangle split, and
-`heightAtGrid`. Still to do: `groundTriangleInt`'s plane evaluation, the box
-and chamber intersection tests, and collision.
+**3. The world, headless.** Mostly done. `hb-world` has the cell geometry -
+wrapping indices, the 8.0-unit cell, the parity-dependent triangle split, the
+point-in-triangle test and the surface normal - plus `heightAtGrid` and the box
+span query. Still to do: the plane evaluation as a height lookup at an
+arbitrary point, the box and chamber intersection tests, and collision.
 
 **4. A picture.** `hb-render` plus `hb-app`: a window, a camera, and the
 terrain drawn in 8-bit indexed colour through the level's palette and ramps,

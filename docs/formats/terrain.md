@@ -2,7 +2,7 @@
 title: The terrain grids
 status: partial
 covers: DATA\*.RAW, DATA\*.CLR, DATA\*.RA0-RA5, DATA\*.CL0-CL2
-worklog: 4, 8
+worklog: 4, 8, 10
 ---
 
 # The terrain grids
@@ -164,6 +164,51 @@ is **not** two thirds - that would be `0xAAAB`. The 0.4%-of-a-cell difference
 changes which triangle a borderline query lands in, so it is reproduced rather
 than corrected.
 
+## Which half of a cell a point is in
+
+`0x41b0b0` answers it with two comparisons on the position's fractions across
+its cell. The fraction is `(p & 0x7ffff) * 0x10000 / 0x80000`, the low 19 bits
+scaled to 16.
+
+```
+parity 0   fz < fx          {origin, +x, +x+z}   else {origin, +z, +x+z}
+parity 1   fx + fz < 1.0    {origin, +x, +z}     else {+x, +x+z, +z}
+```
+
+The first test is the line `fx == fz`, the main diagonal; the second is
+`fx + fz == 1`, the anti-diagonal. That is the same split the sample points in
+`groundTriangleMidpoint` imply, arrived at by a different routine, so the
+triangulation is transcribed twice over rather than inferred once.
+
+## The surface normal
+
+`groundTriangleInt` at `0x428ac0` calls `groundTriangleMidpoint` for a point on
+the triangle, then dispatches on the layer to one of three routines - ground
+`0x41b0b0`, chamber floor `0x41b3c0`, chamber ceiling `0x41b6d0` - for the
+normal. Each builds a vector from two corner-altitude differences and hands it
+to the normaliser at `0x42bb80`:
+
+```
+n = normalise( h(a) - h(b), 0x80000, h(c) - h(d) )
+```
+
+where `(a, b)` is the triangle's x-aligned edge and `(c, d)` its z-aligned one.
+Every triangle in this scheme has exactly one of each; the diagonal edge is the
+one left out. The two readable cases spell out:
+
+```
+parity 0, fz < fx    ( h(x,z) - h(x+1,z),  0x80000,  h(x+1,z) - h(x+1,z+1) )
+parity 1, fx+fz < 1  ( h(x,z) - h(x+1,z),  0x80000,  h(x,z)   - h(x,z+1)   )
+```
+
+The y component is the cell size, so the vector is a height change per cell and
+**+y is up**.
+
+Between them, `groundTriangleMidpoint` and `groundTriangleInt` give a point and
+a normal, which is a plane, which is the height anywhere in the triangle. That
+is how the engine does terrain height and collision, and it is the whole of the
+ground query.
+
 ## The layer parameter
 
 `heightAtGrid`, `groundTriangleInt` and `groundTriangleMidpoint` all take a
@@ -175,9 +220,52 @@ layer and all reject anything but 0, 2 and 3. There is no layer 1.
 3  chamber ceiling   0x006bdfb0 + index * 12, +2
 ```
 
-The box sets are not reachable through these queries;
-`intersectingBoxSurface` at `0x0042953c` is the one that takes them, and it has
-not been read yet.
+The box sets are not reachable through these queries. `intersectingBoxSurface`
+at `0x004294c0` is the one that takes them, and it accepts layers 1 and 4 and
+nothing else:
+
+```
+1  box set A    0x00675fa0 + index * 18
+4  box set B    0x006edfc0 + index * 18
+```
+
+It reads the bottom at +0 and the top at +2, shifts both left 8 like
+`heightAtGrid` does, and builds the box's corners from `index << 19` and
+`(index + 1) << 19`. So a ground box is an axis-aligned column spanning exactly
+one cell, and those two altitudes fully determine it. The complete layer
+numbering across the engine is therefore:
+
+```
+0  ground          heightAtGrid, groundTriangleInt, groundTriangleMidpoint
+1  box set A       intersectingBoxSurface
+2  chamber floor   heightAtGrid, groundTriangleInt, groundTriangleMidpoint
+3  chamber ceiling heightAtGrid, groundTriangleInt, groundTriangleMidpoint
+4  box set B       intersectingBoxSurface
+```
+
+## Which box texture is on which face
+
+Measured, not transcribed. Take every box cell across eight levels whose four
+side slots are three-of-a-kind plus one odd one out, and that has exactly one
+boxless neighbour:
+
+```
+odd slot 0    z neighbour exposed 160    x neighbour exposed 2
+odd slot 1    z 129                      x 4
+odd slot 2    x 145                      z 0
+odd slot 3    x 141                      z 0
+```
+
+So slots 0 and 1 are the two z-facing sides and 2 and 3 the two x-facing sides.
+Slot 4 is the top - 80 distinct textures across `FLOAT`'s 1,142 boxes, against
+18 for slot 5, the bottom, which a player rarely sees.
+
+Which member of each pair faces which way is **not** settled. The same test
+splits 81 against 77 for the z pair and 82 against 63 for the x pair, which is
+noise. A stricter test over isolated two-cell runs gives 7 against 1 and 5
+against 2 - suggestive, too small to rely on, and it disagrees with the one
+case read by hand. It needs the terrain renderer, or a rendered level compared
+against a screenshot.
 
 ## Both colour and texture files have a narrow and a wide form
 
@@ -201,6 +289,5 @@ in the high bits, not as a colour. It is not confirmed.
 ## Unknown
 
 The third `u16` of the ground cell, and the four spare bytes of the chamber
-cell. The meaning of the `.CLR` high byte. Which of the six box textures is
-which face - `intersectingBoxSurface` is the routine that would say. Why
-`0xABB9` is not `0xAAAB`.
+cell. The meaning of the `.CLR` high byte. Which member of each box side pair
+faces which way. Why `0xABB9` is not `0xAAAB`.

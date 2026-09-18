@@ -7,5 +7,5 @@
 
 pub mod grid;
 
-pub use grid::{Cell, Corner, Diagonal, Grid, Half, Triangle};
+pub use grid::{triangle, triangle_containing, Cell, Corner, Diagonal, Grid, Half, Triangle};
 pub use hb_formats::terrain::{BoxFace, Layer};

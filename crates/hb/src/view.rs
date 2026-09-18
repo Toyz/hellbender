@@ -187,3 +187,92 @@ fn fill(pixels: &mut [u8], w: usize, h: usize, points: &[(f32, f32, f32)], colou
         }
     }
 }
+
+/// A top-down shaded view of a level's ground, lit by the per-triangle normal
+/// the engine computes. Boxes and chambers are marked rather than drawn.
+///
+/// Like [`render`], this is a debug view. It exists to show that the height
+/// query, the parity-dependent triangle split and the normal all line up.
+pub fn heightmap(grid: &hb_world::Grid, scale: usize) -> (Vec<u8>, usize, usize) {
+    use hb_formats::terrain::{Layer, SIDE};
+    use hb_world::grid::triangle;
+    use hb_world::{Cell, Half};
+
+    let side = SIDE * scale;
+    let mut pixels = vec![0u8; side * side * 3];
+    let light = [0.45f32, 0.80, -0.40];
+
+    let (mut lo, mut hi) = (i32::MAX, i32::MIN);
+    for z in 0..SIDE as i32 {
+        for x in 0..SIDE as i32 {
+            if let Some(h) = grid.height_at_grid(Layer::Ground, x, z) {
+                lo = lo.min(h);
+                hi = hi.max(h);
+            }
+        }
+    }
+    let range = (hi - lo).max(1) as f32;
+
+    let (mut boxes, mut chambers) = (0usize, 0usize);
+    for z in 0..SIDE as i32 {
+        for x in 0..SIDE as i32 {
+            let cell = Cell::new(x, z);
+            let height = grid.height_at_grid(Layer::Ground, x, z).unwrap_or(0);
+            let tint = (height - lo) as f32 / range;
+
+            let has_box = grid.has_box_a(cell) || grid.has_box_b(cell);
+            if grid.has_box_a(cell) {
+                boxes += 1;
+            }
+            // A chamber whose ceiling is not at the default is a real chamber.
+            let roofed = grid
+                .height_at_grid(Layer::ChamberCeiling, x, z)
+                .is_some_and(|c| c != 0);
+            if roofed {
+                chambers += 1;
+            }
+
+            for sy in 0..scale {
+                for sx in 0..scale {
+                    // Which half of the cell this pixel is in, so the
+                    // checkerboard split shows up in the shading. Same tests
+                    // the engine uses, at sub-cell resolution.
+                    let half = match cell.diagonal() {
+                        hb_world::Diagonal::Main if sy < sx => Half::Second,
+                        hb_world::Diagonal::Main => Half::First,
+                        hb_world::Diagonal::Anti if sx + sy < scale => Half::Second,
+                        hb_world::Diagonal::Anti => Half::First,
+                    };
+                    let normal = grid
+                        .triangle_normal(Layer::Ground, triangle(cell, half))
+                        .unwrap_or([0, 1, 0]);
+                    let n = normalise([
+                        normal[0] as f32,
+                        normal[1] as f32,
+                        normal[2] as f32,
+                    ]);
+                    let lambert =
+                        (n[0] * light[0] + n[1] * light[1] + n[2] * light[2]).max(0.0);
+                    let shade = 0.25 + 0.75 * lambert;
+
+                    let mut rgb = [
+                        (255.0 * shade * (0.30 + 0.70 * tint)) as u8,
+                        (255.0 * shade * (0.45 + 0.55 * tint)) as u8,
+                        (255.0 * shade * (0.35 + 0.35 * tint)) as u8,
+                    ];
+                    if has_box {
+                        rgb[0] = rgb[0].saturating_add(70);
+                        rgb[2] = rgb[2].saturating_add(30);
+                    }
+                    if roofed {
+                        rgb[2] = rgb[2].saturating_add(60);
+                    }
+                    let px = (x as usize * scale + sx, z as usize * scale + sy);
+                    let at = (px.1 * side + px.0) * 3;
+                    pixels[at..at + 3].copy_from_slice(&rgb);
+                }
+            }
+        }
+    }
+    (pixels, boxes, chambers)
+}

@@ -4,7 +4,10 @@
 //! `HELLBEND.EXE`, and the point is that the transcription is self-consistent.
 
 use hb_formats::terrain::CELL_SIZE;
-use hb_world::grid::{centroid, sample_point, triangle, SAMPLE_HIGH, SAMPLE_LOW};
+use hb_world::grid::{
+    cell_fraction, centroid, half_containing, sample_point, triangle, triangle_containing,
+    Corner, FRACTION_ONE, SAMPLE_HIGH, SAMPLE_LOW,
+};
 use hb_world::{Cell, Diagonal, Half};
 
 #[test]
@@ -88,4 +91,96 @@ fn the_two_halves_of_a_cell_share_exactly_two_corners() {
             assert_eq!(all.len(), 4, "cell ({x},{z}) must cover every corner");
         }
     }
+}
+
+#[test]
+fn a_position_lands_in_the_half_whose_sample_point_is_nearest() {
+    // `half_containing` is transcribed from the engine's branch; the sample
+    // points are transcribed from a different routine. They have to agree, and
+    // that they do is the cross-check on both.
+    for cx in 0..6 {
+        for cz in 0..6 {
+            let origin = Cell::new(cx, cz).origin();
+            for fx in [0x1000, 0x4000, 0x7000, 0x9000, 0xc000, 0xf000] {
+                for fz in [0x1000, 0x4000, 0x7000, 0x9000, 0xc000, 0xf000] {
+                    // Skip points on the diagonal itself, where either half is
+                    // defensible and the engine just picks one.
+                    if fx == fz || fx + fz == FRACTION_ONE {
+                        continue;
+                    }
+                    let (x, z) = (origin.0 + (fx << 3), origin.1 + (fz << 3));
+                    let half = half_containing(x, z);
+                    let here = sample_point(Cell::new(cx, cz), half);
+                    let other = sample_point(
+                        Cell::new(cx, cz),
+                        if half == Half::First { Half::Second } else { Half::First },
+                    );
+                    let near = |p: (i32, i32)| {
+                        let (dx, dz) = (p.0 as i64 - x as i64, p.1 as i64 - z as i64);
+                        dx * dx + dz * dz
+                    };
+                    assert!(
+                        near(here) <= near(other),
+                        "cell ({cx},{cz}) at ({fx:#x},{fz:#x}): {half:?} is the further half"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn the_cell_fraction_is_the_low_nineteen_bits_scaled_to_sixteen() {
+    assert_eq!(cell_fraction(0), 0);
+    assert_eq!(cell_fraction(CELL_SIZE), 0);
+    assert_eq!(cell_fraction(CELL_SIZE / 2), FRACTION_ONE / 2);
+    assert_eq!(cell_fraction(CELL_SIZE - 8), FRACTION_ONE - 1);
+    // The engine computes it as (p & 0x7ffff) * 0x10000 / 0x80000.
+    for p in [0, 1, 12345, CELL_SIZE - 1, CELL_SIZE * 7 + 99] {
+        let engine = ((p & (CELL_SIZE - 1)) as i64 * 0x10000 / CELL_SIZE as i64) as i32;
+        assert_eq!(cell_fraction(p), engine, "at {p}");
+    }
+}
+
+#[test]
+fn every_triangle_has_one_edge_along_each_axis() {
+    // The normal routine relies on it: it reads one x-aligned and one
+    // z-aligned edge out of every triangle, whichever case it is in.
+    for x in 0..8 {
+        for z in 0..8 {
+            for half in [Half::First, Half::Second] {
+                let tri = triangle(Cell::new(x, z), half);
+                let c = tri.corners;
+                let edges = [(c[0], c[1]), (c[1], c[2]), (c[2], c[0])];
+                let along_x = edges.iter().filter(|(a, b)| a.offset().1 == b.offset().1).count();
+                let along_z = edges.iter().filter(|(a, b)| a.offset().0 == b.offset().0).count();
+                assert_eq!(along_x, 1, "cell ({x},{z}) {half:?}");
+                assert_eq!(along_z, 1, "cell ({x},{z}) {half:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn the_engines_own_corner_triples_come_back_out() {
+    // 0x41b0b0's two readable cases, transcribed as corner offsets.
+    //
+    // parity 0, fz < fx: reads h(x,z), h(x+1,z), h(x+1,z+1).
+    assert_eq!(
+        triangle(Cell::new(0, 0), Half::Second).corners,
+        [Corner::Origin, Corner::X, Corner::Far]
+    );
+    // A point three quarters along x and a quarter along z is in that half.
+    let inside = triangle_containing(CELL_SIZE * 3 / 4, CELL_SIZE / 4);
+    assert_eq!(inside.cell, Cell::new(0, 0));
+    assert_eq!(inside.half, Half::Second);
+
+    // parity 1, fx + fz < 1: reads h(x,z), h(x+1,z), h(x,z+1).
+    assert_eq!(
+        triangle(Cell::new(1, 0), Half::Second).corners,
+        [Corner::Origin, Corner::X, Corner::Z]
+    );
+    let inside = triangle_containing(CELL_SIZE + CELL_SIZE / 4, CELL_SIZE / 4);
+    assert_eq!(inside.cell, Cell::new(1, 0));
+    assert_eq!(inside.half, Half::Second);
 }

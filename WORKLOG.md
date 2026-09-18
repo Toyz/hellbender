@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-9 entries: content 1, decomp 3, format 7, port 3, render 2, test 1, tooling 2, world 3.
+10 entries: content 1, decomp 4, format 7, port 4, render 3, test 1, tooling 2, world 4.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -20,3 +20,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 7 | [The Rust port's data layer, and four claims the tests knocked down](worklog/0007-the-rust-port-s-data-layer-and-four-claims-the-tests-knocked.md) | 2026-09-17 | port, format, test |
 | 8 | [Half the world was in the wrong hemisphere, and the diagonal alternates](worklog/0008-half-the-world-was-in-the-wrong-hemisphere-and-the-diagonal.md) | 2026-09-17 | world, decomp, port |
 | 9 | [The polygon node, and a ship that looks like a ship](worklog/0009-the-polygon-node-and-a-ship-that-looks-like-a-ship.md) | 2026-09-17 | format, render, port |
+| 10 | [The ground query closes, and a level that looks like its own name](worklog/0010-the-ground-query-closes-and-a-level-that-looks-like-its-own.md) | 2026-09-17 | world, decomp, port, render |

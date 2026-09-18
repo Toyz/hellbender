@@ -22,6 +22,7 @@ hb - inspect Hellbender's data
   hb model <name.bin>               walk a model's MRGL nodes
   hb png <pod> <entry> <out.png>    a .RAW plus its palette, as a PNG
   hb view <name.bin> <out.png>      a model, flat shaded, as a PNG
+  hb heightmap <level> <out.png>    a level's ground, lit, from above
   hb check                          parse everything and report what fails
 
 <pod> is a path, or one of `game` and `startup` to use $HB_GAME (default
@@ -72,6 +73,7 @@ fn run(args: &[&str]) -> Result<(), String> {
         ["model", name] => cmd_model(name),
         ["png", pod, entry, out] => cmd_png(pod, entry, Path::new(out)),
         ["view", name, out] => cmd_view(name, Path::new(out)),
+        ["heightmap", name, out] => cmd_heightmap(name, Path::new(out)),
         ["check"] => cmd_check(),
         _ => Err(format!("unknown command\n\n{USAGE}")),
     }
@@ -280,6 +282,26 @@ fn cmd_view(name: &str, out: &Path) -> Result<(), String> {
         model.polygons.len(),
         out.display()
     );
+    Ok(())
+}
+
+fn cmd_heightmap(name: &str, out: &Path) -> Result<(), String> {
+    let pod = open_pod("game")?;
+    let data = pod
+        .read("levels", &format!("{name}.lvl"))
+        .map_err(|e| e.to_string())?;
+    let level = lvl::Level::parse(data).map_err(|e| e.to_string())?;
+    let stem = level.stem().to_string();
+    let t = terrain::Terrain::load(|ext| {
+        pod.read("data", &format!("{stem}.{ext}")).ok().map(<[u8]>::to_vec)
+    })
+    .map_err(|e| e.to_string())?;
+    let grid = hb_world::Grid::new(&t);
+    let scale = 5;
+    let (pixels, boxes, chambers) = view::heightmap(&grid, scale);
+    let side = terrain::SIDE * scale;
+    std::fs::write(out, png::rgb(side, side, &pixels)).map_err(|e| e.to_string())?;
+    println!("{stem}: {side}x{side}, {boxes} box cells, {chambers} roofed cells -> {}", out.display());
     Ok(())
 }
 
