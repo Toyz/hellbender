@@ -1,0 +1,8 @@
+[package]
+name = "hb-audio"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dev-dependencies]
+hb-pod = { path = "../hb-pod" }

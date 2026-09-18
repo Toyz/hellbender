@@ -29,10 +29,11 @@ observed fact. Everything else describes what the data and the binary do.
 - **Every documented claim gets a test.** `crates/hb-formats/tests/` checks the
   documentation against the shipped archives, and skips when the archives are
   not present.
-- **No dependencies until one is unavoidable.** Every crate that reads or draws
-  the game's data has none, so that half of the workspace builds offline and
-  will keep building. `hb-fly` is the exception and the only one: a window and a
-  keyboard are not worth writing by hand.
+- **No dependencies until one is unavoidable.** Every crate that reads, draws
+  or decodes the game's data has none, so that half of the workspace builds
+  offline and will keep building. `hb-fly` is the exception and the only one: a
+  window, a keyboard and a sound device are not worth writing by hand, and it
+  is the only file in the workspace that touches either API.
 
 ## Crates
 
@@ -43,14 +44,14 @@ hb-world     cell geometry and height queries       started
 hb-render    the software rasteriser, plus the       terrain done
              level loader both binaries share
 hb           the `hb` inspection tool, no deps       growing
-hb-fly       a window and a keyboard, via minifb     flies
+hb-audio     .WAV decode, .MOD playback, no deps     music plays
+hb-fly       a window, a keyboard and a speaker      flies
 ```
 
-Planned, neither started:
+Planned, not started:
 
 ```
 hb-sim       flight model, weapons, enemy logic phases
-hb-audio     the mixer, .MOD playback, .WAV effects
 ```
 
 ## Stages
@@ -92,8 +93,10 @@ empty level.
 **7. The game.** Enemies from `.DEF`, their seven logic phases, courses from
 `.CRS`, weapons, powerups, the HUD. Mission success and failure.
 
-**8. The trimmings.** Music through a `.MOD` player, effects, Smacker
-cutscenes through a decoder binding, the front end, demos, saves.
+**8. The trimmings.** Music is done - `hb-audio` plays the `.MOD` files and the
+level's track starts with the level. Still to do: the sound effects, which
+decode but nothing triggers; Smacker cutscenes through a decoder binding; the
+front end, demos and saves.
 
 Multiplayer is out of scope until everything above works.
 

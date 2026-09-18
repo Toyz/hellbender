@@ -9,6 +9,8 @@ use std::time::Instant;
 
 use hb_formats::terrain::CELL_SIZE;
 use hb_formats::Angle;
+mod sound;
+
 use hb_formats::raw::Image;
 use hb_pod::Pod;
 use hb_render::{Camera, Level, Target};
@@ -27,7 +29,7 @@ hb-fly - fly around a Hellbender level
   a / d         strafe                r / f   climb and dive
   space         stop                  tab     cycle the level
   c             collision on/off      k       cockpit on/off
-  esc           quit
+  m             music on/off          esc     quit
 ";
 
 fn game_dir() -> PathBuf {
@@ -175,6 +177,37 @@ fn main() -> Result<(), String> {
         if show_cockpit { "ckpt art loaded" } else { "not found" }
     );
 
+    // The level's music, if a device will take it.
+    let music = match sound::Music::open() {
+        Ok(music) => {
+            println!("audio: {} Hz", music.rate);
+            Some(music)
+        }
+        Err(why) => {
+            println!("audio: {why}");
+            None
+        }
+    };
+    let play_music = |level: &Level| {
+        let (Some(music), Some((dir, file))) = (music.as_ref(), level.manifest.slot("music"))
+        else {
+            return;
+        };
+        match game
+            .read(dir, file)
+            .or_else(|_| startup.read(dir, file))
+            .ok()
+            .and_then(|b| hb_audio::Module::parse(b).ok())
+        {
+            Some(module) => {
+                println!("music: {file} - {:?}", module.title);
+                music.play(module);
+            }
+            None => println!("music: {file} could not be loaded"),
+        }
+    };
+    play_music(&level);
+
     let mut target = Target::new(w, h);
     let mut window = Window::new(
         "Hellbender",
@@ -205,9 +238,17 @@ fn main() -> Result<(), String> {
             level = Level::load(&game, Some(&startup), LEVELS[index])?;
             flight = Flight::new(start_of(&level));
             describe(&level);
+            play_music(&level);
         }
         tab_was_down = tab;
 
+        if window.is_key_pressed(Key::M, minifb::KeyRepeat::No) {
+            match music.as_ref() {
+                Some(m) if m.playing() => m.stop(),
+                Some(_) => play_music(&level),
+                None => {}
+            }
+        }
         if window.is_key_pressed(Key::K, minifb::KeyRepeat::No) {
             show_cockpit = !show_cockpit && cockpit.is_some();
         }

@@ -13,3 +13,5 @@ hb-formats = { path = "../hb-formats" }
 hb-world = { path = "../hb-world" }
 hb-render = { path = "../hb-render" }
 minifb = "0.28"
+hb-audio = { path = "../hb-audio" }
+cpal = "0.18"
