@@ -123,7 +123,11 @@ Reported from playing `hb-fly` and deliberately deferred:
   now builds the rasteriser, the mixer, the world and the formats optimised
   even in a dev build (114 a second), so a plain `cargo run -p hb-fly` is
   fast. At 640x480 release draws 50 to 80 a second.
-- **The world did not look right.** Worklog 29: every ground texture was
+- **The world did not look right.** Worklog 32: the engine draws ten cells
+  each way and fogs everything out between 48 and 64 units, with textures
+  dropping to half and quarter resolution with distance; the port drew five
+  times as far with a thin fog and full-resolution textures to the horizon,
+  which is where most of the shimmering came from. Worklog 29: every ground texture was
   mirrored and none were turned, the ground was lit flat per cell where the
   engine shades each grid point, box sides took the wrong one of each pair,
   and textures were mapped affinely. All four are now the engine's.

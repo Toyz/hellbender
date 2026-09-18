@@ -30,6 +30,11 @@ pub struct Level {
     /// The level's `.TEX` list, resolved. An entry is `None` when the named
     /// file is not in either archive or is a zero-length placeholder.
     pub textures: Vec<Option<Image>>,
+    /// Each texture at half and quarter size - 32 and 16 texels for the
+    /// 64-texel terrain textures - for the engine's distance-picked
+    /// resolution (see [`crate::scene`]). `None` where the texture is missing
+    /// or will not halve.
+    pub mips: Vec<[Option<Image>; 2]>,
     pub texture_names: Vec<String>,
     pub palette: Palette,
     pub light: Option<Ramp>,
@@ -312,7 +317,30 @@ impl Level {
             .and_then(|b| hb_formats::course::parse(&b).ok())
             .unwrap_or_default();
 
+        // Smaller copies of every texture, for the resolution the engine picks
+        // by distance. How the engine made its smaller copies is not read;
+        // these average each 2x2 in colour and look the result up in the
+        // level's `.MAP`, the table that answers "nearest index in this
+        // palette" and the one the engine itself uses for that question.
+        let colour_map = (|| {
+            let (_, ground_palette) = manifest.slot("ground_palette")?;
+            let stem = ground_palette.split('.').next()?;
+            ColourMap::parse(&read("fog", &format!("{stem}.map"))?).ok()
+        })();
+        let mips = textures
+            .iter()
+            .map(|t| match t {
+                Some(image) => {
+                    let half = halve(image, &palette, colour_map.as_ref());
+                    let quarter = half.as_ref().and_then(|h| halve(h, &palette, colour_map.as_ref()));
+                    [half, quarter]
+                }
+                None => [None, None],
+            })
+            .collect();
+
         Ok(Level {
+            mips,
             wreck_mesh,
             destroy_sound,
             courses,
@@ -343,6 +371,7 @@ impl Level {
         crate::scene::Scene {
             grid: hb_world::Grid::new(&self.terrain),
             textures: &self.textures,
+            mips: &self.mips,
             palette: &self.palette,
             light: self.light.as_ref(),
             fog: self.fog.as_ref(),
@@ -382,4 +411,40 @@ impl Level {
             .filter(|p| self.meshes.get(p.kind).is_some_and(Option::is_some))
             .count()
     }
+}
+
+/// An image at half size: each 2x2 block averaged in colour and turned back
+/// into an index through the palette's `.MAP`, or by nearest colour without
+/// one.
+fn halve(image: &Image, palette: &Palette, map: Option<&ColourMap>) -> Option<Image> {
+    let (w, h) = (image.shape.width, image.shape.height);
+    if w < 2 || h < 2 || w % 2 != 0 || h % 2 != 0 {
+        return None;
+    }
+    let (hw, hh) = (w / 2, h / 2);
+    let mut pixels = Vec::with_capacity(hw * hh);
+    for y in 0..hh {
+        for x in 0..hw {
+            let mut sum = [0u32; 3];
+            for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                let [r, g, b] = palette.rgb(image.pixels[(2 * y + dy) * w + 2 * x + dx]);
+                sum[0] += r as u32;
+                sum[1] += g as u32;
+                sum[2] += b as u32;
+            }
+            let [r, g, b] = sum.map(|c| (c / 4) as u8);
+            let index = match map {
+                Some(map) => map.lookup(r, g, b),
+                None => (0..240u16)
+                    .min_by_key(|&i| {
+                        let [pr, pg, pb] = palette.rgb(i as u8);
+                        let d = [pr as i32 - r as i32, pg as i32 - g as i32, pb as i32 - b as i32];
+                        d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
+                    })
+                    .unwrap_or(0) as u8,
+            };
+            pixels.push(index);
+        }
+    }
+    Some(Image { shape: hb_formats::raw::Shape::new(hw, hh), pixels })
 }

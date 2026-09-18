@@ -2,7 +2,7 @@
 title: The simulation
 status: partial
 covers: HELLBEND.EXE logic phases, crates/hb-sim
-worklog: 26, 27, 28, 31
+worklog: 26, 27, 28, 31, 32
 ---
 
 # The simulation
@@ -83,8 +83,13 @@ class   types   routine    what
 
 The other classes' routines are listed by the table and not yet read.
 
-There is no range gate in the actor loop (`0x40bb00`): every actor thinks
-every frame, near the player or not.
+An actor thinks only while it is **within 80 units of the eye on both x and
+z**. The routine that runs a class (`0x40bb00`) has no range test itself, but
+its caller, the actor loop at `0x406650`, first calls the draw-and-cull routine
+`0x40da00`, and skips the update when that reports the actor out of range -
+which `0x42f710` does past `0x500000` on either axis (`0x42f7b9`). Worklog 28
+read only the inner routine and said every actor thinks every frame; worklog
+32 corrected it. Enemy shots already in flight carry on regardless.
 
 ## Time
 

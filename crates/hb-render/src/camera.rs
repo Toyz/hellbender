@@ -23,9 +23,6 @@ pub struct Camera {
     /// Positive roll lowers the left wing - the sign the recorded demo uses,
     /// where left turns hold a positive roll.
     pub roll: Angle,
-    /// How far the ground is drawn, in world units. Beyond it the fog ramp has
-    /// saturated anyway.
-    pub far: i32,
 }
 
 impl Camera {
@@ -37,7 +34,6 @@ impl Camera {
             yaw,
             pitch: Angle(0),
             roll: Angle(0),
-            far: 220 << 16,
         }
     }
 

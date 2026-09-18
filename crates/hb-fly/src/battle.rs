@@ -105,6 +105,9 @@ impl Battle {
             }
             let Some(player) = target else { break };
             let p = &live[*i];
+            if !combat::in_range(player, combat::position_of(p)) {
+                continue;
+            }
             let def = &level.kinds[p.kind];
             let mesh = level.meshes.get(p.kind).and_then(Option::as_ref);
             match turret.step(def, mesh, p, player, velocity, dt, &mut self.rng) {

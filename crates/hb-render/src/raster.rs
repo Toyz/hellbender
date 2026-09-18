@@ -172,8 +172,10 @@ impl Target {
 pub struct Shade<'a> {
     pub light: Option<&'a Ramp>,
     pub fog: Option<&'a Ramp>,
-    /// Where the fog ramp reaches its last row.
-    pub fog_distance: f32,
+    /// The depth where fog begins, and how far past it the fog ramp reaches
+    /// its last row.
+    pub fog_start: f32,
+    pub fog_range: f32,
     /// Terrain is opaque; sprites and cockpit overlays are not.
     pub index_zero_is_clear: bool,
 }
@@ -187,8 +189,8 @@ impl Shade<'_> {
             out = ramp.shade(level.min(15), out);
         }
         if let Some(ramp) = self.fog {
-            let level = (depth / self.fog_distance * 16.0) as isize;
-            out = ramp.shade(level.clamp(0, 15) as usize, out);
+            let f = ((depth - self.fog_start) / self.fog_range).clamp(0.0, 1.0);
+            out = ramp.shade((f * 15.0).round() as usize, out);
         }
         out
     }

@@ -26,8 +26,10 @@
 //!   4.0 to one and a half seconds, and after that it points straight at the
 //!   player every sub-step.
 //!
-//! Every turret thinks every frame, near or far: the actor loop at `0x40bb00`
-//! has no range test.
+//! A turret only thinks while it is within 80 units of the eye on both axes:
+//! the actor loop at `0x406650` runs the draw-and-cull routine `0x40da00`
+//! first and skips the update when it reports the actor out of range
+//! (`0x42f7b9`). See [`crate::combat::in_range`].
 
 use hb_formats::mrgl::Model;
 use hb_formats::text::{EnemyDef, Placement};

@@ -445,6 +445,10 @@ fn main() -> Result<(), String> {
             if battle.health[*i].destroyed {
                 continue;
             }
+            // Only actors within the engine's 80-unit box think.
+            if !hb_sim::combat::in_range(eye, hb_sim::combat::position_of(&live[*i])) {
+                continue;
+            }
             follower.step(dt);
             let [x, y, z] = follower.position_fixed();
             let placed = &mut live[*i];

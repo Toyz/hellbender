@@ -12,6 +12,8 @@ use crate::raster::{Shade, Target, Vertex};
 pub struct Scene<'a> {
     pub grid: Grid<'a>,
     pub textures: &'a [Option<Image>],
+    /// Each texture at half and quarter size, indexed like `textures`.
+    pub mips: &'a [[Option<Image>; 2]],
     pub palette: &'a Palette,
     pub light: Option<&'a Ramp>,
     pub fog: Option<&'a Ramp>,
@@ -36,11 +38,23 @@ pub struct Scene<'a> {
     pub sky_scroll: [f32; 2],
 }
 
+/// How far the engine draws: ten cells each way of the eye's cell. The ground
+/// drawer projects a 22 x 22 grid of vertices around the eye, indexed
+/// `(x - eye + 10) & 0x7f` (`0x414c1d`), and objects are culled - and do not
+/// think - beyond 80 units on either axis (`0x42f7b9`).
+pub const REACH_CELLS: i32 = 10;
+pub const REACH: f32 = 80.0;
+
+/// Fog, per vertex, from the view depth: none to 48 units, all of it by 64
+/// (`0x412b70` sets `0x300000` and `0x100000`; `0x414774` applies them).
+pub const FOG_START: f32 = 48.0;
+pub const FOG_RANGE: f32 = 16.0;
+
 /// Draws the ground and both box sets from the camera's position.
 ///
-/// The traversal is this renderer's own: the engine's visibility scheme has not
-/// been read. This walks every cell within `camera.far` of the eye, back to
-/// front, and lets the depth buffer settle the rest.
+/// The cells are the engine's square of ten each way. Their order is this
+/// renderer's own - the engine's visibility scheme has not been read - so it
+/// goes back to front and lets the depth buffer settle the rest.
 pub fn draw_world(target: &mut Target, scene: &Scene, camera: &Camera) -> Drawn {
     let mut drawn = Drawn::default();
     // Everything past the draw distance is fully fogged, and the fog ramp's
@@ -52,7 +66,7 @@ pub fn draw_world(target: &mut Target, scene: &Scene, camera: &Camera) -> Drawn 
         target.colour.fill(fog.shade(15, 1));
     }
     draw_sky(target, scene, camera);
-    let reach = (camera.far / CELL_SIZE).max(1);
+    let reach = REACH_CELLS;
     // The eye's cell before wrapping. The camera's coordinates are signed and
     // unbounded, so the walk has to start from the same frame the camera is
     // in: a camera at x = -10 units is in cell -2, whose data is in grid
@@ -65,9 +79,6 @@ pub fn draw_world(target: &mut Target, scene: &Scene, camera: &Camera) -> Drawn 
     for dz in -reach..=reach {
         for dx in -reach..=reach {
             let d = dx * dx + dz * dz;
-            if d > reach * reach {
-                continue;
-            }
             cells.push((d, eye.0 + dx, eye.1 + dz));
         }
     }
@@ -155,8 +166,13 @@ fn draw_objects(target: &mut Target, scene: &Scene, camera: &Camera, drawn: &mut
     let mut order: Vec<(i64, usize)> = Vec::new();
     for (i, p) in scene.placements.iter().enumerate() {
         let (wx, wz) = rebase(eye, p.x, p.z);
+        // The engine's box: 80 units either way of the eye, on each axis.
+        let off = |a: i32, b: i32| (a.wrapping_sub(b) as f32 / 65536.0).abs();
+        if off(wx, camera.x) > REACH || off(wz, camera.z) > REACH {
+            continue;
+        }
         let [_, _, depth] = camera.to_view(wx, p.y, wz);
-        if depth <= 0.0 || depth > (camera.far >> 16) as f32 {
+        if depth <= 0.0 {
             continue;
         }
         order.push((-(depth * 256.0) as i64, i));
@@ -307,12 +323,33 @@ fn slot(scene: &Scene, index: u16) -> usize {
     }
 }
 
-fn shade_for<'a>(scene: &'a Scene, camera: &Camera) -> Shade<'a> {
+fn shade_for<'a>(scene: &'a Scene, _camera: &Camera) -> Shade<'a> {
     Shade {
         light: scene.light,
         fog: scene.fog,
-        fog_distance: (camera.far / 65536) as f32,
+        fog_start: FOG_START,
+        fog_range: FOG_RANGE,
         index_zero_is_clear: false,
+    }
+}
+
+/// The texture at the resolution the engine picks for a polygon at this
+/// average depth.
+///
+/// Both terrain texture setups (`0x413cdc`, `0x4150cc`) average their four
+/// vertices' depths and call `0x48a510` with `0xffff * (1 - (depth + 16) /
+/// 80)`, which picks one of a texture's three sizes, 16, 32 and 64 texels
+/// (the table at `0x5112d0`), in proportion: full size to about 11 units,
+/// half to about 37, quarter beyond.
+fn at_distance<'t>(scene: &'t Scene, slot: usize, texture: &'t Image, depth: f32) -> &'t Image {
+    let v = (1.0 - (depth + 16.0) / 80.0).clamp(0.0, 1.0);
+    let level = ((v * 3.0) as usize).min(2);
+    match (level, scene.mips.get(slot)) {
+        (2, _) | (_, None) => texture,
+        (1, Some([Some(half), _])) => half,
+        (0, Some([_, Some(quarter)])) => quarter,
+        (0, Some([Some(half), None])) => half,
+        _ => texture,
     }
 }
 
@@ -357,7 +394,8 @@ fn draw_ground(
     drawn: &mut Drawn,
 ) {
     let word = TextureRef(scene.grid.terrain.colour.at(cell.x, cell.z, 0));
-    let Some(Some(texture)) = scene.textures.get(slot(scene, word.index())) else {
+    let slot = slot(scene, word.index());
+    let Some(Some(texture)) = scene.textures.get(slot) else {
         return;
     };
     let height = |dx: i32, dz: i32| {
@@ -375,30 +413,25 @@ fn draw_ground(
     let uvs = word.corner_uvs(UV_LO, UV_HI);
     let shade = shade_for(scene, camera);
 
+    // The four corners once, in the engine's order, then the two halves.
+    let mut quad = [None; 4];
+    for (i, (dx, dz)) in [(0, 0), (1, 0), (1, 1), (0, 1)].into_iter().enumerate() {
+        let (wx, wz) = (origin.0 + dx * CELL_SIZE, origin.1 + dz * CELL_SIZE);
+        quad[i] = project(camera, target, wx, height(dx, dz), wz).map(|(x, y, depth)| {
+            let (u, v) = uvs[i];
+            Vertex { x, y, depth, u, v, light: ground_light(scene, cell.x + dx, cell.z + dz) }
+        });
+    }
+    let average = quad.iter().flatten().map(|v| v.depth).sum::<f32>() / 4.0;
+    let texture = at_distance(scene, slot, texture, average);
     for half in [Half::First, Half::Second] {
         let tri = triangle(cell, half);
-        let mut points = [Vertex::default(); 3];
-        let mut visible = true;
-        for (slot, corner) in points.iter_mut().zip(tri.corners) {
-            let (dx, dz) = corner.offset();
-            let (wx, wz) = corner_world(origin, corner);
-            match project(camera, target, wx, height(dx, dz), wz) {
-                Some((x, y, depth)) => {
-                    let (u, v) = uvs[quad_corner(corner)];
-                    let light = ground_light(scene, cell.x + dx, cell.z + dz);
-                    *slot = Vertex { x, y, depth, u, v, light };
-                }
-                None => {
-                    visible = false;
-                    break;
-                }
-            }
-        }
-        if !visible {
+        let points: Option<Vec<Vertex>> = tri.corners.iter().map(|&c| quad[quad_corner(c)]).collect();
+        let Some(points) = points else {
             drawn.clipped += 1;
             continue;
-        }
-        target.triangle(points, texture, &shade);
+        };
+        target.triangle([points[0], points[1], points[2]], texture, &shade);
         drawn.ground += 1;
     }
 }
@@ -435,9 +468,15 @@ fn draw_chamber(
 
     for (face, layer) in [(0usize, Layer::ChamberFloor), (1, Layer::ChamberCeiling)] {
         let word = scene.grid.terrain.chambers.textures.texture_at(cell.x, cell.z, face);
-        let Some(Some(texture)) = scene.textures.get(slot(scene, word.index())) else {
+        let slot = slot(scene, word.index());
+        let Some(Some(full)) = scene.textures.get(slot) else {
             continue;
         };
+        // The mid-cell's depth stands in for the average of the corners.
+        let mid = (origin.0 + CELL_SIZE / 2, origin.1 + CELL_SIZE / 2);
+        let middle = scene.grid.height_at_grid(layer, cell.x, cell.z).unwrap_or(0);
+        let depth = camera.to_view(mid.0, middle, mid.1)[2];
+        let texture = at_distance(scene, slot, full, depth);
         let uvs = word.corner_uvs(UV_LO, UV_HI);
         for half in [Half::First, Half::Second] {
             let tri = triangle(cell, half);
@@ -545,7 +584,8 @@ fn draw_box(
             .box_texture(layer, cell, face)
             .map(TextureRef)
             .unwrap_or_default();
-        let Some(Some(texture)) = scene.textures.get(slot(scene, word.index())) else {
+        let slot = slot(scene, word.index());
+        let Some(Some(full)) = scene.textures.get(slot) else {
             continue;
         };
         let uvs = word.corner_uvs(UV_LO, UV_HI);
@@ -570,6 +610,8 @@ fn draw_box(
             drawn.clipped += 1;
             continue;
         }
+        let average = quad.iter().map(|v| v.depth).sum::<f32>() / 4.0;
+        let texture = at_distance(scene, slot, full, average);
         target.triangle([quad[0], quad[1], quad[2]], texture, &shade);
         target.triangle([quad[0], quad[2], quad[3]], texture, &shade);
         drawn.boxes += 2;

@@ -448,3 +448,10 @@ pub fn near_miss_sound(kind: i32) -> &'static str {
         _ => "whiz3.wav",
     }
 }
+
+/// Whether an actor is close enough to the eye to think, and to be drawn: 80
+/// units or less on both x and z (`0x42f7b9`, `0x500000`). The actor loop at
+/// `0x406650` updates nothing outside it.
+pub fn in_range(eye: [f32; 3], at: [f32; 3]) -> bool {
+    wrapped(at[0] - eye[0]).abs() <= 80.0 && wrapped(at[2] - eye[2]).abs() <= 80.0
+}

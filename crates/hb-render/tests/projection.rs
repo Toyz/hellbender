@@ -63,7 +63,7 @@ fn the_rasteriser_fills_a_triangle_and_respects_the_depth_buffer() {
     let shade = Shade {
         light: None,
         fog: None,
-        fog_distance: 100.0,
+        fog_start: 48.0, fog_range: 16.0,
         index_zero_is_clear: false,
     };
     let at = |x: f32, y: f32, depth: f32| Vertex { x, y, depth, u: 0.0, v: 0.0, light: 255.0 };
@@ -89,7 +89,7 @@ fn a_degenerate_triangle_draws_nothing_rather_than_dividing_by_zero() {
     let shade = Shade {
         light: None,
         fog: None,
-        fog_distance: 100.0,
+        fog_start: 48.0, fog_range: 16.0,
         index_zero_is_clear: false,
     };
     let at = |x: f32| Vertex { x, y: 8.0, depth: 1.0, u: 0.0, v: 0.0, light: 255.0 };
@@ -128,7 +128,7 @@ fn texture_coordinates_are_perspective_correct() {
     let mut target = Target::new(64, 64);
     target.clear(0);
     let stripes = Image { shape: Shape::new(1, 256), pixels: (0..=255u8).collect() };
-    let shade = Shade { light: None, fog: None, fog_distance: 100.0, index_zero_is_clear: false };
+    let shade = Shade { light: None, fog: None, fog_start: 48.0, fog_range: 16.0, index_zero_is_clear: false };
     let v = |x: f32, y: f32, depth: f32, tv: f32| Vertex { x, y, depth, u: 0.0, v: tv, light: 255.0 };
     let (near, far) = (60.0, 4.0);
     target.triangle([v(0.0, near, 1.0, 0.0), v(64.0, near, 1.0, 0.0), v(0.0, far, 4.0, 255.0)], &stripes, &shade);
@@ -154,7 +154,7 @@ fn light_is_interpolated_across_a_triangle() {
     let mut target = Target::new(64, 8);
     target.clear(99);
     let flat = Image { shape: Shape::new(1, 1), pixels: vec![1] };
-    let shade = Shade { light: Some(&ramp), fog: None, fog_distance: 100.0, index_zero_is_clear: false };
+    let shade = Shade { light: Some(&ramp), fog: None, fog_start: 48.0, fog_range: 16.0, index_zero_is_clear: false };
     let v = |x: f32, y: f32, light: f32| Vertex { x, y, depth: 1.0, u: 0.0, v: 0.0, light };
     target.triangle([v(0.0, 0.0, 255.0), v(64.0, 0.0, 0.0), v(0.0, 8.0, 255.0)], &flat, &shade);
     target.triangle([v(64.0, 0.0, 0.0), v(64.0, 8.0, 0.0), v(0.0, 8.0, 255.0)], &flat, &shade);

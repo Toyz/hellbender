@@ -2,7 +2,7 @@
 title: The port's renderer
 status: partial
 covers: crates/hb-render
-worklog: 13, 16, 17, 20, 21, 22, 25, 28, 29, 30
+worklog: 13, 16, 17, 20, 21, 22, 25, 28, 29, 30, 32
 ---
 
 # The port's renderer
@@ -40,6 +40,22 @@ This page is about the port. What the original does is under
   (`Camera::screen`, from `0x485940`). At 320x200 that is 159 across and 99
   down. Until worklog 30 the port used one scale for both, which drew
   everything 1.6 times too tall.
+- How far: the terrain in a square ten cells each way of the eye's cell - the
+  ground drawer projects a 22 x 22 vertex grid, indexed
+  `(x - eye + 10) & 0x7f` (`0x414c1d`) - and objects within 80 units on both
+  axes (`0x42f7b9`). The port drew to a 220-unit circle.
+- Fog: none to 48 units of depth, all of it by 64. `0x412b70` sets the start
+  `0x300000` and the range `0x100000`, and `0x414774` turns each vertex's
+  depth into a fog value with them. The port fogged gradually from the eye to
+  220 units, which is the wrong world entirely: the engine's is crisp and then
+  gone.
+- Texture resolution by distance. Both terrain texture setups average their
+  four vertices' depths and call `0x48a510` with `0xffff * (1 - (depth + 16) /
+  80)`, which picks one of a texture's three sizes - 16, 32, 64 texels, the
+  table at `0x5112d0` - in proportion: full size to about 11 units, half to
+  about 37, a quarter beyond. The engine's way of making the small copies is
+  not read; the port averages 2x2 blocks in colour and looks the result up in
+  the level's `.MAP`.
 - The sky: a textured plane at altitude 128, one tile every 128 units,
   drifting by the `.LVL`'s line 41 - see [the sky](../formats/sky.md).
 
@@ -54,7 +70,6 @@ port that later reads the engine should revisit them.
 | Texture space scales, not wraps | A coordinate is a texel in a 256-unit space and the textures are 64 x 64. Scaling makes a corner-to-corner face one tile; wrapping makes it four, and puts a fine grid over everything. |
 | Depth buffer | The engine's visibility scheme is not known. This sorts cells back to front by distance and settles the rest with a z-buffer. |
 | Heading 0 looks along +z and increases toward +x | No longer a choice: the recorded demo flight measures it to a median 0.8 degrees. The port had the direction backwards until then. |
-| Draw distance of 220 units | Chosen so the fog ramp saturates before the edge. |
 | The 118 colourless polygons are skipped | Four models have polygons with neither a material nor a flat colour before them, so nothing says what colour they are. |
 | A chamber is lit flat by the low byte of its 24-bit shade | The value is not decomposed. |
 | Past the draw distance is the fog colour | The fog ramp's last row sends every colour to one index; the frame is filled with it before the sky, so the band between the last cell and the horizon is fog rather than a hole. |
