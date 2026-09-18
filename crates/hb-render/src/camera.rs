@@ -20,6 +20,9 @@ pub struct Camera {
     pub yaw: Angle,
     /// Positive pitch tilts the view downward.
     pub pitch: Angle,
+    /// Positive roll lowers the left wing - the sign the recorded demo uses,
+    /// where left turns hold a positive roll.
+    pub roll: Angle,
     /// How far the ground is drawn, in world units. Beyond it the fog ramp has
     /// saturated anyway.
     pub far: i32,
@@ -33,6 +36,7 @@ impl Camera {
             z,
             yaw,
             pitch: Angle(0),
+            roll: Angle(0),
             far: 220 << 16,
         }
     }
@@ -55,7 +59,12 @@ impl Camera {
         let rz = dx * sy + dz * cy;
         let ry = dy * cp - rz * sp;
         let rz = dy * sp + rz * cp;
-        [rx, ry, rz]
+        if self.roll.0 == 0 {
+            return [rx, ry, rz];
+        }
+        // Rolled with the left wing down, the view's right axis tilts up.
+        let (sr, cr) = self.roll.to_radians().sin_cos();
+        [rx * cr + ry * sr, ry * cr - rx * sr, rz]
     }
 
     /// How view space reaches a screen of this size: the scale on x and y and
@@ -79,7 +88,9 @@ impl Camera {
     pub fn to_world_direction(&self, view: [f32; 3]) -> [f32; 3] {
         let (sy, cy) = self.yaw.to_radians().sin_cos();
         let (sp, cp) = (-self.pitch.to_radians()).sin_cos();
-        let [rx, ry, rz] = view;
+        let (sr, cr) = self.roll.to_radians().sin_cos();
+        let [vx, vy, rz] = view;
+        let (rx, ry) = (vx * cr - vy * sr, vy * cr + vx * sr);
         let dy = ry * cp + rz * sp;
         let rz1 = -ry * sp + rz * cp;
         [rx * cy + rz1 * sy, dy, -rx * sy + rz1 * cy]

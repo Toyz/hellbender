@@ -169,6 +169,7 @@ fn light_is_interpolated_across_a_triangle() {
 fn a_view_direction_turns_back_into_the_world_direction_it_came_from() {
     let mut camera = Camera::looking_at(3 << 16, 5 << 16, -7 << 16, Angle(0x2345));
     camera.pitch = Angle(0xf000);
+    camera.roll = Angle(0x0c00);
     for world in [[1.0f32, 0.0, 0.0], [0.0, 1.0, 0.0], [0.3, -0.4, 0.8]] {
         let at = |k: usize| (world[k] * 10.0 * 65536.0) as i32;
         let view = camera.to_view(camera.x + at(0), camera.y + at(1), camera.z + at(2));
@@ -191,4 +192,13 @@ fn the_view_is_ninety_degrees_across_and_down_as_the_engine_sets_it() {
     let [x, y, z] = camera.to_view(10 << 16, 10 << 16, 10 << 16);
     let ([sx, sy], [cx, cy]) = Camera::screen(320, 200);
     assert!((cx + x * sx / z - 319.0).abs() < 1e-3 && (cy - y * sy / z - 1.0).abs() < 1e-3);
+}
+
+#[test]
+fn rolled_left_the_horizon_drops_on_the_right() {
+    let mut camera = Camera::looking_at(0, 0, 0, Angle(0));
+    camera.roll = Angle(0x1000);
+    // A point ahead and to the right, level with the eye.
+    let [x, y, _] = camera.to_view(10 << 16, 0, 20 << 16);
+    assert!(x > 0.0 && y < 0.0, "({x}, {y})");
 }

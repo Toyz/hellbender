@@ -7,6 +7,7 @@
 
 pub mod combat;
 pub mod course;
+pub mod flight;
 pub mod turret;
 
 pub use course::{Follower, Phase};

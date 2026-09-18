@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-30 entries: audio 2, build 1, content 4, decomp 9, engine 3, format 21, port 24, render 16, test 3, tooling 2, ui 1, world 10.
+31 entries: audio 2, build 1, content 4, decomp 10, engine 4, format 21, port 25, render 16, test 3, tooling 2, ui 1, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -41,3 +41,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 28 | [Things are their real size, the world has no hole in it, and turrets shoot back](worklog/0028-things-are-their-real-size-the-world-has-no-hole-in-it-and-t.md) | 2026-09-17 | decomp,engine,render,port,format |
 | 29 | [Textures the right way round, the ground lit per point, and the light in the manifest](worklog/0029-textures-the-right-way-round-the-ground-lit-per-point-and-th.md) | 2026-09-17 | decomp,render,format,port |
 | 30 | [The view is ninety degrees down too, and the sky is a ceiling](worklog/0030-the-view-is-ninety-degrees-down-too-and-the-sky-is-a-ceiling.md) | 2026-09-17 | decomp,render,port |
+| 31 | [The player flies the engine's way](worklog/0031-the-player-flies-the-engine-s-way.md) | 2026-09-17 | decomp,engine,port |

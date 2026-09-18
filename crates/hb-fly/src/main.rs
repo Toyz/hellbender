@@ -28,9 +28,9 @@ hb-fly - fly around a Hellbender level
   --scale  integer upscale of the window, default 3
   --demo   replay one of the game's recorded attract-mode flights
 
-  arrows        pitch and turn        w / s   throttle
-  a / d         strafe                r / f   climb and dive
-  x             stop                  tab     cycle the level
+  arrows        up dives, down climbs, left and right turn (and bank)
+  x / z  w / s  throttle up and down  a / d  home / pgup   roll
+  shift         afterburner           tab     cycle the level
   c             collision on/off      k       cockpit on/off
   m             music on/off          h       hud on/off
   space         fire                  esc     quit
@@ -45,72 +45,68 @@ fn game_dir() -> PathBuf {
 /// How far above the surface the eye is held when collision is on.
 const CLEARANCE: i32 = 2 << 16;
 
-/// The eye, with just enough motion to steer it.
+/// The player's ship and the eye that rides in it.
 struct Flight {
+    ship: hb_sim::flight::Ship,
     camera: Camera,
-    /// World units per second along the view axis.
-    speed: f32,
     collide: bool,
-    /// Set on the frame the eye was pushed up out of the ground.
+    /// Set on the frame the ship was pushed up out of the ground.
     grounded: bool,
 }
 
 impl Flight {
     fn new(camera: Camera) -> Flight {
-        Flight { camera, speed: 0.0, collide: true, grounded: false }
+        let at = |v: i32| v as f32 / 65536.0;
+        let mut ship = hb_sim::flight::Ship::new([at(camera.x), at(camera.y), at(camera.z)], camera.yaw.0 as f32);
+        // Start under way at half throttle rather than parked in the air.
+        ship.throttle = 0.5;
+        let mut flight = Flight { ship, camera, collide: true, grounded: false };
+        flight.sync_camera();
+        flight
     }
 
+    /// The engine's flight model, `hb_sim::flight`, with the keys the shipped
+    /// `HELLBEND.INI` binds - arrows to steer, Z and X for the throttle, Home
+    /// and PgUp to roll - and some friendlier ones alongside.
     fn step(&mut self, window: &Window, dt: f32) {
-        let turn = |k: Key, amount: f32| if window.is_key_down(k) { amount } else { 0.0 };
-        // A 16-bit circle, so a full turn is 65,536 and this is about a third
-        // of a turn a second held down.
-        let yaw = turn(Key::Right, 20_000.0) - turn(Key::Left, 20_000.0);
-        let pitch = turn(Key::Down, 12_000.0) - turn(Key::Up, 12_000.0);
-        self.camera.yaw = Angle(self.camera.yaw.0.wrapping_add((yaw * dt) as i32 as u16));
-        self.camera.pitch =
-            Angle(self.camera.pitch.0.wrapping_add((pitch * dt) as i32 as u16));
-
-        self.speed += (turn(Key::W, 60.0) - turn(Key::S, 60.0)) * dt;
-        // Space is the fire button - HELLBEND.INI binds fireKey=57, the space
-        // bar's scan code - so stopping moved to x.
-        if window.is_key_down(Key::X) {
-            self.speed = 0.0;
-        }
-        self.speed = self.speed.clamp(-90.0, 90.0);
-
-        // Forward is the view axis; yaw 0 looks along +z.
-        let (sy, cy) = self.camera.yaw.to_radians().sin_cos();
-        let (sp, cp) = self.camera.pitch.to_radians().sin_cos();
-        let forward = [sy * cp, -sp, cy * cp];
-        let strafe = turn(Key::D, 40.0) - turn(Key::A, 40.0);
-        let climb = turn(Key::R, 40.0) - turn(Key::F, 40.0);
-
-        let units = |v: f32| (v * 65536.0) as i32;
-        self.camera.x = self
-            .camera
-            .x
-            .wrapping_add(units((forward[0] * self.speed + cy * strafe) * dt));
-        self.camera.y = self
-            .camera
-            .y
-            .wrapping_add(units((forward[1] * self.speed + climb) * dt));
-        self.camera.z = self
-            .camera
-            .z
-            .wrapping_add(units((forward[2] * self.speed - sy * strafe) * dt));
-        // The world is 1024 units a side and wraps. The engine keeps every
-        // position in it by sign-extending from 26 bits after each move
-        // (`shl 6; sar 6`, e.g. at `0x4069e7`), so this does too.
-        self.camera.x = (self.camera.x << 6) >> 6;
-        self.camera.z = (self.camera.z << 6) >> 6;
+        let down = |keys: &[Key]| keys.iter().any(|&k| window.is_key_down(k));
+        let controls = hb_sim::flight::Controls {
+            up: down(&[Key::Up]),
+            down: down(&[Key::Down]),
+            left: down(&[Key::Left]),
+            right: down(&[Key::Right]),
+            roll_left: down(&[Key::Home, Key::A]),
+            roll_right: down(&[Key::PageUp, Key::D]),
+            throttle_up: down(&[Key::X, Key::W]),
+            throttle_down: down(&[Key::Z, Key::S]),
+            afterburner: down(&[Key::LeftShift, Key::RightShift]),
+        };
+        self.ship.step(&controls, dt);
+        // The engine keeps every position in the signed world.
+        let wrap = |v: f32| (v + 512.0).rem_euclid(1024.0) - 512.0;
+        self.ship.position[0] = wrap(self.ship.position[0]);
+        self.ship.position[2] = wrap(self.ship.position[2]);
+        self.sync_camera();
     }
 
-    /// Keep the eye above the ground and above anything standing on it.
+    fn sync_camera(&mut self) {
+        let [x, y, z] = self.ship.position;
+        let fixed = |v: f32| (v * 65536.0) as i32;
+        let [pitch, roll, heading] = self.ship.angles();
+        self.camera.x = fixed(x);
+        self.camera.y = fixed(y);
+        self.camera.z = fixed(z);
+        self.camera.pitch = Angle(pitch as i32 as u16);
+        self.camera.roll = Angle(roll as i32 as u16);
+        self.camera.yaw = Angle(heading as i32 as u16);
+    }
+
+    /// Keep the ship above the ground and above anything standing on it.
     ///
     /// The engine has a real collision system - `intersectingBoxSurface` and
     /// the ground triangle queries are part of it - and this is not it. It is
     /// the height query used honestly: find the top of whatever is under the
-    /// eye and refuse to go below it.
+    /// ship and refuse to go below it.
     fn settle(&mut self, grid: &hb_world::Grid) {
         self.grounded = false;
         if !self.collide {
@@ -118,6 +114,7 @@ impl Flight {
         }
         let floor = grid.ceiling_of_solid(self.camera.x, self.camera.z) + CLEARANCE;
         if self.camera.y < floor {
+            self.ship.position[1] = floor as f32 / 65536.0;
             self.camera.y = floor;
             self.grounded = true;
         }
@@ -353,7 +350,7 @@ fn main() -> Result<(), String> {
         match &demo {
             // Replaying: the camera is wherever the original game recorded it,
             // looping. The recorded angles are pitch, roll and heading in the
-            // engine's 16-bit circle; roll is not applied.
+            // engine's 16-bit circle.
             Some(demo) => {
                 let length = demo.seconds().max(0.1);
                 let t = started.elapsed().as_secs_f32() % length;
@@ -362,6 +359,7 @@ fn main() -> Result<(), String> {
                     flight.camera.y = pose.y;
                     flight.camera.z = pose.z;
                     flight.camera.pitch = Angle(pose.angles[0] as u16);
+                    flight.camera.roll = Angle(pose.angles[1] as u16);
                     flight.camera.yaw = Angle(pose.angles[2] as u16);
                 }
             }
@@ -393,7 +391,7 @@ fn main() -> Result<(), String> {
                 from,
                 flight.camera.yaw.0,
                 flight.camera.pitch.0,
-                flight.speed,
+                flight.ship.speed(),
             ));
             if let (Some(music), Some(s)) = (music.as_ref(), sound("laser.wav")) {
                 music.effect(&s, 0.5);
@@ -492,7 +490,7 @@ fn main() -> Result<(), String> {
                     "{}  ALT {:.0}  SPD {:.0}  HP {:.0}  KILLS {}",
                     level.stem.to_uppercase(),
                     flight.camera.y as f32 / 65536.0,
-                    flight.speed,
+                    flight.ship.speed(),
                     battle.pilot.health * 100.0,
                     battle.destroyed
                 );
@@ -524,7 +522,7 @@ fn main() -> Result<(), String> {
                 cell.z,
                 flight.camera.y as f32 / 65536.0,
                 ground as f32 / 65536.0,
-                flight.speed,
+                flight.ship.speed(),
                 if flight.grounded { "  [on the deck]" } else { "" }
             );
             frames = 0;

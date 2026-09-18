@@ -2,7 +2,7 @@
 title: The simulation
 status: partial
 covers: HELLBEND.EXE logic phases, crates/hb-sim
-worklog: 26, 27, 28
+worklog: 26, 27, 28, 31
 ---
 
 # The simulation
@@ -195,6 +195,56 @@ random muzzle along the site's current heading into a second pool, 16 slots of
   that it points straight at the player every sub-step**.
 - A smoke puff every sixteenth of a second (`0x478e35`).
 
+## The player's flight
+
+`0x463aa0`, once a frame, with the pose at `0x5b3830` - position, then
+pitch, roll and heading at `+0x0c`, `+0x10`, `+0x14`, then a 3x3 matrix at
+`+0x1c`:
+
+```
+keys      each of up, down, left, right, roll left, roll right ramps an input:
+          held, +2 x frame time up to 1.0; released, -4 x frame time to 0
+          (0x464a8e). upKey=72, downKey=80, leftKey=75, rightKey=77,
+          rollLeftKey=71, rollRightKey=73 in HELLBEND.INI.
+throttle  0 to 1.0 at 0x512588; throttleUpKey (X) adds the frame time,
+          throttleDownKey (Z) takes it away (0x464367).
+damping   the pitch, roll and yaw rates (0x50cc54, 0x50cc58, 0x50cc5c) and
+          the local velocity (0x50cc48, 0x50cc4c, 0x50cc50) are halved.
+input     pitch rate += (up - down) / 7        (0x2492)
+          yaw rate   += (right - left) / 7
+          roll rate  -= (roll right - roll left) / 7 + 0.73 x yaw input
+                                              (0xbb80: turning banks)
+level     with autoLevel=1: roll rate -= clamp(roll / 7 / frame time,
+          +-0xc30) x (1 - sin^2 pitch). Past a quarter turn the roll has half
+          a turn taken off it unwrapped, so rolled left it levels upside down
+          and rolled right it rolls back upright.
+thrust    forward velocity += 8.0 x throttle, or 24.0 on the afterburner
+          (weapon 22 selected), or 72.0 with a further flag.
+turn      the rates times the frame time, in the 16-bit circle, turn the ship
+          about its own axes (0x4631f0 builds the rotation, 0x4632f0 composes
+          it, 0x463580 takes the angles back out).
+move      velocity = the pose's matrix times the local velocity; position +=
+          velocity x frame time.
+```
+
+Halving and adding every frame settles at twice what is added, at any frame
+rate: **16 units a second at full throttle, 48 on the afterburner**, and **2/7
+of a turn a second on a held key** - 18,724 in the 16-bit circle, 103 degrees.
+The recorded demo agrees: it flies at a median 16.5 units a second with a 90th
+percentile of 49, turns at a 90th percentile of 18,002 a second and pitches
+at a 99th percentile of 18,734; and in its right turns the roll is negative 77
+per cent of the time, in its left turns positive 87 per cent - the bank the
+0.73 couples in.
+
+There is no strafe and no vertical thrust: nothing but a reset writes the side
+and vertical velocities. Up dives: the up key raises the pitch angle, and a
+positive pitch is nose down. That sign is argued rather than read - it is the
+one that makes the yaw's "right turns right" hold under the same composition -
+and it is the flight-sim convention.
+
+`hb_sim::flight::Ship` transcribes it; its tests hold the settled speeds, the
+turn rate, frame-rate independence, the signs, and auto-level.
+
 ## The player
 
 Health at `0x5b39ec`, full at `0xffff`; shield at `0x62d6e0`, starting at 0.5
@@ -234,6 +284,6 @@ recorded demos are it.
 Everything past phase 0 of the course follower: speeds, curve fitting, what
 happens at the end of a course, how the seven logic routines differ. The other
 63 behaviour classes, including the flyers (53, 56, 60) that make up most of
-what moves. The player's flight model and rate of fire. What happens at death.
+what moves. The player's rate of fire. What happens at death. How the ship collides with the ground and boxes.
 How the engine picks which shot model to draw. Line 2 of the type record and
 line 7's first two values.

@@ -112,10 +112,10 @@ Reported from playing `hb-fly` and deliberately deferred:
   its frame on a 4:3 monitor, which `hb-fly` now does too. Worklog 28: objects were
   drawn at a median one twentieth of their real size, because the port read a
   placement's hit points as its scale. With them drawn at their type's radius
-  the terrain has things of the right size on it. Still worth checking against
-  the original once played: a 90-degree field of view that is the port's own,
-  and a speed limit of 90 units a second where the recorded demo flies at a
-  median 16.5 and a 90th percentile of 49.
+  the terrain has things of the right size on it. And worklog 31: the port
+  flew at up to 90 units a second on its own controls; the engine's flight
+  model settles at 16, or 48 on the afterburner, which is what the recorded
+  demo flies at.
 - **Half the world was empty.** Also worklog 28, and not reported but surely
   seen: at a negative coordinate the terrain was drawn 1,024 units away.
 - **The frame rate is poor.** Likely the debug build: `hb bench hoth` draws
