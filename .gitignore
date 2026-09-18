@@ -1,0 +1,9 @@
+# Build output and scratch.
+/target
+/work
+__pycache__/
+*.pyc
+
+# The game disc. `original` is a symlink to wherever it is mounted on this
+# machine; the port reads it, and none of it belongs in the repository.
+/original

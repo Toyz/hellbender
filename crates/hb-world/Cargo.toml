@@ -1,0 +1,8 @@
+[package]
+name = "hb-world"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+hb-formats = { path = "../hb-formats" }

@@ -1,0 +1,247 @@
+//! Cell geometry: coordinates, wrapping, and the triangle split.
+
+use hb_formats::terrain::{Altitudes, BoxFace, Layer, Terrain, CELL_SIZE, SIDE};
+
+/// The grid wraps rather than clamps. `heightAtGrid` masks both indices with
+/// `and eax, 0x7f` before touching the array, and
+/// `groundTriangleMidpoint` reaches a cell's world origin with
+/// `shl 25` then `sar 6`, which is the same mask followed by a shift of 19.
+pub const WRAP: i32 = SIDE as i32 - 1;
+
+/// The world is 128 cells of 8.0 units: 1024.0 units square.
+pub const WORLD_SIZE: i64 = SIDE as i64 * CELL_SIZE as i64;
+
+/// A cell index pair. Always in range: constructing one wraps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cell {
+    pub x: i32,
+    pub z: i32,
+}
+
+impl Cell {
+    pub fn new(x: i32, z: i32) -> Cell {
+        Cell { x: x & WRAP, z: z & WRAP }
+    }
+
+    /// The cell containing a world position in 16.16 fixed point.
+    pub fn containing(x: i32, z: i32) -> Cell {
+        Cell::new(x >> 19, z >> 19)
+    }
+
+    /// The cell's origin corner, in 16.16 world units.
+    pub fn origin(self) -> (i32, i32) {
+        (self.x << 19, self.z << 19)
+    }
+
+    pub fn index(self) -> usize {
+        self.z as usize * SIDE + self.x as usize
+    }
+
+    /// Which way the cell's diagonal runs. The engine tests `(x ^ z) & 1`.
+    pub fn diagonal(self) -> Diagonal {
+        if (self.x ^ self.z) & 1 != 0 {
+            Diagonal::Anti
+        } else {
+            Diagonal::Main
+        }
+    }
+}
+
+/// A cell is two triangles, and which pair of corners the diagonal joins
+/// alternates across the grid like a checkerboard. Nothing in the data says
+/// so; the engine derives it from the cell indices alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Diagonal {
+    /// `(x ^ z) & 1 == 0`. The diagonal joins the origin corner to the far
+    /// corner, so the halves' sample points are at (2/3, 1/3) and (1/3, 2/3) -
+    /// the two centroids either side of that line.
+    Main,
+    /// `(x ^ z) & 1 == 1`. The diagonal joins the other two corners, and the
+    /// sample points are at (1/3, 1/3) and (2/3, 2/3).
+    Anti,
+}
+
+/// Which of a cell's two triangles. The engine passes this as an `int` that it
+/// only tests against zero.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Half {
+    First,
+    Second,
+}
+
+/// A cell corner, named by which way it lies from the origin corner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Corner {
+    /// (x, z)
+    Origin,
+    /// (x + 1, z)
+    X,
+    /// (x, z + 1)
+    Z,
+    /// (x + 1, z + 1)
+    Far,
+}
+
+impl Corner {
+    pub fn offset(self) -> (i32, i32) {
+        match self {
+            Corner::Origin => (0, 0),
+            Corner::X => (1, 0),
+            Corner::Z => (0, 1),
+            Corner::Far => (1, 1),
+        }
+    }
+}
+
+/// The three corners of one half of a cell.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Triangle {
+    pub cell: Cell,
+    pub half: Half,
+    pub corners: [Corner; 3],
+}
+
+/// The two fractions the engine adds to a cell's origin to reach a triangle's
+/// sample point, as 16.16 multipliers of the cell size.
+///
+/// `LOW` is 1/3 to within a rounding. `HIGH` is 0.670791, not the 0.666667 a
+/// centroid wants - it is 0xABB9 where 2/3 would be 0xAAAB. The engine ships
+/// that constant and the port keeps it, because a sample point that drifts
+/// 0.4% of a cell toward one corner changes which triangle a borderline query
+/// lands in.
+pub const SAMPLE_LOW: i32 = 0x5555;
+pub const SAMPLE_HIGH: i32 = 0xABB9;
+
+/// The sample point of one half of a cell, in 16.16 world units.
+///
+/// `groundTriangleMidpoint`, `0x428900`. The four cases are the cross product
+/// of the cell's parity and the half.
+pub fn sample_point(cell: Cell, half: Half) -> (i32, i32) {
+    let (ox, oz) = cell.origin();
+    let (fx, fz) = match (cell.diagonal(), half) {
+        (Diagonal::Anti, Half::First) => (SAMPLE_HIGH, SAMPLE_HIGH),
+        (Diagonal::Anti, Half::Second) => (SAMPLE_LOW, SAMPLE_LOW),
+        (Diagonal::Main, Half::First) => (SAMPLE_LOW, SAMPLE_HIGH),
+        (Diagonal::Main, Half::Second) => (SAMPLE_HIGH, SAMPLE_LOW),
+    };
+    (ox + scale(fx), oz + scale(fz))
+}
+
+/// `(CELL_SIZE * fraction) >> 16`, the engine's `imul` plus `shrd ..., 0x10`.
+fn scale(fraction: i32) -> i32 {
+    ((CELL_SIZE as i64 * fraction as i64) >> 16) as i32
+}
+
+/// The three corners of a half.
+///
+/// The engine never spells these out - it computes a sample point and evaluates
+/// a plane. The corner sets here are the unique ones whose centroids are the
+/// sample points `0x428900` produces, which is a derivation rather than a
+/// transcription. [`sample_point`] is the transcribed part.
+pub fn triangle(cell: Cell, half: Half) -> Triangle {
+    let corners = match (cell.diagonal(), half) {
+        // Anti diagonal, joining X to Z. Centroids (2/3, 2/3) and (1/3, 1/3).
+        (Diagonal::Anti, Half::First) => [Corner::X, Corner::Far, Corner::Z],
+        (Diagonal::Anti, Half::Second) => [Corner::Origin, Corner::X, Corner::Z],
+        // Main diagonal, joining Origin to Far. Centroids (1/3, 2/3), (2/3, 1/3).
+        (Diagonal::Main, Half::First) => [Corner::Origin, Corner::Z, Corner::Far],
+        (Diagonal::Main, Half::Second) => [Corner::Origin, Corner::X, Corner::Far],
+    };
+    Triangle { cell, half, corners }
+}
+
+/// The centroid of a triangle's corners, in the same 16.16 units as
+/// [`sample_point`]. Used to check the corner sets against the constants the
+/// engine actually uses.
+pub fn centroid(tri: Triangle) -> (i32, i32) {
+    let (ox, oz) = tri.cell.origin();
+    let (mut sx, mut sz) = (0i64, 0i64);
+    for corner in tri.corners {
+        let (dx, dz) = corner.offset();
+        sx += dx as i64 * CELL_SIZE as i64;
+        sz += dz as i64 * CELL_SIZE as i64;
+    }
+    (ox + (sx / 3) as i32, oz + (sz / 3) as i32)
+}
+
+/// The terrain, with the queries the engine's own diagnostics name.
+pub struct Grid<'a> {
+    pub terrain: &'a Terrain,
+}
+
+impl<'a> Grid<'a> {
+    pub fn new(terrain: &'a Terrain) -> Grid<'a> {
+        Grid { terrain }
+    }
+
+    fn layer(&self, layer: Layer) -> Option<&Altitudes> {
+        Some(match layer {
+            Layer::Ground => &self.terrain.ground,
+            Layer::ChamberFloor => &self.terrain.chambers.floor,
+            Layer::ChamberCeiling => &self.terrain.chambers.ceiling,
+            // The engine's height queries reject the box layers outright, with
+            // "heightAtGrid: bad value passed for parameter layer". A box is
+            // not a height field: it has a bottom and a top.
+            Layer::BoxA | Layer::BoxB => return None,
+        })
+    }
+
+    /// `heightAtGrid`, `0x428c40`. The stored altitude shifted left by 8, so
+    /// the result is the byte scaled by 2^15 - in 16.16, half a unit per step
+    /// and 127.5 units from the bottom of the range to the top.
+    ///
+    /// `None` for the box layers, which the engine treats as a fatal error.
+    pub fn height_at_grid(&self, layer: Layer, x: i32, z: i32) -> Option<i32> {
+        Some((self.layer(layer)?.at(x, z) as i32) << 8)
+    }
+
+    /// The altitude at each corner of one half of a cell, in the same units as
+    /// [`Grid::height_at_grid`].
+    pub fn triangle_heights(&self, layer: Layer, tri: Triangle) -> Option<[i32; 3]> {
+        let mut out = [0; 3];
+        for (slot, corner) in out.iter_mut().zip(tri.corners) {
+            let (dx, dz) = corner.offset();
+            *slot = self.height_at_grid(layer, tri.cell.x + dx, tri.cell.z + dz)?;
+        }
+        Some(out)
+    }
+
+    /// `intersectingBoxSurface`, `0x4294c0`: a box cell's bottom and top, in
+    /// the same units as [`Grid::height_at_grid`]. `None` for the layers that
+    /// are not box layers.
+    ///
+    /// A box spans exactly one cell in x and z, so with these two values it is
+    /// fully determined: the routine builds its corners from `index << 19` and
+    /// `(index + 1) << 19`.
+    pub fn box_span(&self, layer: Layer, cell: Cell) -> Option<(i32, i32)> {
+        let set = match layer {
+            Layer::BoxA => &self.terrain.boxes_a,
+            Layer::BoxB => &self.terrain.boxes_b,
+            _ => return None,
+        };
+        Some((
+            (set.bottom.at(cell.x, cell.z) as i32) << 8,
+            (set.top.at(cell.x, cell.z) as i32) << 8,
+        ))
+    }
+
+    /// The texture index on one face of a box cell.
+    pub fn box_texture(&self, layer: Layer, cell: Cell, face: BoxFace) -> Option<u16> {
+        let set = match layer {
+            Layer::BoxA => &self.terrain.boxes_a,
+            Layer::BoxB => &self.terrain.boxes_b,
+            _ => return None,
+        };
+        Some(set.textures.at(cell.x, cell.z, face as usize))
+    }
+
+    /// Whether a cell carries a box in either set. A box with a zero top is
+    /// absent; box set B measures downward, so its absent value is zero too.
+    pub fn has_box_a(&self, cell: Cell) -> bool {
+        self.terrain.boxes_a.top.at(cell.x, cell.z) != 0
+    }
+
+    pub fn has_box_b(&self, cell: Cell) -> bool {
+        self.terrain.boxes_b.top.at(cell.x, cell.z) != 0
+    }
+}

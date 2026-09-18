@@ -1,0 +1,8 @@
+[package]
+name = "hb-formats"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+hb-pod = { path = "../hb-pod" }
