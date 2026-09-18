@@ -8,7 +8,7 @@
 
 use std::path::PathBuf;
 
-use hb_formats::{act, anim, colour, course, lvl, mrgl, raw, terrain, text};
+use hb_formats::{act, anim, colour, course, font, lvl, mrgl, raw, terrain, text};
 use hb_pod::Pod;
 
 fn game_dir() -> PathBuf {
@@ -679,6 +679,45 @@ fn every_placed_object_has_a_model_in_the_archives() {
         }
     }
     assert_eq!(placed_models, 7_606);
+}
+
+#[test]
+fn the_font_is_ninety_five_glyphs_twenty_three_tall() {
+    let pod = archive!("STARTUP.POD");
+    let index = pod.read("startup", "font.ndx").unwrap();
+    let bitmap = pod.read("startup", "font.bin").unwrap();
+    let font = font::Font::parse(index, bitmap).expect("the font parses");
+
+    // One glyph per printable ASCII character, and the height falls out of
+    // the arithmetic: the widths sum to 1,137 and the bitmap is 26,151.
+    assert_eq!(font.widths.len(), font::GLYPHS);
+    assert_eq!(font.widths.iter().sum::<usize>(), 1_137);
+    assert_eq!(bitmap.len(), 1_137 * font::HEIGHT);
+    assert_eq!(font::HEIGHT, 23);
+
+    // Every printable character has a glyph of its stated width, and space is
+    // blank while a letter is not.
+    for ch in ' '..='~' {
+        let (glyph, w) = font.glyph(ch).unwrap_or_else(|| panic!("no glyph for {ch:?}"));
+        assert_eq!(glyph.len(), w * font::HEIGHT, "{ch:?}");
+        assert!(w >= 3, "{ch:?} is {w} wide");
+    }
+    assert!(font.glyph(' ').unwrap().0.iter().all(|&p| p == 0));
+    assert!(font.glyph('A').unwrap().0.iter().any(|&p| p != 0));
+    assert_eq!(font.glyph('A').unwrap().1, 15);
+    assert_eq!(font.glyph('H').unwrap().1, 17);
+    assert!(font.glyph('\u{7f}').is_none());
+
+    // The ink is almost all index 255 - the reserved range, which the shade
+    // and blend tables leave alone. A typeface has to come out the colour it
+    // was drawn in.
+    let ink = font.pixels.iter().filter(|&&p| p != 0).count();
+    let reserved = font.pixels.iter().filter(|&&p| p >= 240).count();
+    assert!(
+        reserved * 100 / ink > 40,
+        "only {}% of the ink is in the reserved range",
+        reserved * 100 / ink
+    );
 }
 
 #[test]

@@ -25,6 +25,7 @@ hb - inspect Hellbender's data
   hb heightmap <level> <out.png>    a level's ground, lit, from above
   hb ground <level> <out.png>       a level's ground, textured, from above
   hb fly <level> <out.png> [x z yaw height pitch]   one frame from in-level
+  hb font <out.png> [text]          a specimen of the front end's typeface
   hb check                          parse everything and report what fails
 
 <pod> is a path, or one of `game` and `startup` to use $HB_GAME (default
@@ -78,6 +79,7 @@ fn run(args: &[&str]) -> Result<(), String> {
         ["heightmap", name, out] => cmd_heightmap(name, Path::new(out)),
         ["ground", name, out] => cmd_ground(name, Path::new(out)),
         ["fly", name, out, rest @ ..] => cmd_fly(name, Path::new(out), rest),
+        ["font", out, rest @ ..] => cmd_font(Path::new(out), rest),
         ["check"] => cmd_check(),
         _ => Err(format!("unknown command\n\n{USAGE}")),
     }
@@ -421,6 +423,61 @@ fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
         level.placements.len(),
         level.drawable_placements(),
         drawn.clipped,
+        out.display()
+    );
+    Ok(())
+}
+
+fn cmd_font(out: &Path, rest: &[&str]) -> Result<(), String> {
+    use hb_formats::font::{Font, HEIGHT};
+    let startup = open_pod("startup")?;
+    let index = startup.read("startup", "font.ndx").map_err(|e| e.to_string())?;
+    let bitmap = startup.read("startup", "font.bin").map_err(|e| e.to_string())?;
+    let font = Font::parse(index, bitmap).map_err(|e| e.to_string())?;
+    let palette = act::Palette::parse(
+        startup.read("art", "vga.act").map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+
+    let default = [
+        "ABCDEFGHIJKLM".to_string(),
+        "NOPQRSTUVWXYZ".to_string(),
+        "abcdefghijklm".to_string(),
+        "nopqrstuvwxyz".to_string(),
+        "0123456789 !?".to_string(),
+        "HELLBENDER".to_string(),
+    ];
+    let rows: Vec<String> = if rest.is_empty() {
+        default.to_vec()
+    } else {
+        vec![rest.join(" ")]
+    };
+
+    let width = rows.iter().map(|r| font.measure(r)).max().unwrap_or(1) + 8;
+    let height = rows.len() * (HEIGHT + 2) + 6;
+    let mut pixels = vec![0u8; width * height];
+    for (i, row) in rows.iter().enumerate() {
+        font.draw(
+            &mut pixels,
+            width,
+            height,
+            4,
+            (3 + i * (HEIGHT + 2)) as isize,
+            row,
+            None,
+        );
+    }
+    let mut rgb = Vec::with_capacity(pixels.len() * 3);
+    for &index in &pixels {
+        rgb.extend_from_slice(&palette.rgb(index));
+    }
+    std::fs::write(out, png::rgb(width, height, &rgb)).map_err(|e| e.to_string())?;
+    println!(
+        "{} glyphs, {} tall, widths {}..{} -> {}",
+        font.widths.len(),
+        HEIGHT,
+        font.widths.iter().min().unwrap(),
+        font.widths.iter().max().unwrap(),
         out.display()
     );
     Ok(())

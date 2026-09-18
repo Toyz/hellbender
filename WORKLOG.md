@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-23 entries: audio 1, build 1, content 3, decomp 5, format 17, port 17, render 12, test 2, tooling 2, world 9.
+24 entries: audio 1, build 1, content 3, decomp 5, format 18, port 18, render 12, test 2, tooling 2, ui 1, world 9.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -34,3 +34,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 21 | [A sky palette is not a palette, and the cockpit needs no remap](worklog/0021-a-sky-palette-is-not-a-palette-and-the-cockpit-needs-no-rema.md) | 2026-09-17 | format, render, port |
 | 22 | [Animated textures, and frames that are not in the texture list](worklog/0022-animated-textures-and-frames-that-are-not-in-the-texture-lis.md) | 2026-09-17 | format, render, port |
 | 23 | [The music plays, and the whole soundtrack uses four effects](worklog/0023-the-music-plays-and-the-whole-soundtrack-uses-four-effects.md) | 2026-09-17 | audio, port, format |
+| 24 | [The font, and a height that is only arithmetic](worklog/0024-the-font-and-a-height-that-is-only-arithmetic.md) | 2026-09-17 | format, ui, port |

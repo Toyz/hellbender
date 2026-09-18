@@ -20,6 +20,7 @@ The containers and record layouts.
 | [Sound, music and cutscenes](formats/audio-video.md) | solid | SOUND\*.WAV, MUSIC\*.MOD, system/Story/*.SMK |
 | [The colour tables - .MAP, .LTE, .FOG, .MIX](formats/colour-tables.md) | partial | FOG\*.MAP, FOG\*.LTE, FOG\*.FOG, FOG\*.MIX, DATA\*.LTE |
 | [The .CRS courses](formats/courses.md) | solid | DATA\*.CRS |
+| [The .BIN and .NDX font](formats/font.md) | solid | STARTUP\FONT.BIN, STARTUP\FONT.NDX |
 | [The level text files - .DEF, .NAV, .TXT, .TEX, .ANI, .LVL family](formats/level-text.md) | partial | DATA\*.DEF, DATA\*.NAV, DATA\*.TXT, DATA\*.TEX, DATA\*.ANI, DEMO\*.DMO |
 | [The .LVL manifest](formats/lvl.md) | partial | LEVELS\*.LVL |
 | [The .BIN model and its MRGL nodes](formats/mrgl.md) | partial | MODELS\*.BIN |

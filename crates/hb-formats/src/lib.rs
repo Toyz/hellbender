@@ -7,6 +7,7 @@
 pub mod act;
 pub mod anim;
 pub mod colour;
+pub mod font;
 pub mod course;
 pub mod lvl;
 pub mod mrgl;

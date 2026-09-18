@@ -11,6 +11,7 @@ use hb_formats::terrain::CELL_SIZE;
 use hb_formats::Angle;
 mod sound;
 
+use hb_formats::font::Font;
 use hb_formats::raw::Image;
 use hb_pod::Pod;
 use hb_render::{Camera, Level, Target};
@@ -29,7 +30,8 @@ hb-fly - fly around a Hellbender level
   a / d         strafe                r / f   climb and dive
   space         stop                  tab     cycle the level
   c             collision on/off      k       cockpit on/off
-  m             music on/off          esc     quit
+  m             music on/off          h       hud on/off
+  esc           quit
 ";
 
 fn game_dir() -> PathBuf {
@@ -208,6 +210,14 @@ fn main() -> Result<(), String> {
     };
     play_music(&level);
 
+    // The front end's typeface, for the readout.
+    let hud_font = (|| {
+        let index = startup.read("startup", "font.ndx").ok()?;
+        let bitmap = startup.read("startup", "font.bin").ok()?;
+        Font::parse(index, bitmap).ok()
+    })();
+    let mut show_hud = hud_font.is_some();
+
     let mut target = Target::new(w, h);
     let mut window = Window::new(
         "Hellbender",
@@ -242,6 +252,9 @@ fn main() -> Result<(), String> {
         }
         tab_was_down = tab;
 
+        if window.is_key_pressed(Key::H, minifb::KeyRepeat::No) {
+            show_hud = !show_hud && hud_font.is_some();
+        }
         if window.is_key_pressed(Key::M, minifb::KeyRepeat::No) {
             match music.as_ref() {
                 Some(m) if m.playing() => m.stop(),
@@ -267,6 +280,23 @@ fn main() -> Result<(), String> {
         if show_cockpit {
             if let Some(art) = &cockpit {
                 target.overlay(art);
+            }
+        }
+        if show_hud {
+            if let Some(font) = &hud_font {
+                let cell = hb_world::Cell::containing(flight.camera.x, flight.camera.z);
+                let readout = format!(
+                    "{}  ALT {:.0}  SPD {:.0}  {:03},{:03}",
+                    level.stem.to_uppercase(),
+                    flight.camera.y as f32 / 65536.0,
+                    flight.speed,
+                    cell.x,
+                    cell.z
+                );
+                // The font is drawn at its authored size, which is 23 pixels
+                // tall - more than a tenth of a 200-line screen, so it sits in
+                // the top corner and is meant to be read, not admired.
+                font.draw(&mut target.colour, w, h, 4, 3, &readout, Some(255));
             }
         }
 
