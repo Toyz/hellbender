@@ -54,6 +54,28 @@ impl Target {
         out
     }
 
+    /// Blit an image over the frame, treating index 0 as transparent.
+    ///
+    /// That index 0 is the clear colour is measured rather than declared: the
+    /// whole viewport region of `ART\CKPT200.RAW` is index 0 and nothing else,
+    /// 32,051 of its 64,000 pixels. See `docs/formats/raw.md`.
+    ///
+    /// The cockpit art is drawn in `VGA.ACT`, and a level's own palette agrees
+    /// with `VGA.ACT` on 240 of its 256 entries, so it can be blitted into a
+    /// frame that is in the level's palette without a remap.
+    pub fn overlay(&mut self, image: &Image) {
+        let w = image.shape.width.min(self.width);
+        let h = image.shape.height.min(self.height);
+        for y in 0..h {
+            for x in 0..w {
+                let index = image.pixels[y * image.shape.width + x];
+                if index != 0 {
+                    self.colour[y * self.width + x] = index;
+                }
+            }
+        }
+    }
+
     /// One triangle in a single colour, shaded and fogged like a textured one.
     pub fn flat_triangle(&mut self, tri: [Vertex; 3], index: u8, shade: &Shade) {
         let one = Image { shape: Shape::new(1, 1), pixels: vec![index] };

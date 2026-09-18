@@ -74,9 +74,9 @@ which is a system rather than a query.
 **4. A picture.** Done for the terrain, and it moves. `hb ground` draws a level
 from above, `hb fly` draws one frame from inside it, and `hb-fly` opens a window
 and flies through it at 60 frames a second in any of the game's three screen
-sizes, with the levels' placed objects and their chambers in it, and it will
-not let you fly through the ground. Still to do: sprites, the sky and the
-cockpit.
+sizes, with the sky, the levels' placed objects, their chambers and the cockpit
+in it, and it will not let you fly through the ground. Still to do: sprites and
+the HUD.
 
 **5. Models.** Done for static geometry. The MRGL meshes draw at the position,
 heading and scale each level's instance list gives them, each polygon with the

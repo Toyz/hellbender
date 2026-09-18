@@ -2,7 +2,7 @@
 title: The port's renderer
 status: partial
 covers: crates/hb-render
-worklog: 13, 16, 17, 20
+worklog: 13, 16, 17, 20, 21
 ---
 
 # The port's renderer
@@ -43,6 +43,7 @@ port that later reads the engine should revisit them.
 | Draw distance of 220 units | Chosen so the fog ramp saturates before the edge. |
 | The 118 colourless polygons are skipped | Four models have polygons with neither a material nor a flat colour before them, so nothing says what colour they are. |
 | A chamber's first `.CL1` texture is the floor's | That is the order the terrain loader reads the two in. Nothing confirms which is which. |
+| The sky wraps once around the horizon and once from horizon to zenith | The engine's projection is not known - a `skyTextureFlag` and a `"Sky clip overflow!"` diagnostic is all there is. This is the simplest thing that turns with the camera. |
 
 ## The units
 
@@ -53,9 +54,9 @@ spans 127.5 units from the bottom of its range to the top.
 
 ## What is drawn
 
-Ground triangles, both sets of ground boxes, chamber floors and ceilings, and
-the level's placed objects. Not yet: sprites, the sky, the cockpit, or anything
-that moves.
+The sky, ground triangles, both sets of ground boxes, chamber floors and
+ceilings, the level's placed objects, and the cockpit over the top of it all.
+Not yet: sprites, the HUD, or anything that moves.
 
 A chamber's floor and ceiling are height fields that `heightAtGrid` accepts as
 layers 2 and 3, so they use the same triangle split and the same corner heights
@@ -73,6 +74,15 @@ the terrain walk uses unwrapped indices around the eye, so a placement is
 rebased onto the nearest copy of the wrapping world before it is projected -
 otherwise an object at -300 units lands 1024 units from the ground it stands
 on.
+
+The sky is drawn first and writes no depth, so everything covers it. Its
+texture is brought into the level's palette through the level's `.MAP` - see
+[the sky](../formats/sky.md) - because a sky palette shares nothing with its
+level's.
+
+The cockpit is blitted last, with index 0 transparent. It needs no remap: it is
+drawn in `VGA.ACT` and a level's own palette agrees with `VGA.ACT` on 240 of
+its 256 entries.
 
 Each polygon is drawn with the material that precedes it in the node stream, or
 with its flat colour when it has no material - see [MRGL](../formats/mrgl.md).

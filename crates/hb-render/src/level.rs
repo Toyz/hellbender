@@ -5,13 +5,23 @@
 //! assembles the same set.
 
 use hb_formats::act::Palette;
-use hb_formats::colour::Ramp;
+use hb_formats::colour::{ColourMap, Ramp};
 use hb_formats::lvl::Level as Manifest;
 use hb_formats::raw::Image;
 use hb_formats::{anim, mrgl};
 use hb_formats::terrain::Terrain;
 use hb_formats::text::{self, EnemyDef, Placement};
 use hb_pod::Pod;
+
+/// A sky texture's indices are 48 higher than the entries they name in the sky
+/// palette.
+///
+/// A sky palette is not a palette: it is a gradient band of 15 to 32 entries
+/// starting at 192, with everything else black. The sky textures index 240
+/// upwards - `SKY.RAW` uses 240 to 254 and `NEWSKY.RAW` 244 to 251 - and
+/// subtracting 48 lands every one of them inside its palette's band, in all 20
+/// levels with a sky texture.
+pub const SKY_BIAS: u8 = 48;
 
 pub struct Level {
     pub manifest: Manifest,
@@ -36,6 +46,18 @@ pub struct Level {
     /// them. A model's textures come from `ART\` by name, not from the level's
     /// `.TEX` list.
     pub mesh_textures: Vec<Vec<Option<Image>>>,
+    /// The sky texture, 64 x 64. `None` for the levels whose sky slot names a
+    /// zero-length `.VOX`, which are the ones set in space.
+    pub sky: Option<Image>,
+    /// The sky texture's own indices remapped into the level's palette.
+    ///
+    /// A sky palette shares almost nothing with its level's - `FLOAT.ACT` and
+    /// `FLOATSK.ACT` agree on 17 of 256 entries, 16 of them the reserved ones -
+    /// so the sky cannot be blitted straight into the frame. The level's
+    /// `.MAP` is the table that fixes it: it takes a 15-bit colour to the
+    /// nearest index in the level's palette, which is exactly the question
+    /// "what is this sky colour called here".
+    pub sky_remap: Option<[u8; 256]>,
 }
 
 impl Level {
@@ -116,7 +138,32 @@ impl Level {
             })
             .collect();
 
+        // The sky, and the table that brings it into the level's palette.
+        let sky = manifest
+            .slot("sky")
+            .and_then(|(dir, file)| read(dir, file))
+            .and_then(|b| Image::parse_guessed(&b).ok().flatten());
+        let sky_remap = (|| {
+            let (dir, name) = manifest.slot("sky_palette")?;
+            let sky_palette = Palette::parse(&read(dir, name)?).ok()?;
+            // A level's own .MAP, else its family's - FLOAT2 has none and
+            // shares FLOAT's.
+            let family = stem.trim_end_matches(|c: char| c.is_ascii_digit());
+            let map = read("fog", &format!("{stem}.map"))
+                .or_else(|| read("fog", &format!("{family}.map")))?;
+            let map = ColourMap::parse(&map).ok()?;
+            let mut table = [0u8; 256];
+            for (i, slot) in table.iter_mut().enumerate() {
+                let entry = (i as u8).wrapping_sub(crate::level::SKY_BIAS);
+                let [r, g, b] = sky_palette.rgb(entry);
+                *slot = map.lookup(r, g, b);
+            }
+            Some(table)
+        })();
+
         Ok(Level {
+            sky,
+            sky_remap,
             light: ramp("light"),
             fog: ramp("fog"),
             kinds,
@@ -143,6 +190,8 @@ impl Level {
             palette: &self.palette,
             light: self.light.as_ref(),
             fog: self.fog.as_ref(),
+            sky: self.sky.as_ref(),
+            sky_remap: self.sky_remap.as_ref(),
             placements: &self.placements,
             meshes: &self.meshes,
             mesh_textures: &self.mesh_textures,

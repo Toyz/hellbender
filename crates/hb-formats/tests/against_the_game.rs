@@ -682,6 +682,85 @@ fn every_placed_object_has_a_model_in_the_archives() {
 }
 
 #[test]
+fn a_sky_palette_is_a_gradient_band_and_the_texture_indexes_it_biased() {
+    let pod = archive!("GAME.POD");
+    let mut with_texture = 0usize;
+    for e in pod.entries().iter().filter(|e| e.ext() == "lvl") {
+        let level = lvl::Level::parse(pod.bytes(e)).unwrap();
+        let (dir, sky) = level.slot("sky").unwrap();
+        let Ok(bytes) = pod.read(dir, sky) else { continue };
+        // Six levels name a zero-length .VOX: those are the ones set in space.
+        let Some(texture) = raw::Image::parse_guessed(bytes).unwrap() else {
+            continue;
+        };
+        assert_eq!(texture.shape, raw::Shape::new(64, 64), "{}", e.name);
+        let (dir, name) = level.slot("sky_palette").unwrap();
+        let palette = act::Palette::parse(pod.read(dir, name).unwrap()).unwrap();
+
+        // The palette is a band starting at 192 and black elsewhere.
+        for i in 0..192u16 {
+            assert_eq!(palette.rgb(i as u8), [0, 0, 0], "{} entry {i}", e.name);
+        }
+        // Every index the texture uses lands inside 192..=223 once biased.
+        for &index in &texture.pixels {
+            let entry = index.wrapping_sub(48);
+            assert!(
+                (192..=223).contains(&entry),
+                "{}: texture index {index} biases to {entry}",
+                e.name
+            );
+        }
+        with_texture += 1;
+    }
+    assert_eq!(with_texture, 20, "levels with a sky texture");
+}
+
+#[test]
+fn a_level_palette_is_vga_with_sixteen_entries_changed() {
+    let game = archive!("GAME.POD");
+    let startup = archive!("STARTUP.POD");
+    let vga = act::Palette::parse(startup.read("art", "vga.act").unwrap()).unwrap();
+    let mut levels = 0;
+    for e in game.entries().iter().filter(|e| e.ext() == "lvl") {
+        let level = lvl::Level::parse(game.bytes(e)).unwrap();
+        let (dir, name) = level.slot("ground_palette").unwrap();
+        let Ok(bytes) = game.read(dir, name).or_else(|_| startup.read(dir, name)) else {
+            continue;
+        };
+        let palette = act::Palette::parse(bytes).unwrap();
+        let same = (0..256).filter(|&i| palette.rgb(i as u8) == vga.rgb(i as u8)).count();
+        // Close enough to VGA.ACT that art drawn in one can be blitted into a
+        // frame in the other, which is what lets the cockpit work.
+        assert!(same >= 200, "{}: only {same} entries match VGA.ACT", e.name);
+        // And the reserved range matches exactly, in every level.
+        for i in 240..256u16 {
+            assert_eq!(palette.rgb(i as u8), vga.rgb(i as u8), "{} entry {i}", e.name);
+        }
+        levels += 1;
+    }
+    assert_eq!(levels, 26);
+}
+
+#[test]
+fn ground_textures_never_touch_the_reserved_range() {
+    let pod = archive!("GAME.POD");
+    let names = text::name_list(pod.read("data", "hoth.tex").unwrap(), "TEX").unwrap();
+    let (mut pixels, mut highest) = (0usize, 0u8);
+    for name in &names {
+        let Ok(bytes) = pod.read("art", name) else { continue };
+        for &index in bytes {
+            pixels += 1;
+            highest = highest.max(index);
+        }
+    }
+    assert_eq!(names.len(), 205);
+    assert_eq!(pixels, 839_680);
+    // A third confirmation of the 0..239 renderer range, from the art this
+    // time rather than from the shade and blend tables.
+    assert_eq!(highest, 239);
+}
+
+#[test]
 fn the_shipped_data_has_dangling_course_references() {
     // The engine has a diagnostic for this - "Bad course ID for enemy" - and
     // the shipped levels trip it. Six of the 26 name a course their own .CRS

@@ -9,6 +9,7 @@ use std::time::Instant;
 
 use hb_formats::terrain::CELL_SIZE;
 use hb_formats::Angle;
+use hb_formats::raw::Image;
 use hb_pod::Pod;
 use hb_render::{Camera, Level, Target};
 use minifb::{Key, Window, WindowOptions};
@@ -25,7 +26,8 @@ hb-fly - fly around a Hellbender level
   arrows        pitch and turn        w / s   throttle
   a / d         strafe                r / f   climb and dive
   space         stop                  tab     cycle the level
-  c             collision on/off      esc     quit
+  c             collision on/off      k       cockpit on/off
+  esc           quit
 ";
 
 fn game_dir() -> PathBuf {
@@ -154,6 +156,18 @@ fn main() -> Result<(), String> {
         format_args!("{w}x{h}")
     );
 
+    // The cockpit is drawn for each of the three modes, in VGA.ACT, which a
+    // level's own palette agrees with on 240 of 256 entries.
+    let cockpit: Option<Image> = startup
+        .read("art", &format!("ckpt{mode}.raw"))
+        .ok()
+        .and_then(|b| Image::parse_guessed(b).ok().flatten());
+    let mut show_cockpit = cockpit.is_some();
+    println!(
+        "cockpit: {}",
+        if show_cockpit { "ckpt art loaded" } else { "not found" }
+    );
+
     let mut target = Target::new(w, h);
     let mut window = Window::new(
         "Hellbender",
@@ -186,6 +200,9 @@ fn main() -> Result<(), String> {
         }
         tab_was_down = tab;
 
+        if window.is_key_pressed(Key::K, minifb::KeyRepeat::No) {
+            show_cockpit = !show_cockpit && cockpit.is_some();
+        }
         if window.is_key_pressed(Key::C, minifb::KeyRepeat::No) {
             flight.collide = !flight.collide;
             println!("collision {}", if flight.collide { "on" } else { "off" });
@@ -195,6 +212,11 @@ fn main() -> Result<(), String> {
         target.clear(0);
         let scene = level.scene();
         hb_render::draw_world(&mut target, &scene, &flight.camera);
+        if show_cockpit {
+            if let Some(art) = &cockpit {
+                target.overlay(art);
+            }
+        }
 
         // The framebuffer is palette indices; minifb wants 0x00RRGGBB.
         for (slot, &index) in buffer.iter_mut().zip(&target.colour) {

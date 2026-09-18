@@ -397,6 +397,14 @@ fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
     camera.pitch = hb_formats::Angle(pitch as u16);
     let scene = level.scene();
     let drawn = hb_render::draw_world(&mut target, &scene, &camera);
+    // The cockpit, in VGA.ACT, over a frame in the level's palette.
+    if let Some(art) = startup
+        .read("art", "ckpt200.raw")
+        .ok()
+        .and_then(|b| raw::Image::parse_guessed(b).ok().flatten())
+    {
+        target.overlay(&art);
+    }
     let rgb = target.to_rgb(&level.palette);
     std::fs::write(out, png::rgb(w, h, &rgb)).map_err(|e| e.to_string())?;
     println!(

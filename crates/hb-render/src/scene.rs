@@ -15,6 +15,8 @@ pub struct Scene<'a> {
     pub palette: &'a Palette,
     pub light: Option<&'a Ramp>,
     pub fog: Option<&'a Ramp>,
+    pub sky: Option<&'a Image>,
+    pub sky_remap: Option<&'a [u8; 256]>,
     /// The level's placed objects, and a mesh per kind.
     pub placements: &'a [hb_formats::text::Placement],
     pub meshes: &'a [Option<hb_formats::mrgl::Model>],
@@ -29,6 +31,7 @@ pub struct Scene<'a> {
 /// front, and lets the depth buffer settle the rest.
 pub fn draw_world(target: &mut Target, scene: &Scene, camera: &Camera) -> Drawn {
     let mut drawn = Drawn::default();
+    draw_sky(target, scene, camera);
     let reach = (camera.far / CELL_SIZE).max(1);
     let eye = Cell::containing(camera.x, camera.z);
 
@@ -59,6 +62,49 @@ pub fn draw_world(target: &mut Target, scene: &Scene, camera: &Camera) -> Drawn 
     }
     draw_objects(target, scene, camera, &mut drawn);
     drawn
+}
+
+/// The sky, as a cylinder around the eye.
+///
+/// The engine's own projection is not known - it has a `skyTextureFlag` and a
+/// `"Sky clip overflow!"` diagnostic and nothing else legible - so this wraps
+/// the 64 x 64 texture once around the horizon and once from the horizon to
+/// the zenith, which is the simplest thing that turns with the camera.
+///
+/// The sky is drawn before anything else and writes no depth, so everything
+/// else covers it.
+fn draw_sky(target: &mut Target, scene: &Scene, camera: &Camera) {
+    let (Some(sky), Some(remap)) = (scene.sky, scene.sky_remap) else {
+        return;
+    };
+    let (w, h) = (sky.shape.width, sky.shape.height);
+    if w == 0 || h == 0 {
+        return;
+    }
+    let half_fov = camera.fov.to_radians() / 2.0;
+    let scale = (target.width as f32 / 2.0) / half_fov.tan();
+    let yaw = camera.yaw.to_radians();
+    let pitch = camera.pitch.to_radians();
+
+    for y in 0..target.height {
+        // Elevation of this scanline, from the screen offset and the focal
+        // length, with the camera's pitch added.
+        let dy = target.height as f32 / 2.0 - (y as f32 + 0.5);
+        let elevation = (dy / scale).atan() - pitch;
+        if elevation <= 0.0 {
+            continue;
+        }
+        let v = ((elevation / (std::f32::consts::PI / 2.0)) * h as f32) as isize;
+        let v = v.clamp(0, h as isize - 1) as usize;
+        for x in 0..target.width {
+            let dx = x as f32 + 0.5 - target.width as f32 / 2.0;
+            let azimuth = (dx / scale).atan() + yaw;
+            let turns = azimuth / std::f32::consts::TAU;
+            let u = ((turns.rem_euclid(1.0)) * w as f32) as usize % w;
+            let at = y * target.width + x;
+            target.colour[at] = remap[sky.pixels[v * w + u] as usize];
+        }
+    }
 }
 
 /// The level's placed objects, back to front.
