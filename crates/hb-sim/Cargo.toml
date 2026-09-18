@@ -1,0 +1,11 @@
+[package]
+name = "hb-sim"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+hb-formats = { path = "../hb-formats" }
+
+[dev-dependencies]
+hb-pod = { path = "../hb-pod" }

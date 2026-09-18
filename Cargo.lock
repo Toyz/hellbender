@@ -333,6 +333,7 @@ dependencies = [
  "hb-formats",
  "hb-pod",
  "hb-render",
+ "hb-sim",
  "hb-world",
  "minifb",
 ]
@@ -355,6 +356,14 @@ dependencies = [
  "hb-formats",
  "hb-pod",
  "hb-world",
+]
+
+[[package]]
+name = "hb-sim"
+version = "0.1.0"
+dependencies = [
+ "hb-formats",
+ "hb-pod",
 ]
 
 [[package]]

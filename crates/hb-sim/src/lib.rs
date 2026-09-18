@@ -1,0 +1,10 @@
+//! The simulation: things in the world that move.
+//!
+//! This starts with the one behaviour whose shape has been read out of
+//! `HELLBEND.EXE` - an actor following a `.CRS` course - and grows from there.
+//! What is transcribed and what is this crate's own choice is said at each
+//! step, the same way `hb-render` does.
+
+pub mod course;
+
+pub use course::{Follower, Phase};

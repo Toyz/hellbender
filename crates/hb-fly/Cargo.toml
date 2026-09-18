@@ -14,4 +14,5 @@ hb-world = { path = "../hb-world" }
 hb-render = { path = "../hb-render" }
 minifb = "0.28"
 hb-audio = { path = "../hb-audio" }
+hb-sim = { path = "../hb-sim" }
 cpal = "0.18"

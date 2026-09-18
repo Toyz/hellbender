@@ -261,6 +261,12 @@ fn main() -> Result<(), String> {
 
     let mut flight = Flight::new(start_of(&level));
     let mut buffer = vec![0u32; w * h];
+    // Placements that follow a course move; the rest stand still. `live` is
+    // the copy the renderer draws, rewritten from the followers each frame.
+    let mut followers = followers_for(&level);
+    let mut live = level.placements.clone();
+    println!("sim: {} of {} objects follow a course", followers.len(), live.len());
+
     let started = Instant::now();
     let mut last = Instant::now();
     let mut tab_was_down = false;
@@ -280,6 +286,9 @@ fn main() -> Result<(), String> {
             flight = Flight::new(start_of(&level));
             describe(&level);
             play_music(&level);
+            followers = followers_for(&level);
+            live = level.placements.clone();
+            println!("sim: {} of {} objects follow a course", followers.len(), live.len());
         }
         tab_was_down = tab;
 
@@ -321,10 +330,21 @@ fn main() -> Result<(), String> {
             }
         }
         target.clear(0);
+        for (i, follower) in &mut followers {
+            follower.step(dt);
+            let [x, y, z] = follower.position_fixed();
+            let placed = &mut live[*i];
+            placed.x = x;
+            placed.y = y;
+            placed.z = z;
+            placed.heading = follower.heading();
+        }
+
         // Animated textures advance on the wall clock.
         let frames_now = level.texture_frames(started.elapsed().as_secs_f32());
         let mut scene = level.scene();
         scene.frames = Some(&frames_now);
+        scene.placements = &live;
         hb_render::draw_world(&mut target, &scene, &flight.camera);
         if show_cockpit {
             if let Some(art) = &cockpit {
@@ -378,6 +398,22 @@ fn main() -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Every placement whose type names a course that exists, paired with a
+/// follower for it. A dangling course id - six levels have them - is skipped,
+/// as the engine's "Bad course ID for enemy" diagnostic implies it copes.
+fn followers_for(level: &Level) -> Vec<(usize, hb_sim::Follower)> {
+    level
+        .placements
+        .iter()
+        .enumerate()
+        .filter_map(|(i, p)| {
+            let c = level.kinds.get(p.kind)?.course;
+            let course = level.courses.get(usize::try_from(c).ok()?)?;
+            Some((i, hb_sim::Follower::new(course, [p.x, p.y, p.z])?))
+        })
+        .collect()
 }
 
 /// Start in the middle of the map, above whatever is there.

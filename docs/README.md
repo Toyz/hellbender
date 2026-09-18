@@ -39,6 +39,7 @@ How the game works, subsystem by subsystem.
 | --- | --- | --- |
 | [How the game is put together](engine/overview.md) | partial | HELLBEND.EXE |
 | [The port's renderer](engine/rendering.md) | partial | crates/hb-render |
+| [The simulation](engine/simulation.md) | partial | HELLBEND.EXE logic phases, crates/hb-sim |
 
 ## Content
 

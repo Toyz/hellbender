@@ -6,6 +6,7 @@ members = [
     "crates/hb-world",
     "crates/hb-render",
     "crates/hb-audio",
+    "crates/hb-sim",
     "crates/hb",
     "crates/hb-fly",
 ]

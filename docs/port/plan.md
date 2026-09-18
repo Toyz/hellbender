@@ -48,10 +48,8 @@ hb-audio     .WAV decode, .MOD playback, no deps     music plays
 hb-fly       a window, a keyboard and a speaker      flies
 ```
 
-Planned, not started:
-
 ```
-hb-sim       flight model, weapons, enemy logic phases
+hb-sim       actors following courses, no deps      started
 ```
 
 ## Stages
@@ -90,8 +88,10 @@ parent, and playing the animation.
 and collision against `hb-world`. Playable in the sense of flying around an
 empty level.
 
-**7. The game.** Enemies from `.DEF`, their seven logic phases, courses from
-`.CRS`, weapons, powerups, the HUD. Mission success and failure.
+**7. The game.** Started. `hb-sim` moves every placed object whose type names a
+course, joining the course at the nearest point exactly as the engine's first
+logic phase does. Still to do: the rest of the seven logic routines, speeds,
+weapons, damage, powerups, and mission success and failure.
 
 **8. The trimmings.** Music is done - `hb-audio` plays the `.MOD` files and the
 level's track starts with the level. Still to do: the sound effects, which
@@ -99,6 +99,21 @@ decode but nothing triggers; Smacker cutscenes through a decoder binding; the
 front end, demos and saves.
 
 Multiplayer is out of scope until everything above works.
+
+## Known problems
+
+Reported from playing `hb-fly` and deliberately deferred:
+
+- **Everything feels too big.** The height scale and coordinates are not the
+  cause - the recorded demo flight confirms both. Candidates are the port's own
+  choices: a 90-degree field of view, the eye height, and a speed limit of 90
+  units a second in a 1024-unit world. The engine's field of view has not been
+  read.
+- **The frame rate is poor.** Measured at the 60 fps cap in a `--release`
+  build; a debug build is many times slower at a per-pixel rasteriser, so check
+  which was run first. If it is release, the obvious costs are walking every
+  cell within 220 units each frame, projecting objects before culling them, and
+  an `atan` per sky pixel.
 
 ## What is still missing
 

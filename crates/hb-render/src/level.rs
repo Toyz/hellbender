@@ -60,6 +60,8 @@ pub struct Level {
     pub sky_remap: Option<[u8; 256]>,
     /// `.ANI` cycles, resolved to indices into [`Level::textures`].
     pub animations: Vec<Cycle>,
+    /// The level's `.CRS` courses, which a type's `.DEF` line 15 names.
+    pub courses: Vec<hb_formats::course::Course>,
 }
 
 /// An animated texture, with every name already resolved to a texture index.
@@ -226,7 +228,12 @@ impl Level {
             })
             .unwrap_or_default();
 
+        let courses = read("data", &manifest.courses)
+            .and_then(|b| hb_formats::course::parse(&b).ok())
+            .unwrap_or_default();
+
         Ok(Level {
+            courses,
             animations,
             sky,
             sky_remap,
