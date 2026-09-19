@@ -99,6 +99,9 @@ pub struct Stores {
     pub ammo: [i32; 32],
     /// Main energy (`0x62d63c`), 1.0 full. Starts at half (`0x426f13`).
     pub energy: f32,
+    /// Weapon energy (`0x62d678`), which the guns spend and main energy can be
+    /// moved into; also half at the start (`0x426f56`).
+    pub weapon_energy: f32,
     /// Afterburner fuel (slot 22, `0x61bd90`), 1.0 full.
     pub fuel: f32,
     /// Bits for the eight Bion super weapon pieces (`0x62d634`).
@@ -117,7 +120,7 @@ impl Default for Stores {
         ammo[18] = 20;
         ammo[24] = 2;
         ammo[19] = 5;
-        Stores { ammo, energy: 0.5, fuel: 1.0, pieces: 0, weapon: 23 }
+        Stores { ammo, energy: 0.5, weapon_energy: 0.5, fuel: 1.0, pieces: 0, weapon: 23 }
     }
 }
 

@@ -7,6 +7,7 @@ use hb_render::Level;
 use hb_sim::combat::{self, Health, HitVolume, Pilot, Shot, Side, Stop};
 use hb_sim::flyer::{Flyer, Target};
 use hb_sim::powerup::{self, Field, Stores};
+use hb_sim::weapons::{Guns, Pose, Volley};
 use hb_sim::turret::{Launch, Missile, Rng, Turret};
 
 /// The behaviour classes that fly. 7 and 53 run the dogfight routine
@@ -53,6 +54,9 @@ pub struct Battle {
     /// The powerups lying about, and what the player has picked up.
     pub field: Field,
     pub stores: Stores,
+    pub guns: Guns,
+    /// How long the afterburner's tank has been empty.
+    empty_for: f32,
     /// The powerups the player was inside last frame.
     touching: Vec<usize>,
     pub destroyed: usize,
@@ -92,6 +96,8 @@ impl Battle {
             pilot: Pilot::default(),
             field: Field::default(),
             stores: Stores::default(),
+            guns: Guns::default(),
+            empty_for: 0.0,
             touching: Vec::new(),
             destroyed: 0,
             deaths: 0,
@@ -105,10 +111,6 @@ impl Battle {
 
     pub fn flyer_count(&self) -> usize {
         self.flyers.len()
-    }
-
-    pub fn fire(&mut self, shot: Shot) {
-        self.shots.push(Flying::new(shot));
     }
 
     /// One frame. `live` is what the renderer draws; a destroyed placement's
@@ -257,6 +259,23 @@ impl Battle {
 }
 
 impl Battle {
+    /// The trigger and the afterburner for one frame: the volleys fired
+    /// join the shots in flight.
+    pub fn trigger(&mut self, fire: bool, burn: bool, dt: f32, pose: &Pose) -> (Vec<Volley>, Vec<hb_sim::mission::Voice>) {
+        let (volleys, voices, _) = self.guns.step(fire, burn, dt, pose, &mut self.stores, &mut self.rng);
+        for v in &volleys {
+            for s in &v.shots {
+                self.shots.push(Flying::new(*s));
+            }
+        }
+        (volleys, voices)
+    }
+
+    /// Energy and hull creeping back, and the afterburner's tank refilling.
+    pub fn tick(&mut self, dt: f32) -> Vec<hb_sim::mission::Voice> {
+        hb_sim::weapons::regenerate(&mut self.stores, &mut self.pilot.health, dt, &mut self.empty_for)
+    }
+
     /// Offer the player every powerup they are inside. Returns what to say
     /// and the indices taken.
     pub fn pick_up(&mut self, player: [f32; 3]) -> (Vec<powerup::Event>, Vec<usize>) {

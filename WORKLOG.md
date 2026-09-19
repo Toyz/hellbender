@@ -47,3 +47,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 34 | [The mission runs from the .NAV file](worklog/0034-the-mission-runs-from-the-nav-file.md) | 2026-09-18 | decomp,format,engine,port |
 | 35 | [Powerups, and the sprite models they are drawn with](worklog/0035-powerups-and-the-sprite-models.md) | 2026-09-18 | decomp,format,engine,render,port |
 | 36 | [Models are lit, and their flat faces drawn](worklog/0036-models-are-lit-and-their-flat-faces-drawn.md) | 2026-09-18 | decomp,format,render |
+| 37 | [The player's guns, and the energy that feeds them](worklog/0037-the-players-guns-and-the-energy-that-feeds-them.md) | 2026-09-18 | decomp,engine,port |

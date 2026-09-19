@@ -2,7 +2,7 @@
 title: The simulation
 status: partial
 covers: HELLBEND.EXE logic phases, crates/hb-sim
-worklog: 26, 27, 28, 31, 32, 33, 34, 35
+worklog: 26, 27, 28, 31, 32, 33, 34, 35, 37
 ---
 
 # The simulation
@@ -230,9 +230,62 @@ kind   speed   damage   sound
 24,25   64.0   1.0      missl-1.wav, missl-3.wav
 ```
 
-Rows 9-17 and 20-22 have speed zero. The player fires through `0x479ce0` with
-the row's speed **plus the ship's speed** - `0x47d57a` takes the magnitude of
-the velocity at `0x5b3a00` - and the row's damage.
+Rows 9-17 and 20-22 have speed zero. A row is 68 bytes that begin 28 bytes
+before the speed: a 16-byte model name, four unused bytes, an 8-byte HUD code
+(`VAL`, `SKL`, `DIS`, `RFL`, `HAM`, `VIP`, `SCR`, `LGN`...), then speed,
+damage, a flag the next-weapon key stops on (`+8`), volleys a second
+(`+0xc`), the fire sound (`+0x10`), and two words. The names are a table of
+their own at `0x50e700`. The player fires with the row's speed **plus the
+ship's speed** - `0x47d57a` takes the magnitude of the velocity at `0x5b3a00`
+- and the row's damage.
+
+## The player's weapons
+
+The player starts on weapon 23, the Valkyrie Cannon (`0x426ebf`), with the
+servo-kinetic laser (1) and the cannon unlimited, 20 Dead-On missiles (18),
+5 Vipers (19) and 2 cruise missiles (24); stocks are the 32 eight-byte slots
+at `0x61bce0`, -1 for unlimited.
+
+**The trigger** (`0x47db11`) is a rate accumulator at `0x613c84`: while fire
+is held it gains the row's volleys a second times the frame time, and each
+time it passes 1.0 the fire routine `0x47d520` fires one volley; let go, it
+sits at 1.0, so a press fires on its first frame. The lasers and the cannon
+fire six volleys a second, the dispersion cannon two, missiles one. After a
+volley the stock drops by one; at zero the next weapon with a stock is taken.
+
+**Weapon energy** (`0x62d678`, half at the start) sets how many barrels the
+guns use and pays for them: at zero one barrel, alternating three quarters
+of a unit either side and half a unit down, free; up to half two barrels,
+half a unit either side, a 256th a volley; above half four, at the corners
+of a unit square, two 256ths (`0x479ce0` for the cannon, `0x47a5d0` for the
+lasers, which also sit half a unit further forward). Each shot starts one
+frame's flight behind its barrel. Below 0.1 a line warns "Weapon energy low".
+
+**The dispersion cannon** (`0x47ab60`) fires from the ship's centre in a plus
+of five directions 1,024 of the circle apart (`0x50f040`, `0x50f058`), and
+fires straight back as well: one pair with one barrel, four ahead and two
+behind with two, nine scattered at random within 2,048 and two behind with
+four.
+
+**Main energy** (`0x62d63c`) goes to weapons (`0x465ba0`) or the shield
+(`0x465a70`) an eighth at a keypress - `keyTransferWeapon` and
+`keyTransferShields`, `,` and `.` - with what does not fit handed back.
+Every frame (`0x464d0f`) main energy and the hull each gain 0x48 a second.
+
+**The afterburner** is weapon 22 run through the same accumulator while its
+key is held (`0x47db3f`): each "volley" burns `0x1000 / 6` of the tank
+(`0x61bd90`), a sixteenth a second, sixteen seconds from full. The tank refills
+at a thirty-second a second while there is weapon energy to pay 0xda a
+second for it; an empty tank waits five seconds for a thirty-second.
+
+The weapon keys are `keyVulcanCannon` (the backquote) for 23 and 1 to 0 for
+2, 1, 3, 18, 24, 19, 25, 26, 27 and 28 (`0x5127b0` on); a key for an empty
+dispersion cannon or rapid-fire laser says it is "not in arsenal".
+`keySelectNextWeapon` (`=`, `0x479ca0`) steps round the weapons with a stock
+whose row flag allows it.
+
+The missiles and mines (`0x47cd70`, `0x47cec0`, the mine drop at `0x47d82a`)
+fire through `0x477890` with a locked target and are not ported yet.
 
 ## The guided missile
 
@@ -321,8 +374,6 @@ missiles and the player's health and shield. What is its own:
 
 | choice | why |
 | --- | --- |
-| The player fires weapon 1 | Rows 0 and 1 are the same laser; which the game starts on is not read. 1 is the row the laser multiplier applies to. |
-| Ten shots a second while the button is held | The player's rate of fire is not read. |
 | Enemy shots do not hit other actors | The engine's do. A muzzle can sit inside its own turret's box, and the engine's exclusion, if any, is not read. |
 | A dead player starts again at the level's start, whole | What the engine does at death is not read. |
 | No view shake | The shake's amounts are not read. |

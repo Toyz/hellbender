@@ -12,5 +12,6 @@ pub mod flyer;
 pub mod mission;
 pub mod powerup;
 pub mod turret;
+pub mod weapons;
 
 pub use course::{Follower, Phase};

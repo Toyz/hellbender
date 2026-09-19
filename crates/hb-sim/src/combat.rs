@@ -78,10 +78,8 @@ pub fn weapon(kind: usize) -> Option<WeaponStats> {
     Some(WeaponStats { speed: speed as f32 / 65536.0, damage: damage as f32 / 65536.0 })
 }
 
-/// The weapon kind the player's laser fires. Rows 0 and 1 have the same speed
-/// and damage; 1 is taken because kinds 1-3 are the ones a type's laser
-/// multiplier applies to. Which row the game starts the player on has not
-/// been read.
+/// The servo-kinetic laser's row. The player's guns are
+/// [`crate::weapons`]; this remains for callers that want a single shot.
 pub const PLAYER_LASER: usize = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

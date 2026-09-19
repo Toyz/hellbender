@@ -34,6 +34,9 @@ hb-fly - fly around a Hellbender level
   c             collision on/off      k       cockpit on/off
   m             music on/off          h       hud on/off
   space         fire                  b       drop a beacon
+  ` 1 2 3       Valkyrie cannon, dispersion cannon, servo-kinetic and
+                rapid-fire lasers        =       next weapon
+  , .           main energy to the weapons, to the shield
   esc           quit
 
   The level's mission runs from its .NAV file: the HUD names the current
@@ -74,7 +77,8 @@ impl Flight {
     /// The engine's flight model, `hb_sim::flight`, with the keys the shipped
     /// `HELLBEND.INI` binds - arrows to steer, Z and X for the throttle, Home
     /// and PgUp to roll - and some friendlier ones alongside.
-    fn step(&mut self, window: &Window, dt: f32) {
+    /// `fuel` says whether the afterburner has anything to burn.
+    fn step(&mut self, window: &Window, dt: f32, fuel: bool) {
         let down = |keys: &[Key]| keys.iter().any(|&k| window.is_key_down(k));
         let controls = hb_sim::flight::Controls {
             up: down(&[Key::Up]),
@@ -85,7 +89,7 @@ impl Flight {
             roll_right: down(&[Key::PageUp, Key::D]),
             throttle_up: down(&[Key::X, Key::W]),
             throttle_down: down(&[Key::Z, Key::S]),
-            afterburner: down(&[Key::LeftShift, Key::RightShift]),
+            afterburner: fuel && down(&[Key::LeftShift, Key::RightShift]),
         };
         self.ship.step(&controls, dt);
         // The engine keeps every position in the signed world.
@@ -298,7 +302,6 @@ fn main() -> Result<(), String> {
             })
             .clone()
     };
-    let mut cooldown = 0.0f32;
     // A line the mission flashes on the HUD, and for how much longer.
     let mut flash: Option<(String, f32)> = None;
     // Seconds since the mission ended, before the next level (or this one
@@ -407,7 +410,7 @@ fn main() -> Result<(), String> {
                 }
             }
             None => {
-                flight.step(&window, dt);
+                flight.step(&window, dt, battle.stores.fuel > 0.0);
                 flight.settle(&hb_world::Grid::new(&level.terrain));
             }
         }
@@ -424,20 +427,48 @@ fn main() -> Result<(), String> {
         };
         last_eye = eye;
 
-        // Fire: a shot every tenth of a second while the button is held. The
-        // rate is this port's choice; speed and damage are the engine's.
-        cooldown -= dt;
-        if window.is_key_down(Key::Space) && cooldown <= 0.0 && demo.is_none() && battle.pilot.alive() {
-            cooldown = 0.1;
-            let from = [eye[0], eye[1] - 0.5, eye[2]];
-            battle.fire(hb_sim::combat::Shot::player_laser(
-                from,
-                flight.camera.yaw.0,
-                flight.camera.pitch.0,
-                flight.ship.speed(),
-            ));
-            if let (Some(music), Some(s)) = (music.as_ref(), sound("laser.wav")) {
-                music.effect(&s, 0.5);
+        // The guns, the afterburner's fuel, and the energy that feeds both:
+        // `hb_sim::weapons`, from the trigger at `0x47db11` on.
+        if demo.is_none() && battle.pilot.alive() {
+            let v = flight.ship.world_velocity();
+            let pose = hb_sim::weapons::Pose {
+                position: eye,
+                right: flight.ship.right,
+                up: flight.ship.up,
+                forward: flight.ship.forward,
+                pitch: flight.camera.pitch.0 as i16 as f32,
+                heading: flight.camera.yaw.0 as f32,
+                speed: (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt(),
+            };
+            let burn = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
+            let (volleys, mut voices) = battle.trigger(window.is_key_down(Key::Space), burn, dt, &pose);
+            for key in [(Key::Backquote, '`'), (Key::Key1, '1'), (Key::Key2, '2'), (Key::Key3, '3')] {
+                if window.is_key_pressed(key.0, minifb::KeyRepeat::No) {
+                    if let Some(&(_, w)) = hb_sim::weapons::KEYS.iter().find(|(c, _)| *c == key.1) {
+                        voices.extend(battle.guns.select(w, &battle.stores));
+                    }
+                }
+            }
+            if window.is_key_pressed(Key::Equal, minifb::KeyRepeat::No) {
+                battle.guns.next(&battle.stores);
+            }
+            if window.is_key_pressed(Key::Comma, minifb::KeyRepeat::No) {
+                voices.extend(hb_sim::weapons::transfer_to_weapons(&mut battle.stores));
+            }
+            if window.is_key_pressed(Key::Period, minifb::KeyRepeat::No) {
+                voices.extend(hb_sim::weapons::transfer_to_shields(&mut battle.stores, &mut battle.pilot.shield));
+            }
+            voices.extend(battle.tick(dt));
+            for volley in volleys {
+                if let (Some(music), Some(s)) = (music.as_ref(), sound(volley.sound)) {
+                    music.effect(&s, 0.5);
+                }
+            }
+            for v in voices {
+                flash = Some((v.text.replace('\n', " "), 3.0));
+                if let (Some(music), Some(s)) = (music.as_ref(), sound(v.sound)) {
+                    music.effect(&s, 1.0);
+                }
             }
         }
 
@@ -639,14 +670,19 @@ fn main() -> Result<(), String> {
         }
         if show_hud {
             if let Some(font) = &hud_font {
+                let weapon = battle.guns.selected;
+                let stock = match battle.stores.ammo[weapon] {
+                    -1 => String::new(),
+                    n => format!(" {n}"),
+                };
                 let readout = format!(
-                    "{}  ALT {:.0}  SPD {:.0}  HP {:.0}  EN {:.0}  KILLS {}",
-                    level.stem.to_uppercase(),
-                    flight.camera.y as f32 / 65536.0,
-                    flight.ship.speed(),
+                    "{}{}  HP {:.0}  SH {:.0}  WE {:.0}  EN {:.0}",
+                    hb_sim::weapons::ROWS[weapon].code,
+                    stock,
                     battle.pilot.health * 100.0,
+                    battle.pilot.shield * 100.0,
+                    battle.stores.weapon_energy * 100.0,
                     battle.stores.energy * 100.0,
-                    battle.destroyed
                 );
                 // The font is drawn at its authored size, which is 23 pixels
                 // tall - more than a tenth of a 200-line screen, so it sits in
