@@ -466,6 +466,12 @@ impl Level {
             mesh_radius: &self.mesh_radius,
             mesh_flipbooks: &self.mesh_flipbooks,
             seconds: 0.0,
+            sun: {
+                let v = self.manifest.light.map(|c| c as f32 / 65536.0);
+                let length = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+                if length > 0.0 { v.map(|c| c / length) } else { [0.0, -1.0, 0.0] }
+            },
+            sun_ambient: (self.manifest.ambient as f32 / 65536.0).clamp(0.0, 1.0),
             ambient: (self.manifest.ambient >> 8).clamp(0, 255) as u8,
             sky_scroll: [0.0, 0.0],
         }

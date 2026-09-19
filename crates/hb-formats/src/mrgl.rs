@@ -64,6 +64,47 @@ pub const INDEXED_POLYGON: u32 = 0x0F;
 /// frame - a texture name, and at `+0x10` a sound played when the frame comes
 /// round.
 pub const FLIPBOOK: u32 = 0x1D;
+/// The colour the flat polygons that follow are filled with (`0x457850`
+/// stores `+4` at `0x5b3888`): 0 and up picks a band of the palette from the
+/// tables at `0x50c4e8` and `0x50c528`, the polygon's light choosing within
+/// it; below 0 is a palette index outright.
+pub const SHADE_COLOUR: u32 = 0x0A;
+/// An indexed polygon ([`INDEXED_POLYGON`]'s layout) filled flat with the
+/// current [`SHADE_COLOUR`] at its light (`0x458a00`).
+pub const FLAT_POLYGON: u32 = 0x19;
+
+/// The palette bands a [`SHADE_COLOUR`] of 0 to 15 picks: the darkest and
+/// brightest index of each (`0x50c4e8`, `0x50c528`). A polygon's light,
+/// 0 to 1, goes from one to the other.
+pub const BANDS: [(u8, u8); 16] = [
+    (0x00, 0x1f),
+    (0x00, 0x0f),
+    (0x20, 0x3f),
+    (0x40, 0x5f),
+    (0x60, 0x7f),
+    (0x80, 0x8f),
+    (0x90, 0x9f),
+    (0xa0, 0xaf),
+    (0xb0, 0xbf),
+    (0xc0, 0xcf),
+    (0xd0, 0xdf),
+    (0xe0, 0xef),
+    (0xf0, 0xf0),
+    (0xff, 0xff),
+    (0x00, 0x00),
+    (0xd8, 0xd8),
+];
+
+/// The index a [`SHADE_COLOUR`] fills with at a light of 0 to 0xffff
+/// (`0x458ae0`).
+pub fn shade_colour(colour: i32, light: i32) -> u8 {
+    if colour < 0 {
+        return colour.unsigned_abs() as u8;
+    }
+    let (lo, hi) = BANDS[colour as usize & 15];
+    let (lo, hi) = (lo as i64, hi as i64);
+    (lo + (((hi - lo) * light as i64) >> 16)) as u8
+}
 
 /// Every node type that carries a polygon payload.
 pub const POLYGON_KINDS: [u32; 5] = [0x0E, 0x11, 0x18, 0x1E, 0x22];
@@ -221,6 +262,9 @@ pub struct Polygon {
     /// `FANBODY`, `JAW1`, `JAW2` and `SHELL`, 118 polygons in all - so nothing
     /// in the stream says what colour they are, and both fields are `None`.
     pub colour: Option<u16>,
+    /// The last [`SHADE_COLOUR`] before this polygon, which is what a
+    /// [`FLAT_POLYGON`] is filled with.
+    pub shade: Option<i32>,
     /// Which of [`Model::materials`] this polygon is textured with: the last
     /// material node seen before it in the stream.
     ///
@@ -302,6 +346,7 @@ impl Model {
         let mut model = Model::default();
         let mut material: Option<usize> = None;
         let mut colour: Option<u16> = None;
+        let mut shade: Option<i32> = None;
         for node in Walk::new(data) {
             let node = node?;
             model.nodes.push(node);
@@ -354,7 +399,7 @@ impl Model {
                         model.materials.push(first.clone());
                     }
                 }
-                INDEXED_POLYGON => {
+                INDEXED_POLYGON | FLAT_POLYGON => {
                     let count = i32_at(data, at + 4).max(0) as usize;
                     let corners = (0..count)
                         .map(|i| {
@@ -366,6 +411,7 @@ impl Model {
                     model.polygons.push(Polygon {
                         material,
                         colour,
+                        shade,
                         kind: node.kind,
                         normal: [i32_at(data, at + 8), i32_at(data, at + 12), i32_at(data, at + 16)],
                         plane: i32_at(data, at + 0x14),
@@ -373,6 +419,7 @@ impl Model {
                     });
                 }
                 FLAT_COLOUR => colour = Some(i32_at(data, at + 8) as u16),
+                SHADE_COLOUR => shade = Some(i32_at(data, at + 4)),
                 POLYGON | POLYGON_ALT | 0x11 | 0x1E | 0x22 => {
                     let count = i32_at(data, at + 4).max(0) as usize;
                     let mut corners = Vec::with_capacity(count);
@@ -387,6 +434,7 @@ impl Model {
                     model.polygons.push(Polygon {
                         material,
                         colour,
+                        shade,
                         kind: node.kind,
                         normal: [
                             i32_at(data, at + 8),

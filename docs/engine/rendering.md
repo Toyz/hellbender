@@ -2,7 +2,7 @@
 title: The port's renderer
 status: partial
 covers: crates/hb-render
-worklog: 13, 16, 17, 20, 21, 22, 25, 28, 29, 30, 32
+worklog: 13, 16, 17, 20, 21, 22, 25, 28, 29, 30, 32, 35, 36
 ---
 
 # The port's renderer
@@ -34,6 +34,19 @@ This page is about the port. What the original does is under
   them. A box corner is full light or ambient by its shadow bit. Box faces are
   the engine's, sign and all, and a side hidden by its neighbour's box is not
   drawn; nor is ground inside a box.
+- Models are lit per polygon as the ground is lit, by the level's light and
+  ambient (`.LVL` lines 18 and 19, set at `0x44c105`): `0x48a6a0` gives the
+  ambient plus the rest of the way to full by `-dot(normal, light)` clamped
+  to 0..1, the light turned into model space. The textured kinds 0x0e, 0x18,
+  0x1e and 0x22 are shaded by it, the animated models too (they reach the
+  0x18 handler); 0x0f and 0x11 are drawn at full light. Until worklog 36 every
+  model was drawn at full light. A flat polygon (0x19) picks its colour from a
+  palette band by the same light instead - see
+  [the model format](../formats/mrgl.md). What `0x48b550` adds to the ambient
+  per object - a local light grid around the object, likely explosions or the
+  headlight - is not modelled.
+- Powerups and other sprite-like models: a flipbook texture turned by the
+  clock, on a polygon whose texel 0 is not drawn (`0x4a5b1a`).
 - The three screen sizes the art is drawn for: 320x200, 320x400, 640x480.
 - The projection: 90 degrees across and 90 degrees down, whatever the screen's
   shape, with the scales and centre the engine's viewport setup derives

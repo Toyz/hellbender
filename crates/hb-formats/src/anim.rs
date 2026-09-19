@@ -197,6 +197,7 @@ pub fn parse(data: &[u8]) -> Result<Animated> {
                 plane: f[4],
                 material,
                 colour: None,
+                shade: None,
                 corners: (0..corners)
                     .map(|i| Corner {
                         vertex: f[5 + i * 3] as u32,

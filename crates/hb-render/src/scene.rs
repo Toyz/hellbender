@@ -35,6 +35,11 @@ pub struct Scene<'a> {
     /// wrapping (`0x458fd0`).
     pub mesh_flipbooks: &'a [Vec<crate::level::Flip>],
     pub seconds: f32,
+    /// The level's light, the way it travels (`.LVL` line 18, unit length),
+    /// and its ambient, 0 to 1 (line 19). Models are lit with these as the
+    /// ground is (`0x44c105`).
+    pub sun: [f32; 3],
+    pub sun_ambient: f32,
     /// The level's ambient light, 0-255: `.LVL` line 19 over 256. A ground
     /// vertex whose shade word has bit 8 set takes this.
     pub ambient: u8,
@@ -254,13 +259,51 @@ fn draw_mesh(
         project_onto(camera, width, height, x + world[0] as i32, y + world[1] as i32, z + world[2] as i32)
     };
 
+    // A polygon's light (`0x48a6a0`): the ambient, plus the rest of the way to
+    // full by how squarely it faces into the light - `-dot(normal, light)`,
+    // clamped to 0..1. The engine turns the light into model space; turning
+    // the normal into the world is the same product.
+    let lit = |normal: [i32; 3]| -> f32 {
+        let n = normal.map(|c| c as f32 / 65536.0);
+        let world: [f32; 3] = std::array::from_fn(|k| right[k] * n[0] + up[k] * n[1] + forward[k] * n[2]);
+        let facing = -(world[0] * scene.sun[0] + world[1] * scene.sun[1] + world[2] * scene.sun[2]);
+        (scene.sun_ambient + facing.clamp(0.0, 1.0) * (1.0 - scene.sun_ambient)).clamp(0.0, 1.0)
+    };
     let shade = shade_for(scene, camera);
     // The indexed polygons' span routine (`0x4a5b1a`) skips texel 0, so their
     // textures have holes: the powerups are shapes on a quad, not the quad.
     let see_through = Shade { index_zero_is_clear: true, ..shade_for(scene, camera) };
     let mut any = false;
     for poly in &mesh.polygons {
-        let shade = if poly.kind == hb_formats::mrgl::INDEXED_POLYGON { &see_through } else { &shade };
+        use hb_formats::mrgl::{FLAT_POLYGON, INDEXED_POLYGON};
+        let shade = if poly.kind == INDEXED_POLYGON { &see_through } else { &shade };
+        // The textured kinds the engine lights: 0x0e, 0x18, 0x1e and 0x22 (the
+        // animated models reach the 0x18 handler too). 0x0f and 0x11 are
+        // drawn at full light.
+        let light = match poly.kind {
+            0x0E | 0x18 | 0x1E | 0x22 | FLAT_POLYGON => lit(poly.normal),
+            _ => 1.0,
+        };
+        // A flat polygon picks its colour from a palette band by that light
+        // (`0x458a00`) and is then drawn unshaded.
+        if poly.kind == FLAT_POLYGON {
+            let index = hb_formats::mrgl::shade_colour(poly.shade.unwrap_or(0), (light * 65535.0) as i32);
+            let corners: Option<Vec<Vertex>> = poly
+                .corners
+                .iter()
+                .map(|c| {
+                    let (sx, sy, depth) = place(mesh.vertices.get(c.vertex as usize)?)?;
+                    Some(Vertex { x: sx, y: sy, depth, u: 0.0, v: 0.0, light: 255.0 })
+                })
+                .collect();
+            if let Some(corners) = corners {
+                for i in 1..corners.len().saturating_sub(1) {
+                    target.flat_triangle([corners[0], corners[i], corners[i + 1]], index, shade);
+                }
+                any = true;
+            }
+            continue;
+        }
         // Each polygon records the material node that preceded it, or a flat
         // colour when the mesh is untextured.
         let texture = match poly.material.and_then(|m| flips.iter().find(|f| f.material == m)) {
@@ -285,7 +328,7 @@ fn draw_mesh(
                     depth,
                     u: (c.u >> 16) as f32,
                     v: (c.v >> 16) as f32,
-                    light: 255.0,
+                    light: light * 255.0,
                 })
             })
             .collect();

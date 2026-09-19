@@ -26,6 +26,12 @@ fn pod(name: &str) -> Option<Pod> {
     Some(Pod::open(&path).expect("the archive should open"))
 }
 
+/// The indexed polygons - [`mrgl::INDEXED_POLYGON`] and
+/// [`mrgl::FLAT_POLYGON`] - have tests of their own.
+fn indexed(p: &mrgl::Polygon) -> bool {
+    p.kind == mrgl::INDEXED_POLYGON || p.kind == mrgl::FLAT_POLYGON
+}
+
 macro_rules! archive {
     ($name:expr) => {
         match pod($name) {
@@ -151,7 +157,7 @@ fn every_polygon_binds_to_a_material_that_exists() {
             }
             let model = mrgl::Model::parse(pod.bytes(e)).unwrap();
             // The indexed polygons have a test of their own.
-            for poly in model.polygons.iter().filter(|p| p.kind != mrgl::INDEXED_POLYGON) {
+            for poly in model.polygons.iter().filter(|p| !indexed(p)) {
                 match poly.material {
                     Some(m) => {
                         assert!(
@@ -187,7 +193,7 @@ fn an_untextured_polygon_carries_a_flat_colour_instead() {
             let bare = model
                 .polygons
                 .iter()
-                .filter(|p| p.material.is_none())
+                .filter(|p| p.material.is_none() && !indexed(p))
                 .collect::<Vec<_>>();
             if bare.is_empty() {
                 continue;
@@ -373,7 +379,7 @@ fn polygons_carry_a_unit_normal_and_texel_coordinates() {
                 continue;
             }
             let model = mrgl::Model::parse(pod.bytes(e)).unwrap();
-            for poly in model.polygons.iter().filter(|p| p.kind != mrgl::INDEXED_POLYGON) {
+            for poly in model.polygons.iter().filter(|p| !indexed(p)) {
                 total += 1;
                 // Three or four corners, never anything else.
                 assert!(
@@ -1219,4 +1225,41 @@ fn sprite_models_are_indexed_quads_with_flipbook_textures() {
     // Every one has a normal - the powerups' faces -z - so none takes the
     // draw's two-sided path.
     assert_eq!((books, two_sided), (40, 0), "flipbooks, two-sided");
+}
+
+/// The flat polygons: 215 in 34 models, every one after a colour record of 0
+/// - the palette's first band - and every one with a unit normal, which their
+/// fill needs for its light.
+#[test]
+fn flat_polygons_take_the_first_band_and_their_normal_light() {
+    let (mut flat, mut models, mut unit) = (0, 0, 0);
+    for name in ["STARTUP.POD", "GAME.POD"] {
+        let pod = archive!(name);
+        for e in pod.entries() {
+            if e.dir() != "models" || e.ext() != "bin" {
+                continue;
+            }
+            let model = mrgl::Model::parse(pod.bytes(e)).unwrap();
+            let mut any = false;
+            for poly in model.polygons.iter().filter(|p| p.kind == mrgl::FLAT_POLYGON) {
+                any = true;
+                flat += 1;
+                assert_eq!(poly.shade, Some(0), "{}", e.name);
+                assert!((3..=4).contains(&poly.corners.len()), "{}", e.name);
+                for c in &poly.corners {
+                    assert!((c.vertex as usize) < model.vertices.len(), "{}", e.name);
+                }
+                let length: f64 = poly.normal.iter().map(|&n| (n as f64 / 65536.0).powi(2)).sum::<f64>().sqrt();
+                unit += usize::from((length - 1.0).abs() < 0.01);
+            }
+            models += usize::from(any);
+        }
+    }
+    assert_eq!((flat, models), (215, 34));
+    assert_eq!(unit, 215);
+    // Band 0 runs from index 0 up to 31 with the light.
+    assert_eq!(mrgl::shade_colour(0, 0), 0);
+    assert_eq!(mrgl::shade_colour(0, 0x8000), 15);
+    assert_eq!(mrgl::shade_colour(0, 0xffff), 30);
+    assert_eq!(mrgl::shade_colour(-200, 0x8000), 200);
 }

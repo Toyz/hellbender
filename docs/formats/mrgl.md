@@ -2,7 +2,7 @@
 title: The .BIN model and its MRGL nodes
 status: partial
 covers: MODELS\*.BIN
-worklog: 5, 9, 16, 17, 35
+worklog: 5, 9, 16, 17, 35, 36
 ---
 
 # The .BIN model and its MRGL nodes
@@ -104,7 +104,8 @@ when the normal is zero; they differ in how they fill.
   colour set by the last 0x0a record - a ramp index into the tables at
   `0x50c4e8` (low) and `0x50c528` (high), or a palette index when negative
   (`0x458acd`). 215 polygons in 34 models, `FMBUNK.BIN` and `FDTRAINX.BIN`
-  among them, which the port does not draw yet.
+  among them, every one after a colour of 0: the palette's first band, 0 to
+  31. The port drew none of them until worklog 36.
 
 ### 0x1d, flipbook material
 
@@ -118,9 +119,23 @@ pictures; `F6DAM1.BIN`'s is eight frames at 0.244 seconds each.
 ### 0x0a, flat colour
 
 `+4` is the colour the flat polygons use (`0x457850` stores it at
-`0x5b3888`). The 0x17 record the port reads colours from does not set it -
-its handler only advances a counter at `0x504280` - which is worth a second
-look at the seven untextured models.
+`0x5b3888`). The bands, low and high index by colour 0 to 15:
+
+```
+ 0  0x00-0x1f    4  0x60-0x7f    8  0xb0-0xbf   12  0xf0
+ 1  0x00-0x0f    5  0x80-0x8f    9  0xc0-0xcf   13  0xff
+ 2  0x20-0x3f    6  0x90-0x9f   10  0xd0-0xdf   14  0x00
+ 3  0x40-0x5f    7  0xa0-0xaf   11  0xe0-0xef   15  0xd8
+```
+
+The same colour fills the textured kinds when textures are turned off
+(`0x5126e4`, `0x4585f9`).
+
+The 0x17 record the port reads colours from does not set it - its handler
+only advances a counter at `0x504280` - and its value is always the first
+record's and looks like a count (`0x80` in `BMBEETLE.BIN`, `0x32` in
+`FMBUNK.BIN`). Which makes the port's flat colour for the seven untextured
+models a guess that is probably wrong.
 
 ### 0x02, vertex list
 
