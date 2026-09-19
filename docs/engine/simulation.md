@@ -278,8 +278,9 @@ key is held (`0x47db3f`): each "volley" burns `0x1000 / 6` of the tank
 at a thirty-second a second while there is weapon energy to pay 0xda a
 second for it; an empty tank waits five seconds for a thirty-second.
 
-The weapon keys are `keyVulcanCannon` (the backquote) for 23 and 1 to 0 for
-2, 1, 3, 18, 24, 19, 25, 26, 27 and 28 (`0x5127b0` on); a key for an empty
+The weapon keys are `keyVulcanCannon` (the backquote) for 23 and 1 to 9 for
+2, 1, 3, 18, 24, 19, 25, 26 and 27 (`0x5127b0` to `0x5127d4`); `keyMine`, 0,
+is the floating mine (28); a key for an empty
 dispersion cannon or rapid-fire laser says it is "not in arsenal".
 `keySelectNextWeapon` (`=`, `0x479ca0`) steps round the weapons with a stock
 whose row flag allows it.
