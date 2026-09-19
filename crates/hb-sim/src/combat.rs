@@ -347,21 +347,8 @@ pub fn step_shot(
         let at = shot.position;
         match shot.side {
             Side::Player => {
-                for (i, p) in placements.iter().enumerate() {
-                    if !alive(i) {
-                        continue;
-                    }
-                    let Some(volume) = volumes.get(p.kind) else { continue };
-                    let origin = position_of(p);
-                    let d = [wrapped(at[0] - origin[0]), at[1] - origin[1], wrapped(at[2] - origin[2])];
-                    let reach = volume.reach();
-                    if d.iter().map(|v| v * v).sum::<f32>() > reach * reach {
-                        continue;
-                    }
-                    let near = [origin[0] + d[0], at[1], origin[2] + d[2]];
-                    if volume.contains(to_local(near, origin, p.heading)) {
-                        return Some(Stop::Object(i));
-                    }
+                if let Some(i) = object_at(at, placements, volumes, &alive) {
+                    return Some(Stop::Object(i));
                 }
             }
             Side::Enemy => {
@@ -375,6 +362,33 @@ pub fn step_shot(
         }
     }
     shot.age += dt;
+    None
+}
+
+/// Which live placement, if any, a point is inside: one of its type's hit
+/// spheres or its turned bounding box (`0x40d750`, `0x40ce70`).
+pub fn object_at(
+    at: [f32; 3],
+    placements: &[Placement],
+    volumes: &[HitVolume],
+    alive: impl Fn(usize) -> bool,
+) -> Option<usize> {
+    for (i, p) in placements.iter().enumerate() {
+        if !alive(i) {
+            continue;
+        }
+        let Some(volume) = volumes.get(p.kind) else { continue };
+        let origin = position_of(p);
+        let d = [wrapped(at[0] - origin[0]), at[1] - origin[1], wrapped(at[2] - origin[2])];
+        let reach = volume.reach();
+        if d.iter().map(|v| v * v).sum::<f32>() > reach * reach {
+            continue;
+        }
+        let near = [origin[0] + d[0], at[1], origin[2] + d[2]];
+        if volume.contains(to_local(near, origin, p.heading)) {
+            return Some(i);
+        }
+    }
     None
 }
 

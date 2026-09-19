@@ -36,6 +36,7 @@ hb-fly - fly around a Hellbender level
   space         fire                  b       drop a beacon
   ` 1 2 3       Valkyrie cannon, dispersion cannon, servo-kinetic and
                 rapid-fire lasers        =       next weapon
+  4 5 6         Dead-On, cruise and Viper missiles   v   lock the next target
   , .           main energy to the weapons, to the shield
   esc           quit
 
@@ -440,9 +441,44 @@ fn main() -> Result<(), String> {
                 heading: flight.camera.yaw.0 as f32,
                 speed: (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt(),
             };
+            // The missile lock (`keyMissileLock`, V): what the selected weapon
+            // can lock on, as `0x47bbd0` judges it.
+            let selected = battle.guns.selected;
+            let candidates: Vec<hb_sim::weapons::Candidate> = live
+                .iter()
+                .enumerate()
+                .map(|(i, p)| {
+                    let at = hb_sim::combat::position_of(p);
+                    let fixed = |v: f32| (v * 65536.0) as i32;
+                    let near = [
+                        eye[0] + hb_sim::combat::wrapped(at[0] - eye[0]),
+                        at[1],
+                        eye[2] + hb_sim::combat::wrapped(at[2] - eye[2]),
+                    ];
+                    let kind = &level.kinds[level.placements[i].kind];
+                    hb_sim::weapons::Candidate {
+                        class: kind.class(),
+                        friendly: kind.friendly,
+                        alive: !battle.health[i].destroyed && battle.health[i].hit_points > 0.0,
+                        near: hb_sim::combat::in_range(eye, at),
+                        view: flight.camera.to_view(fixed(near[0]), fixed(near[1]), fixed(near[2])),
+                    }
+                })
+                .collect();
+            battle.guns.track(window.is_key_pressed(Key::V, minifb::KeyRepeat::No), candidates.len(), |i| {
+                candidates[i].lockable(selected)
+            });
             let burn = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
             let (volleys, mut voices) = battle.trigger(window.is_key_down(Key::Space), burn, dt, &pose);
-            for key in [(Key::Backquote, '`'), (Key::Key1, '1'), (Key::Key2, '2'), (Key::Key3, '3')] {
+            for key in [
+                (Key::Backquote, '`'),
+                (Key::Key1, '1'),
+                (Key::Key2, '2'),
+                (Key::Key3, '3'),
+                (Key::Key4, '4'),
+                (Key::Key5, '5'),
+                (Key::Key6, '6'),
+            ] {
                 if window.is_key_pressed(key.0, minifb::KeyRepeat::No) {
                     if let Some(&(_, w)) = hb_sim::weapons::KEYS.iter().find(|(c, _)| *c == key.1) {
                         voices.extend(battle.guns.select(w, &battle.stores));
@@ -663,6 +699,24 @@ fn main() -> Result<(), String> {
         for missile in &battle.missiles {
             hb_render::scene::draw_spark(&mut target, &flight.camera, near(missile.position), colours.missile);
         }
+        // Brackets on the locked target. The engine's lock display is not
+        // read; this only shows what is locked.
+        if let Some(i) = battle.guns.lock {
+            if let Some(p) = live.get(i) {
+                let at = hb_sim::combat::position_of(p);
+                let fixed = |v: f32| (v * 65536.0) as i32;
+                let v = flight.camera.to_view(
+                    fixed(eye[0] + hb_sim::combat::wrapped(at[0] - eye[0])),
+                    fixed(at[1]),
+                    fixed(eye[2] + hb_sim::combat::wrapped(at[2] - eye[2])),
+                );
+                if v[2] > 0.5 {
+                    let ([kx, ky], [cx, cy]) = Camera::screen(w, h);
+                    let (sx, sy) = (cx + v[0] / v[2] * kx, cy - v[1] / v[2] * ky);
+                    draw_brackets(&mut target.colour, w, h, sx, sy, colours.enemy);
+                }
+            }
+        }
         if show_cockpit {
             if let Some(art) = &cockpit {
                 target.overlay(art);
@@ -675,10 +729,15 @@ fn main() -> Result<(), String> {
                     -1 => String::new(),
                     n => format!(" {n}"),
                 };
+                let lock = match battle.guns.lock {
+                    Some(_) => "*",
+                    None => "",
+                };
                 let readout = format!(
-                    "{}{}  HP {:.0}  SH {:.0}  WE {:.0}  EN {:.0}",
+                    "{}{}{}  HP {:.0}  SH {:.0}  WE {:.0}  EN {:.0}",
                     hb_sim::weapons::ROWS[weapon].code,
                     stock,
+                    lock,
                     battle.pilot.health * 100.0,
                     battle.pilot.shield * 100.0,
                     battle.stores.weapon_energy * 100.0,
@@ -859,6 +918,23 @@ fn start_camera(level: &Level, mission: &hb_sim::mission::Mission) -> Camera {
             camera
         }
         None => start_of(level),
+    }
+}
+
+/// Four corner brackets around a point on the screen.
+fn draw_brackets(pixels: &mut [u8], w: usize, h: usize, x: f32, y: f32, colour: u8) {
+    let (x, y) = (x.round() as isize, y.round() as isize);
+    let mut plot = |px: isize, py: isize| {
+        if px >= 0 && py >= 0 && (px as usize) < w && (py as usize) < h {
+            pixels[py as usize * w + px as usize] = colour;
+        }
+    };
+    let (r, arm) = (8isize, 3isize);
+    for (sx, sy) in [(-1, -1), (1, -1), (-1, 1), (1, 1)] {
+        for k in 0..=arm {
+            plot(x + sx * r - sx * k, y + sy * r);
+            plot(x + sx * r, y + sy * r - sy * k);
+        }
     }
 }
 

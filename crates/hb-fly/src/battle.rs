@@ -8,7 +8,7 @@ use hb_sim::combat::{self, Health, HitVolume, Pilot, Shot, Side, Stop};
 use hb_sim::flyer::{Flyer, Target};
 use hb_sim::powerup::{self, Field, Stores};
 use hb_sim::weapons::{Guns, Pose, Volley};
-use hb_sim::turret::{Launch, Missile, Rng, Turret};
+use hb_sim::turret::{Launch, Missile, Rng, Struck, Turret};
 
 /// The behaviour classes that fly. 7 and 53 run the dogfight routine
 /// `0x4967b0`; 56, 59 and 60 have routines of their own (`0x497050`,
@@ -218,14 +218,35 @@ impl Battle {
         }
         self.shots.retain(|f| f.shot.alive());
 
+        let health = &self.health;
+        let volumes = &self.volumes;
         for m in &mut self.missiles {
-            match m.step(dt, target, solid) {
-                Some(true) => {
-                    player_damage += Missile::DAMAGE;
-                    m.age = f32::MAX;
+            match m.side {
+                Side::Enemy => match m.step(dt, target, solid) {
+                    Some(true) => {
+                        player_damage += m.damage;
+                        m.age = f32::MAX;
+                    }
+                    Some(false) => m.age = f32::MAX,
+                    None => {}
+                },
+                // The player's: home on the target while it stands, strike
+                // whatever they fly into.
+                Side::Player => {
+                    let aim = |i: usize| {
+                        let p = live.get(i)?;
+                        (!health.get(i)?.destroyed).then(|| combat::position_of(p))
+                    };
+                    let hit = |at: [f32; 3]| combat::object_at(at, live, volumes, |i| !health[i].destroyed);
+                    match m.step_at(dt, aim, hit, solid) {
+                        Some(Struck::Object(i)) => {
+                            hits.push((i, m.damage, m.kind));
+                            m.age = f32::MAX;
+                        }
+                        Some(_) => m.age = f32::MAX,
+                        None => {}
+                    }
                 }
-                Some(false) => m.age = f32::MAX,
-                None => {}
             }
         }
         self.missiles.retain(Missile::alive);
@@ -267,6 +288,7 @@ impl Battle {
             for s in &v.shots {
                 self.shots.push(Flying::new(*s));
             }
+            self.missiles.extend(v.missiles.iter().copied());
         }
         (volleys, voices)
     }

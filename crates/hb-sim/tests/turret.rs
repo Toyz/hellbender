@@ -121,7 +121,7 @@ fn a_sam_site_launches_a_missile_that_finds_the_player() {
 
 #[test]
 fn a_missile_gives_up_after_six_seconds() {
-    let mut m = Missile { position: [0.0; 3], heading: 0.0, pitch: 0.0, speed: 0.0, age: 0.0 };
+    let mut m = Missile::enemy([0.0; 3], 0.0, 0.0, 0.0);
     // A target it cannot reach in time: 1,000 units is past six seconds of
     // flight even at top speed, and the world wraps well before that, so aim
     // it at something 400 units away on a fast-moving course it never meets.

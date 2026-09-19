@@ -135,15 +135,17 @@ fn a_weapon_runs_out_and_the_next_one_is_taken() {
         guns.step(true, false, 1.0 / 60.0, &level(), &mut stores, &mut rng);
     }
     assert_eq!(stores.ammo[weapons::RAPID_FIRE], 0);
-    assert_eq!(guns.selected, weapons::VALKYRIE);
-    // The next-weapon key goes round the ones with a stock.
+    // The next with a stock after 3 is the Dead-On's 20.
+    assert_eq!(guns.selected, weapons::DEAD_ON);
+    // The next-weapon key goes round the ones with a stock, in slot order.
     stores.ammo[weapons::DISPERSION] = 5;
-    guns.next(&stores);
-    assert_eq!(guns.selected, weapons::SERVO_KINETIC);
-    guns.next(&stores);
-    assert_eq!(guns.selected, weapons::DISPERSION);
-    guns.next(&stores);
-    assert_eq!(guns.selected, weapons::VALKYRIE);
+    let mut order = Vec::new();
+    for _ in 0..6 {
+        guns.next(&stores);
+        order.push(guns.selected);
+    }
+    use weapons::*;
+    assert_eq!(order, [VIPER, VALKYRIE, CRUISE, SERVO_KINETIC, DISPERSION, DEAD_ON]);
 }
 
 #[test]
@@ -193,4 +195,100 @@ fn the_afterburner_burns_a_tank_in_sixteen_seconds_and_refills_from_weapon_energ
     assert!((before - stores.weapon_energy - 0xda as f32 / 65536.0).abs() < 1e-5);
     // The hull creeps up by 0x48 a second.
     assert!((hull - (0.5 + 0x48 as f32 / 65536.0 * (6.0 + 1.0 / 60.0))).abs() < 1e-5, "{hull}");
+}
+
+fn candidate(class: i64, view: [f32; 3]) -> weapons::Candidate {
+    weapons::Candidate { class, friendly: false, alive: true, near: true, view }
+}
+
+#[test]
+fn missiles_lock_by_what_flies_and_what_is_on_screen() {
+    let ahead = [0.0, 0.0, 20.0];
+    // Class 7 flies (a flyer), class 10 does not (a turret).
+    assert!(candidate(7, ahead).lockable(weapons::VIPER));
+    assert!(!candidate(10, ahead).lockable(weapons::VIPER));
+    assert!(candidate(10, ahead).lockable(weapons::CRUISE));
+    assert!(!candidate(7, ahead).lockable(weapons::CRUISE));
+    // The guns lock nothing, nor does the Dead-On.
+    assert!(!candidate(7, ahead).lockable(weapons::VALKYRIE));
+    assert!(!candidate(7, ahead).lockable(weapons::DEAD_ON));
+    // Inside 90 degrees each way and in front, or not at all.
+    assert!(candidate(7, [19.0, -19.0, 20.0]).lockable(weapons::VIPER));
+    assert!(!candidate(7, [21.0, 0.0, 20.0]).lockable(weapons::VIPER));
+    assert!(!candidate(7, [0.0, 0.0, -5.0]).lockable(weapons::VIPER));
+    let mut friend = candidate(7, ahead);
+    friend.friendly = true;
+    assert!(!friend.lockable(weapons::VIPER));
+    let mut far = candidate(7, ahead);
+    far.near = false;
+    assert!(!far.lockable(weapons::VIPER));
+    assert!(!candidate(33, ahead).lockable(30));
+}
+
+#[test]
+fn the_lock_takes_the_first_it_can_steps_on_a_press_and_lets_go() {
+    let mut guns = Guns::default();
+    let can = [false, true, false, true, true];
+    guns.track(false, 5, |i| can[i]);
+    assert_eq!(guns.lock, Some(1));
+    guns.track(true, 5, |i| can[i]);
+    assert_eq!(guns.lock, Some(3));
+    guns.track(true, 5, |i| can[i]);
+    assert_eq!(guns.lock, Some(4));
+    guns.track(true, 5, |i| can[i]);
+    assert_eq!(guns.lock, Some(1), "round the list");
+    // The locked one can no longer be held: dropped at the end of the frame
+    // (`0x47b9c5`), and the next frame takes the first that can be.
+    let gone = [false, false, false, true, true];
+    guns.track(false, 5, |i| gone[i]);
+    assert_eq!(guns.lock, None);
+    guns.track(false, 5, |i| gone[i]);
+    assert_eq!(guns.lock, Some(3));
+    guns.track(false, 5, |_| false);
+    assert_eq!(guns.lock, None);
+}
+
+#[test]
+fn missiles_leave_from_under_either_wing_and_home_on_the_lock() {
+    let (mut guns, mut stores, mut rng) = (Guns::default(), Stores::default(), Rng::new(1));
+    assert_eq!(guns.select(weapons::VIPER, &stores), None);
+    guns.lock = Some(7);
+    let fire = |guns: &mut Guns, stores: &mut Stores, rng: &mut Rng| {
+        guns.step(false, false, 0.0, &level(), stores, rng);
+        guns.step(true, false, 1.0 / 60.0, &level(), stores, rng).0.remove(0)
+    };
+    let a = fire(&mut guns, &mut stores, &mut rng).missiles[0];
+    let b = fire(&mut guns, &mut stores, &mut rng).missiles[0];
+    assert_eq!(a.position, [1.0, 9.0, 0.5]);
+    assert_eq!(b.position, [-1.0, 9.0, 0.5]);
+    assert_eq!((a.target, a.side, a.kind, a.damage, a.speed), (Some(7), Side::Player, 19, 1.0, 16.0));
+    assert_eq!(stores.ammo[weapons::VIPER], 3);
+
+    // It turns to a target off to the side and strikes it.
+    let mut m = a;
+    let goal = [40.0, 9.0, 30.0];
+    let hit = |p: [f32; 3]| {
+        let d = [p[0] - goal[0], p[1] - goal[1], p[2] - goal[2]];
+        (d.iter().map(|v| v * v).sum::<f32>() < 4.0).then_some(7)
+    };
+    let mut struck = None;
+    for _ in 0..(6 * 60) {
+        struck = m.step_at(1.0 / 60.0, |i| (i == 7).then_some(goal), hit, |_| false);
+        if struck.is_some() {
+            break;
+        }
+    }
+    assert_eq!(struck, Some(hb_sim::turret::Struck::Object(7)));
+
+    // A Dead-On has no target and flies on along the nose.
+    guns.select(weapons::DEAD_ON, &stores);
+    let mut d = fire(&mut guns, &mut stores, &mut rng).missiles[0];
+    assert_eq!(d.target, None);
+    for _ in 0..60 {
+        d.step_at(1.0 / 60.0, |_| Some(goal), |_| None, |_| false);
+    }
+    assert!(d.position[0].abs() == 1.0 && d.position[2] > 16.0, "{:?}", d.position);
+    // The cruise missile flies ten seconds.
+    guns.select(weapons::CRUISE, &stores);
+    assert_eq!(fire(&mut guns, &mut stores, &mut rng).missiles[0].life, 10.0);
 }

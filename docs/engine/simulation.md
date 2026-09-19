@@ -2,7 +2,7 @@
 title: The simulation
 status: partial
 covers: HELLBEND.EXE logic phases, crates/hb-sim
-worklog: 26, 27, 28, 31, 32, 33, 34, 35, 37
+worklog: 26, 27, 28, 31, 32, 33, 34, 35, 37, 38
 ---
 
 # The simulation
@@ -285,8 +285,34 @@ dispersion cannon or rapid-fire laser says it is "not in arsenal".
 `keySelectNextWeapon` (`=`, `0x479ca0`) steps round the weapons with a stock
 whose row flag allows it.
 
-The missiles and mines (`0x47cd70`, `0x47cec0`, the mine drop at `0x47d82a`)
-fire through `0x477890` with a locked target and are not ported yet.
+**Missiles** (`0x47cd70`) leave from under one wing or the other in turn
+(`0x50f088`) - half a unit ahead, a unit to the side and a unit down - along
+the nose at the ship's speed, into the guided missiles' pool through
+`0x477890`: the same 16 slots, acceleration, steering and six-second life as
+the SAM sites' (ten seconds for the cruise missile), with the row's damage,
+1.0. The record's `+0xc` is its owner, 0 for the player, and `+0x10` its
+target: `0x477f20` steers a player's missile at that placement, an enemy's at
+the player, and one with target -1 along its own heading. A player's
+missile loses its target when the placement dies or is cloaked (`+0x14c`).
+The Dead-On (18) and the MIRV (26) launch with no target; the Viper (19),
+the cruise missile (24) and the super weapon (30) launch at the lock.
+
+**The lock** (`0x50e6fc`, `0x47b700`): `keyMissileLock`, V, steps it to the
+next placement the selected weapon can lock; with nothing locked the first
+that can be is taken each frame; a lock that no longer passes is dropped.
+`0x47bbd0` decides: the placement ran this frame (`+0x84`: alive and in the
+80-unit box), is not cloaked, friendly, dying or class 33, is on screen
+(`0x42f710` with no radius: in front and inside 90 degrees each way), and is
+of the weapon's kind - the Viper takes the classes `0x40dca0` lists as
+flying (2, 4, 7, 8, 16-18, 25, 26, 28, 29, 32, 35, 38-40, 43, 44, 46, 48-60,
+63, 64), the cruise missile the rest (`0x40dc00`), the cluster missile and
+super weapon anything.
+
+The cluster missile (`0x47cec0`), the MIRV and guided MIRV, which split into
+Dead-Ons a second out (`0x477b90`, `0x477d10`), the floating mine
+(`0x47d82a`) and the super weapon, which scorches everything within 16 units
+of its path (`0x477a19`, `0x47d3b0`), are not ported yet. Nor is the cruise
+missile's own steering (`0x4780b0`): the port steers it as the others.
 
 ## The guided missile
 

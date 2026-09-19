@@ -216,17 +216,14 @@ impl Turret {
         rng: &mut Rng,
     ) -> Option<Missile> {
         let from = self.muzzle(def, mesh, at, rng)?;
-        Some(Missile {
-            position: from,
-            heading: self.heading,
-            pitch: self.pitch,
-            speed: (def.move_rate + 1) as f32 / 65536.0,
-            age: 0.0,
-        })
+        Some(Missile::enemy(from, self.heading, self.pitch, (def.move_rate + 1) as f32 / 65536.0))
     }
 }
 
-/// A guided missile in flight, homing on the player.
+/// A guided missile in flight, one of the 16 slots at `0x613700`: an
+/// enemy's homes on the player, the player's on the placement it was
+/// launched at, and one with nothing to home on flies straight
+/// (`0x477f20`).
 #[derive(Debug, Clone, Copy)]
 pub struct Missile {
     pub position: [f32; 3],
@@ -235,6 +232,25 @@ pub struct Missile {
     /// Units per second.
     pub speed: f32,
     pub age: f32,
+    /// What a hit takes (`+0`).
+    pub damage: f32,
+    /// The weapon kind (`+0x14`), which picks the target's multiplier.
+    pub kind: i32,
+    /// Whose it is (`+0xc`: 0 for the player).
+    pub side: Side,
+    /// For the player's, the placement it homes on (`+0x10`). Dropped when
+    /// that placement is destroyed.
+    pub target: Option<usize>,
+    /// Seconds it flies (`+4`): six, ten for the cruise missile.
+    pub life: f32,
+}
+
+/// What ended a missile's flight.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Struck {
+    Player,
+    Object(usize),
+    Ground,
 }
 
 impl Missile {
@@ -250,17 +266,69 @@ impl Missile {
     pub const DAMAGE: f32 = 0.25;
     pub const SUBSTEPS: usize = 4;
 
-    pub fn alive(&self) -> bool {
-        self.age <= Missile::LIFE
+    /// A SAM site's (`0x4074e0`).
+    pub fn enemy(position: [f32; 3], heading: f32, pitch: f32, speed: f32) -> Missile {
+        Missile {
+            position,
+            heading,
+            pitch,
+            speed,
+            age: 0.0,
+            damage: Missile::DAMAGE,
+            kind: GUIDED,
+            side: Side::Enemy,
+            target: None,
+            life: Missile::LIFE,
+        }
     }
 
-    /// One frame. `Some(true)` if it reached the player, `Some(false)` if it
-    /// hit the ground, either of which ends it; `None` while it flies on.
+    pub fn alive(&self) -> bool {
+        self.age <= self.life
+    }
+
+    /// One frame of an enemy's missile. `Some(true)` if it reached the
+    /// player, `Some(false)` if it hit the ground, either of which ends it;
+    /// `None` while it flies on.
     pub fn step(&mut self, dt: f32, player: Option<[f32; 3]>, solid: impl Fn([f32; 3]) -> bool) -> Option<bool> {
+        let hit = |at: [f32; 3]| player.filter(|&p| crate::combat::player_is_hit(p, at)).map(|_| Struck::Player);
+        match self.fly(dt, |_| player, hit, solid) {
+            Some(Struck::Ground) => Some(false),
+            Some(_) => Some(true),
+            None => None,
+        }
+    }
+
+    /// One frame of the player's missile. `aim` gives a placement's position
+    /// while it is still a target; `hit` says which placement, if any, a
+    /// point is inside.
+    pub fn step_at(
+        &mut self,
+        dt: f32,
+        aim: impl Fn(usize) -> Option<[f32; 3]>,
+        hit: impl Fn([f32; 3]) -> Option<usize>,
+        solid: impl Fn([f32; 3]) -> bool,
+    ) -> Option<Struck> {
+        let seek = |m: &mut Missile| {
+            let at = m.target.and_then(&aim);
+            if at.is_none() {
+                m.target = None;
+            }
+            at
+        };
+        self.fly(dt, seek, |p| hit(p).map(Struck::Object), solid)
+    }
+
+    fn fly(
+        &mut self,
+        dt: f32,
+        mut seek: impl FnMut(&mut Missile) -> Option<[f32; 3]>,
+        hit: impl Fn([f32; 3]) -> Option<Struck>,
+        solid: impl Fn([f32; 3]) -> bool,
+    ) -> Option<Struck> {
         let step = dt / Missile::SUBSTEPS as f32;
         for _ in 0..Missile::SUBSTEPS {
             self.speed = (self.speed + Missile::ACCELERATION * step).min(Missile::TOP_SPEED);
-            if let Some(target) = player {
+            if let Some(target) = seek(self) {
                 let d = [
                     wrapped(target[0] - self.position[0]),
                     target[1] - self.position[1],
@@ -285,13 +353,11 @@ impl Missile {
             for k in 0..3 {
                 self.position[k] += dir[k] * self.speed * step;
             }
-            if let Some(target) = player {
-                if crate::combat::player_is_hit(target, self.position) {
-                    return Some(true);
-                }
+            if let Some(struck) = hit(self.position) {
+                return Some(struck);
             }
             if solid(self.position) {
-                return Some(false);
+                return Some(Struck::Ground);
             }
         }
         self.age += dt;

@@ -11,7 +11,7 @@
 use crate::combat::{direction, Shot, Side};
 use crate::mission::Voice;
 use crate::powerup::{Stores, ENERGY_MAX};
-use crate::turret::Rng;
+use crate::turret::{Missile, Rng};
 
 /// One row of the weapon table at `0x50e7a0`, 68 bytes: the model name 28
 /// bytes before the speed and the HUD code 8 bytes before it, then speed and
@@ -72,18 +72,34 @@ pub const START: usize = 23;
 pub const SERVO_KINETIC: usize = 1;
 pub const DISPERSION: usize = 2;
 pub const RAPID_FIRE: usize = 3;
+/// "Sledgehammer Rockets" to the voice, unguided.
+pub const DEAD_ON: usize = 18;
+/// Locks on things that fly.
+pub const VIPER: usize = 19;
 pub const AFTERBURNER: usize = 22;
 pub const VALKYRIE: usize = 23;
+/// "Scorcher Missiles": locks on things on the ground, flies ten seconds.
+pub const CRUISE: usize = 24;
 
-/// The weapons this port can fire. The missiles, mines and the super weapon
-/// go through `0x477890` with a locked target, which is not ported yet.
-pub const PORTED: [usize; 4] = [SERVO_KINETIC, DISPERSION, RAPID_FIRE, VALKYRIE];
+/// The weapons this port can fire. The cluster, MIRV and guided MIRV
+/// missiles split in flight (`0x47cec0`, `0x477b90`, `0x477d10`), the mine
+/// is dropped (`0x47d82a`) and the super weapon burns what it passes
+/// (`0x477a19`); none of those is ported yet.
+pub const PORTED: [usize; 7] = [SERVO_KINETIC, DISPERSION, RAPID_FIRE, VALKYRIE, DEAD_ON, CRUISE, VIPER];
 
 /// The weapon keys, as `HELLBEND.INI` binds them and the trigger routine
 /// reads them (`0x47dcc4` on): the backquote for the Valkyrie
 /// (`keyVulcanCannon`), 1 the dispersion cannon, 2 the servo-kinetic laser,
-/// 3 the rapid-fire laser. 4 to 0 are the missiles and mines.
-pub const KEYS: [(char, usize); 4] = [('`', VALKYRIE), ('1', DISPERSION), ('2', SERVO_KINETIC), ('3', RAPID_FIRE)];
+/// 3 the rapid-fire laser, 4 Dead-On, 5 cruise, 6 Viper missiles.
+pub const KEYS: [(char, usize); 7] = [
+    ('`', VALKYRIE),
+    ('1', DISPERSION),
+    ('2', SERVO_KINETIC),
+    ('3', RAPID_FIRE),
+    ('4', DEAD_ON),
+    ('5', CRUISE),
+    ('6', VIPER),
+];
 
 pub const WEAPON_ENERGY_LOW: Voice =
     Voice { id: 0x4f, sound: "warn-wel.wav", text: "Warning!  Weapon energy low!" };
@@ -93,6 +109,23 @@ pub const NO_DISPERSION: Voice =
     Voice { id: 0x1e, sound: "pause.wav", text: "Dispersion Cannon not in arsenal" };
 pub const NO_RAPID_FIRE: Voice =
     Voice { id: 0x1f, sound: "pause.wav", text: "Rapid Fire Laser not in arsenal" };
+pub const NO_DEAD_ON: Voice =
+    Voice { id: 0x20, sound: "pause.wav", text: "Sledgehammer Rockets not in arsenal" };
+pub const NO_CRUISE: Voice =
+    Voice { id: 0x21, sound: "pause.wav", text: "Scorcher Missiles not in arsenal" };
+pub const NO_VIPER: Voice =
+    Voice { id: 0x22, sound: "pause.wav", text: "Viper Missiles not in arsenal" };
+
+/// The behaviour classes that fly, as `0x40dca0` sorts them for the Viper's
+/// lock; the cruise missile's (`0x40dc00`) takes every other class up to 62.
+pub const AIRBORNE: [i64; 34] = [
+    2, 4, 7, 8, 16, 17, 18, 25, 26, 28, 29, 32, 35, 38, 39, 40, 43, 44, 46, 48, 49, 50, 51, 52, 53, 54, 55, 56,
+    57, 58, 59, 60, 63, 64,
+];
+
+pub fn airborne(class: i64) -> bool {
+    AIRBORNE.contains(&class)
+}
 
 /// The line below which weapon or shield energy is "low", 0x199a.
 const LOW: f32 = 0x199a as f32 / 65536.0;
@@ -115,6 +148,7 @@ pub struct Pose {
 #[derive(Debug, Clone)]
 pub struct Volley {
     pub shots: Vec<Shot>,
+    pub missiles: Vec<Missile>,
     /// The weapon's sound, played at the ship.
     pub sound: &'static str,
 }
@@ -128,11 +162,53 @@ pub struct Guns {
     side: bool,
     /// Where the dispersion cannon's pattern is (`0x50f038`).
     pattern: usize,
+    /// Which side a missile leaves from next (`0x50f088`).
+    rail: bool,
+    /// The locked target (`0x50e6fc`).
+    pub lock: Option<usize>,
 }
 
 impl Default for Guns {
     fn default() -> Guns {
-        Guns { selected: START, accumulator: 1.0, side: false, pattern: 0 }
+        Guns { selected: START, accumulator: 1.0, side: false, pattern: 0, rail: false, lock: None }
+    }
+}
+
+/// What a placement looks like to the missile lock.
+#[derive(Debug, Clone, Copy)]
+pub struct Candidate {
+    pub class: i64,
+    pub friendly: bool,
+    /// Hit points above zero.
+    pub alive: bool,
+    /// Within the 80-unit box this frame, so the actor loop ran it
+    /// (`+0x84`).
+    pub near: bool,
+    /// Its position in view space: x right, y up, z ahead.
+    pub view: [f32; 3],
+}
+
+impl Candidate {
+    /// `0x47bbd0` for one weapon: alive and near, not friendly, not class 33,
+    /// on screen - `0x42f710` with no radius: in front and inside the 90
+    /// degrees each way - and of the kind the weapon locks on. The Viper
+    /// takes things that fly, the cruise missile things that do not, and
+    /// the cluster missile and super weapon anything.
+    pub fn lockable(&self, weapon: usize) -> bool {
+        let kind = match weapon {
+            VIPER => airborne(self.class),
+            CRUISE => !airborne(self.class) && self.class <= 62,
+            25 | 30 => true,
+            _ => return false,
+        };
+        let [x, y, z] = self.view;
+        kind && self.alive
+            && self.near
+            && !self.friendly
+            && self.class != 33
+            && z >= 0.0
+            && x.abs() <= z
+            && y.abs() <= z
     }
 }
 
@@ -186,6 +262,9 @@ impl Guns {
         match weapon {
             DISPERSION => Some(NO_DISPERSION),
             RAPID_FIRE => Some(NO_RAPID_FIRE),
+            DEAD_ON => Some(NO_DEAD_ON),
+            CRUISE => Some(NO_CRUISE),
+            VIPER => Some(NO_VIPER),
             _ => None,
         }
     }
@@ -199,6 +278,37 @@ impl Guns {
             if w < ROWS.len() && stores.ammo[w] != 0 && ROWS[w].cycles && PORTED.contains(&w) {
                 self.selected = w;
                 return;
+            }
+        }
+    }
+
+    /// The lock, each frame (`0x47b700`): the lock key moves it to the next
+    /// placement the selected weapon can lock, round the list; with nothing
+    /// locked the first that can be is taken; a lock that can no longer be
+    /// held is dropped.
+    pub fn track(&mut self, pressed: bool, count: usize, can: impl Fn(usize) -> bool) {
+        let search = |from: Option<usize>| -> Option<usize> {
+            let mut i = from.map_or(0, |f| f + 1);
+            for _ in 0..count {
+                if i >= count {
+                    i = 0;
+                }
+                if can(i) {
+                    return Some(i);
+                }
+                i += 1;
+            }
+            None
+        };
+        if pressed && count > 0 {
+            self.lock = search(self.lock);
+        }
+        if self.lock.is_none() && count > 0 {
+            self.lock = search(None);
+        }
+        if let Some(i) = self.lock {
+            if !can(i) {
+                self.lock = None;
             }
         }
     }
@@ -247,11 +357,14 @@ impl Guns {
         let row = ROWS[w];
         let speed = row.speed as f32 / 65536.0 + pose.speed;
         let damage = row.damage as f32 / 65536.0;
-        let shots = match w {
-            SERVO_KINETIC | RAPID_FIRE | VALKYRIE => self.guns(w, pose, speed, damage, dt, stores, voices),
-            DISPERSION => self.dispersion(pose, speed, damage, stores, rng, voices),
+        let (mut shots, mut missiles) = (Vec::new(), Vec::new());
+        match w {
+            SERVO_KINETIC | RAPID_FIRE | VALKYRIE => shots = self.guns(w, pose, speed, damage, dt, stores, voices),
+            DISPERSION => shots = self.dispersion(pose, speed, damage, stores, rng, voices),
+            DEAD_ON => missiles.push(self.missile(w, pose, None)),
+            VIPER | CRUISE => missiles.push(self.missile(w, pose, self.lock)),
             _ => return None,
-        };
+        }
         let stock = &mut stores.ammo[w];
         if *stock != -1 {
             *stock -= 1;
@@ -260,7 +373,29 @@ impl Guns {
                 self.next(stores);
             }
         }
-        Some(Volley { shots, sound: row.sound })
+        Some(Volley { shots, missiles, sound: row.sound })
+    }
+
+    /// `0x47cd70` into `0x477890`: a missile from under one wing or the
+    /// other in turn - half a unit ahead, a unit to the side and a unit down
+    /// - along the nose at the ship's speed, into the guided missiles'
+    /// pool. The Dead-On is launched with no target and flies straight.
+    fn missile(&mut self, w: usize, pose: &Pose, target: Option<usize>) -> Missile {
+        self.rail = !self.rail;
+        let side = if self.rail { 1.0 } else { -1.0 };
+        let at = add(add(add(pose.position, pose.forward, 0.5), pose.right, side), pose.up, -1.0);
+        Missile {
+            position: at,
+            heading: pose.heading,
+            pitch: pose.pitch,
+            speed: pose.speed,
+            age: 0.0,
+            damage: ROWS[w].damage as f32 / 65536.0,
+            kind: w as i32,
+            side: Side::Player,
+            target,
+            life: if w == CRUISE { 10.0 } else { Missile::LIFE },
+        }
     }
 
     /// The lasers and the cannon (`0x47a5d0`, `0x479ce0`): shots along the
