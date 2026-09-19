@@ -2,7 +2,7 @@
 title: The level text files - .DEF, .NAV, .TXT, .TEX, .ANI, .LVL family
 status: partial
 covers: DATA\*.DEF, DATA\*.NAV, DATA\*.TXT, DATA\*.TEX, DATA\*.ANI, DEMO\*.DMO
-worklog: 3, 15, 16, 22, 28, 34
+worklog: 3, 15, 16, 22, 28, 34, 35
 ---
 
 # The level text files
@@ -99,7 +99,7 @@ record has both.
 | line | format | offsets | reading |
 | ---: | --- | --- | --- |
 | 1 | `%d,%d,%d,%d,%d` | 0x64 0x68 0x6c 0x70 0xdc | move rate, turn rate, fire interval, shot damage, weapon kind |
-| 2 | `%d,%d,%d,%d` | 0xe0 0xe4 0xe8 0xec | not read yet |
+| 2 | `%d,%d,%d,%d` | 0xe0 0xe4 0xe8 0xec | two not read yet; the percent chance of dropping a powerup when destroyed, and which (-1 any) |
 | 3 | nine `%d` | 0x190, 0x194.. | muzzles: a count, then up to eight model vertex indices |
 | 5 | seventeen `%d` | 0x1b4, 0x1b8.., 0x1d8.. | hit spheres: a count, eight vertex indices, eight 16.16 half-sizes |
 | 7 | `%d,%d,%d,%d` | 0x1f8 0x1fc 0x200 - | attack and retreat range in whole units (defaults 32 and 16), which the flyers' AI compares with; the third, when set, lets the actor play its line-13 sound at random |
@@ -325,16 +325,19 @@ source of the port's heading and pitch conventions.
 
 ## .PUP and .TDF
 
-Count-prefixed text in the same family. In most levels both are the three bytes
-`0\r\n` - a count of zero and nothing else - so their record shape cannot be
-read from the shipped data.
+Count-prefixed text in the same family. `.PUP` lists powerups lying in the
+level from the start, one `x,y,z,kind` line each (`0x426540` reads them with
+`"%d,%d,%d,%d\n"`); every level's is empty - the three bytes `0\r\n` - but
+`MORBOS3`'s, which lays out the message pod (kind 22) its mission sends the
+player for. The kinds are [the simulation's](../engine/simulation.md#powerups).
+`.TDF` is empty in most levels.
 
 `.CRS` has [its own page](courses.md), and `.GLT`, `.QKE` and `.TTY`
 [another](scenery.md).
 
 ## Unknown
 
-`.DEF` type field 4 (0x14), line 2 (0xe0-0xec), line 7's fourth value
+`.DEF` type field 4 (0x14), line 2's first two (0xe0, 0xe4), line 7's fourth value
 and line 10's middle two. What the 63 behaviour classes other than 10 and 47
 do. How the engine animates a group model such as the SAM site's. The record
 shape of `.PUP` and `.TDF`. What a guardian's `;place4` line was for, and the

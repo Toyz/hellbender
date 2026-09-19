@@ -166,6 +166,17 @@ pub struct EnemyDef {
     /// Line 1 field 4, type offset 0xdc: the weapon kind a shot carries. 19 is
     /// a guided missile; the rest fly straight.
     pub weapon: i32,
+    /// Line 2 fields 0 and 1, type offsets 0xe0 and 0xe4. Not read yet. The
+    /// first is 1 in 94 of the 1,848 shipped records; the second is 1 in one
+    /// (`IOWAH2` type 31, `imgun.bin`) and 0 in the rest.
+    pub line_2: [i32; 2],
+    /// Line 2 field 2, type offset 0xe8: the percent chance that destroying
+    /// one leaves a powerup. `0x40cc3c` rolls `rand() * 100 / 32767` and drops
+    /// when the chance is at least the roll; 0 never drops.
+    pub drop_chance: i32,
+    /// Line 2 field 3, type offset 0xec: the powerup kind dropped, or -1 for
+    /// one of the 31 at random (`rand() * 31 / 32767`).
+    pub drop_kind: i32,
     /// Line 3: the model vertices shots leave from, count at type offset 0x190
     /// and up to eight indices from 0x194. A shot picks one at random.
     pub muzzles: Vec<u16>,
@@ -302,6 +313,35 @@ pub fn placements(data: &[u8]) -> Result<Vec<Placement>> {
     Ok(out)
 }
 
+/// One `.PUP` entry: a powerup lying in the level from the start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlacedPowerup {
+    /// 16.16 world coordinates.
+    pub position: [i32; 3],
+    /// One of the 31 powerup kinds (`hb_sim::powerup`).
+    pub kind: usize,
+}
+
+/// `.PUP`: a count, then `x,y,z,kind` lines (`0x426540`, `"%d,%d,%d,%d\n"`,
+/// into the powerup array at `0x66fd60`). Only `MORBOS3` lists one: the
+/// message pod its mission sends the player for.
+pub fn powerups(data: &[u8]) -> Result<Vec<PlacedPowerup>> {
+    let lines = lines(data);
+    let count = int(&lines, 0, "PUP count")?.max(0) as usize;
+    (0..count)
+        .map(|i| {
+            let v = ints(&lines, 1 + i, "PUP entry")?;
+            match v.as_slice() {
+                &[x, y, z, kind] if kind >= 0 => Ok(PlacedPowerup {
+                    position: [x as i32, y as i32, z as i32],
+                    kind: kind as usize,
+                }),
+                _ => Err(Error::BadLine { what: "PUP entry", line: i + 2, saw: lines[1 + i].clone() }),
+            }
+        })
+        .collect()
+}
+
 pub fn enemy_defs(data: &[u8]) -> Result<Vec<EnemyDef>> {
     let lines = lines(data);
     let count = int(&lines, 0, "DEF count")? as usize;
@@ -349,6 +389,7 @@ pub fn enemy_defs(data: &[u8]) -> Result<Vec<EnemyDef>> {
             Ok(v.into_iter().map(|x| x as i32).collect())
         };
         let conduct = fixed(1, 5, "DEF line 1")?;
+        let drops = fixed(2, 4, "DEF line 2")?;
         // Count then indices; the engine reads nine integers and uses as many
         // indices as the count says.
         let muzzle_line = fixed(3, 9, "DEF muzzles")?;
@@ -372,6 +413,9 @@ pub fn enemy_defs(data: &[u8]) -> Result<Vec<EnemyDef>> {
             fire_interval: conduct[2],
             shot_damage: conduct[3],
             weapon: conduct[4],
+            line_2: [drops[0], drops[1]],
+            drop_chance: drops[2],
+            drop_kind: drops[3],
             muzzles,
             hit_spheres,
             attack_retreat: [attack[0], attack[1], attack[2], attack[3]],

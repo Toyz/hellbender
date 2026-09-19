@@ -97,8 +97,10 @@ The mission runs from the level's `.NAV` (worklog 34): the player starts where
 the mission says, the HUD names the objective with its distance and an arrow,
 the voice lines play, and a level is won through its jump zone or by finishing
 every objective, and lost against the clock or by losing friendlies. Still to
-do: the rest of the logic routines, the escort shuttle's route, message pods
-and the other powerups, the player's death, and what comes between missions.
+do: the rest of the logic routines, the escort shuttle's route, the player's
+death, and what comes between missions. Powerups lie about and drop from
+destroyed things and do what they do to the hull, the energy and the stocks
+(worklog 35), but the stocks feed weapons the port does not have yet.
 
 **8. The trimmings.** Music is done - `hb-audio` plays the `.MOD` files and the
 level's track starts with the level. Still to do: the sound effects, which

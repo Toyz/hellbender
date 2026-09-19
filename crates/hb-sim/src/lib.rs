@@ -10,6 +10,7 @@ pub mod course;
 pub mod flight;
 pub mod flyer;
 pub mod mission;
+pub mod powerup;
 pub mod turret;
 
 pub use course::{Follower, Phase};

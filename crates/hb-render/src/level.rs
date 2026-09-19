@@ -23,6 +23,15 @@ use hb_pod::Pod;
 /// levels with a sky texture.
 pub const SKY_BIAS: u8 = 48;
 
+/// A mesh's flipbook material with its frames loaded.
+#[derive(Debug, Clone)]
+pub struct Flip {
+    pub material: usize,
+    pub frames: Vec<Option<Image>>,
+    /// Seconds a frame.
+    pub period: f32,
+}
+
 pub struct Level {
     pub manifest: Manifest,
     pub stem: String,
@@ -78,8 +87,16 @@ pub struct Level {
     pub wreck_mesh: Vec<Option<usize>>,
     /// For each type, the bytes of its destroy sound from `.DEF` line 24.
     pub destroy_sound: Vec<Option<Vec<u8>>>,
+    /// For each mesh, its flipbook materials with their frames.
+    pub mesh_flipbooks: Vec<Vec<Flip>>,
     /// The mission, as the `.NAV` file lists it.
     pub navs: Vec<hb_formats::nav::Nav>,
+    /// For each of the 31 powerup kinds, the index in `meshes` of its model.
+    pub powerup_mesh: Vec<Option<usize>>,
+    /// For each kind, how close the player must come to pick it up, units.
+    pub powerup_size: Vec<f32>,
+    /// The powerups the level's `.PUP` lays out.
+    pub powerups: Vec<text::PlacedPowerup>,
 }
 
 impl Level {
@@ -302,6 +319,59 @@ impl Level {
                 None => wreck_mesh.push(None),
             }
         }
+        // The powerups' models follow, from `STARTUP.POD`. They have no type
+        // to take a radius from, so they are drawn at their own scale: a
+        // model unit is `1 / unit` of a world unit, which in the renderer's
+        // terms (vertex times scale over 2^14) is a scale of `2^30 / unit`.
+        let mut powerup_mesh = Vec::with_capacity(hb_sim::powerup::KINDS.len());
+        let mut powerup_size = Vec::with_capacity(hb_sim::powerup::KINDS.len());
+        for (_, name) in hb_sim::powerup::KINDS {
+            let model = read("models", name).and_then(|b| mrgl::Model::parse(&b).ok());
+            match model.filter(|m| m.unit.is_some_and(|u| u > 0)) {
+                Some(model) => {
+                    let textures = model
+                        .materials
+                        .iter()
+                        .map(|n| read("art", n).and_then(|b| Image::parse_guessed(&b).ok().flatten()))
+                        .collect();
+                    powerup_size.push(hb_sim::powerup::size_of(&model));
+                    mesh_radius.push(((1i64 << 30) / model.unit.unwrap_or(1) as i64) as i32);
+                    meshes.push(Some(model));
+                    mesh_textures.push(textures);
+                    powerup_mesh.push(Some(meshes.len() - 1));
+                }
+                None => {
+                    powerup_mesh.push(None);
+                    powerup_size.push(0.0);
+                }
+            }
+        }
+        let mesh_flipbooks = meshes
+            .iter()
+            .map(|m| match m {
+                Some(model) => model
+                    .flipbooks
+                    .iter()
+                    .map(|book| Flip {
+                        material: book.material,
+                        frames: book
+                            .frames
+                            .iter()
+                            .map(|n| read("art", n).and_then(|b| Image::parse_guessed(&b).ok().flatten()))
+                            .collect(),
+                        period: book.period as f32 / 65536.0,
+                    })
+                    .collect(),
+                None => Vec::new(),
+            })
+            .collect();
+        let powerups = manifest
+            .slot("powerups")
+            .and_then(|(dir, file)| read(dir, file))
+            .map(|b| text::powerups(&b).map_err(|e| e.to_string()))
+            .transpose()?
+            .unwrap_or_default();
+
         // `.DEF` line 24 is the destroy sound. One type names `CRY-DES.DEF`
         // where it means the `.WAV`; that one resolves to nothing.
         let destroy_sound = kinds
@@ -347,7 +417,11 @@ impl Level {
             .collect();
 
         Ok(Level {
+            mesh_flipbooks,
             navs,
+            powerup_mesh,
+            powerup_size,
+            powerups,
             mips,
             wreck_mesh,
             destroy_sound,
@@ -390,6 +464,8 @@ impl Level {
             meshes: &self.meshes,
             mesh_textures: &self.mesh_textures,
             mesh_radius: &self.mesh_radius,
+            mesh_flipbooks: &self.mesh_flipbooks,
+            seconds: 0.0,
             ambient: (self.manifest.ambient >> 8).clamp(0, 255) as u8,
             sky_scroll: [0.0, 0.0],
         }

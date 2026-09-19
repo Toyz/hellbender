@@ -150,7 +150,8 @@ fn every_polygon_binds_to_a_material_that_exists() {
                 continue;
             }
             let model = mrgl::Model::parse(pod.bytes(e)).unwrap();
-            for poly in &model.polygons {
+            // The indexed polygons have a test of their own.
+            for poly in model.polygons.iter().filter(|p| p.kind != mrgl::INDEXED_POLYGON) {
                 match poly.material {
                     Some(m) => {
                         assert!(
@@ -372,7 +373,7 @@ fn polygons_carry_a_unit_normal_and_texel_coordinates() {
                 continue;
             }
             let model = mrgl::Model::parse(pod.bytes(e)).unwrap();
-            for poly in &model.polygons {
+            for poly in model.polygons.iter().filter(|p| p.kind != mrgl::INDEXED_POLYGON) {
                 total += 1;
                 // Three or four corners, never anything else.
                 assert!(
@@ -1149,4 +1150,73 @@ fn every_mission_parses_and_names_placements_that_exist() {
     // Two points in the whole game are against the clock.
     assert_eq!(optional, 22);
     assert_eq!(timed, 2);
+}
+
+/// `.DEF` line 2 ends with a drop chance and a powerup kind, and `.PUP`
+/// lays out one powerup in the whole game: `MORBOS3`'s message pod.
+#[test]
+fn types_drop_powerups_and_one_level_lays_one_out() {
+    let pod = archive!("GAME.POD");
+    let (mut droppers, mut certain, mut laid) = (0, 0, Vec::new());
+    for e in pod.entries().iter().filter(|e| e.ext() == "lvl") {
+        let level = lvl::Level::parse(pod.bytes(e)).unwrap();
+        let stem = level.stem().to_string();
+        for t in text::enemy_defs(pod.read("data", &format!("{stem}.def")).unwrap()).unwrap() {
+            assert!((0..=100).contains(&t.drop_chance), "{stem}: {}", t.drop_chance);
+            assert!((-1..=30).contains(&t.drop_kind), "{stem}: {}", t.drop_kind);
+            // The first two are 0 or 1; one record in the game has a 1 second.
+            assert!(matches!(t.line_2, [0 | 1, 0 | 1]), "{stem}: {:?}", t.line_2);
+            droppers += usize::from(t.drop_chance > 0);
+            certain += usize::from(t.drop_chance == 100);
+        }
+        let (dir, name) = level.slot("powerups").unwrap();
+        for p in text::powerups(pod.read(dir, name).unwrap()).unwrap() {
+            laid.push((stem.clone(), p.kind));
+        }
+    }
+    assert_eq!(laid, [("morbos3".to_string(), 22)]);
+    assert!(droppers > 400, "{droppers}");
+    // The weapon bunkers (`wbunker.bin`) always leave theirs.
+    assert!(certain > 300, "{certain}");
+}
+
+/// The powerups and the other sprite-like models are one or two quads of
+/// indexed polygons, textured by per-vertex texels and a flipbook material.
+#[test]
+fn sprite_models_are_indexed_quads_with_flipbook_textures() {
+    let (mut indexed, mut two_sided, mut models, mut books) = (0, 0, 0, 0);
+    for name in ["STARTUP.POD", "GAME.POD"] {
+        let pod = archive!(name);
+        for e in pod.entries() {
+            if e.dir() != "models" || e.ext() != "bin" {
+                continue;
+            }
+            let model = mrgl::Model::parse(pod.bytes(e)).unwrap();
+            books += model.flipbooks.len();
+            let mut any = false;
+            for poly in model.polygons.iter().filter(|p| p.kind == mrgl::INDEXED_POLYGON) {
+                any = true;
+                indexed += 1;
+                two_sided += usize::from(poly.normal == [0, 0, 0]);
+                let m = poly.material.unwrap_or_else(|| panic!("{}: no material", e.name));
+                assert!(m < model.materials.len(), "{}", e.name);
+                for c in &poly.corners {
+                    assert!((c.vertex as usize) < model.vertices.len(), "{}", e.name);
+                    assert!((0..=255 << 16).contains(&c.u) && (0..=255 << 16).contains(&c.v), "{}", e.name);
+                }
+            }
+            models += usize::from(any);
+            for book in &model.flipbooks {
+                assert_eq!(model.materials[book.material], book.frames[0], "{}", e.name);
+                assert!(book.period > 0, "{}", e.name);
+                for frame in &book.frames {
+                    assert!(pod.find("art", frame).is_some() || frame.is_empty(), "{}: {frame}", e.name);
+                }
+            }
+        }
+    }
+    assert_eq!((indexed, models), (52, 45));
+    // Every one has a normal - the powerups' faces -z - so none takes the
+    // draw's two-sided path.
+    assert_eq!((books, two_sided), (40, 0), "flipbooks, two-sided");
 }

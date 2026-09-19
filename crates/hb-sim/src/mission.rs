@@ -75,7 +75,8 @@ pub enum Event {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
-    /// The player flew into a jump zone (`0x5125c8`).
+    /// The level was left (`0x5125c8`): the player flew into a jump zone,
+    /// or a kill point's target fell.
     Jumped,
     /// Every required point is done (`0x5125cc`).
     Complete,
@@ -105,6 +106,10 @@ pub trait World {
     fn actor(&self, index: usize) -> Option<Actor>;
     /// Put a placement's hit points back to where they started.
     fn restore(&mut self, index: usize);
+    /// The player's hull (`0x5b39ec`), 1.0 full.
+    fn hull(&self) -> f32 {
+        1.0
+    }
 }
 
 /// Where the player starts: the first point, if it is a [`Kind::Start`].
@@ -312,6 +317,31 @@ impl Mission {
         }
     }
 
+    /// Where the level's powerups lie, for the message-pod points, which
+    /// point at theirs (`0x47241a` reads the powerup array).
+    pub fn place_pods(&mut self, pods: &[[f32; 3]]) {
+        for p in &mut self.points {
+            if let (Kind::MessagePod, Data::Pod(i)) = (p.nav.kind, &p.nav.data) {
+                if let Some(&at) = pods.get(*i) {
+                    p.position = at;
+                }
+            }
+        }
+    }
+
+    /// Powerup `index`, a message pod, was picked up: the first message-pod
+    /// point naming it is done (`0x426deb` sets its `+0x68`), and moves on
+    /// when it is current.
+    pub fn pod_taken(&mut self, index: usize) {
+        if let Some(p) = self
+            .points
+            .iter_mut()
+            .find(|p| p.nav.kind == Kind::MessagePod && p.nav.data == Data::Pod(index))
+        {
+            p.done = true;
+        }
+    }
+
     /// The escorted shuttle - the friendly class-50 actor `0x424fc0` finds -
     /// was destroyed (`0x40d7ca`).
     pub fn escort_lost(&mut self) {
@@ -473,9 +503,22 @@ impl Mission {
                     events.push(Event::Voice(OBJECTIVE_COMPLETE));
                     self.advance(&mut events);
                 }
-                (Kind::Escort | Kind::Kill, Data::Actor(i)) if dead(i) => {
+                (Kind::Escort, Data::Actor(i)) if dead(i) => {
                     self.complete(&mut events);
                 }
+                // A kill point is the way out, not a step on: its sound, and
+                // the level ends for a player still in one piece
+                // (`0x4727ef`). It is never advanced past.
+                (Kind::Kill, Data::Actor(i)) if dead(i) => {
+                    if let Some(s) = self.points[cur].nav.completion_sound.clone() {
+                        events.push(Event::Sound(s));
+                    }
+                    if world.hull() > 0.0 && self.outcome.is_none() {
+                        self.outcome = Some(Outcome::Jumped);
+                    }
+                }
+                // No completion sound: the pod's own line has played.
+                (Kind::MessagePod, _) if self.points[cur].done => self.advance(&mut events),
                 _ => {}
             }
         }

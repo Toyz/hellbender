@@ -495,6 +495,7 @@ fn main() -> Result<(), String> {
         // The mission.
         if demo.is_none() {
             let mut standing = battle::Standing {
+                hull: battle.pilot.health,
                 health: &mut battle.health,
                 live: &live,
                 placed: &level.placements,
@@ -532,6 +533,35 @@ fn main() -> Result<(), String> {
                 }
             }
         }
+        // Powerups.
+        if demo.is_none() {
+            let (said, taken) = battle.pick_up(eye);
+            for i in taken {
+                let kind = battle.field.items[i].kind;
+                println!("picked up {}", hb_sim::powerup::KINDS[kind].0);
+                if kind == hb_sim::powerup::MESSAGE_POD {
+                    mission.pod_taken(i);
+                }
+            }
+            for event in said {
+                use hb_sim::powerup::Event;
+                let heard = match event {
+                    Event::Voice(v) => {
+                        flash = Some((v.text.replace('\n', " "), 3.0));
+                        Some(v.sound)
+                    }
+                    Event::Message(m) => {
+                        flash = Some((m.to_string(), 3.0));
+                        None
+                    }
+                    Event::Sound(name) => Some(name),
+                };
+                if let (Some(music), Some(s)) = (music.as_ref(), heard.and_then(|n| sound(n))) {
+                    music.effect(&s, 1.0);
+                }
+            }
+        }
+
         if let Some((_, left)) = &mut flash {
             *left -= dt;
             if *left <= 0.0 {
@@ -561,7 +591,28 @@ fn main() -> Result<(), String> {
         let mut scene = level.scene();
         scene.frames = Some(&frames_now);
         scene.sky_scroll = level.sky_scroll(started.elapsed().as_secs_f32());
-        scene.placements = &live;
+        scene.seconds = started.elapsed().as_secs_f32();
+        // The powerups are drawn as more placements, turned to face the eye.
+        // The engine turns them by two of the view's angles (`0x4266c0`
+        // passes `0x5b37c8` and `0x5b37c4` to `0x42aa30`); which two is not
+        // settled, so this turns them by the heading alone.
+        let mut drawn = live.clone();
+        for item in battle.field.items.iter().filter(|p| !p.taken) {
+            if let Some(Some(mesh)) = level.powerup_mesh.get(item.kind) {
+                let fixed = |v: f32| (v * 65536.0) as i32;
+                drawn.push(hb_formats::text::Placement {
+                    kind: *mesh,
+                    hit_points: 0,
+                    x: fixed(item.position[0]),
+                    y: fixed(item.position[1]),
+                    z: fixed(item.position[2]),
+                    pitch: 0,
+                    roll: 0,
+                    heading: flight.camera.yaw.0,
+                });
+            }
+        }
+        scene.placements = &drawn;
         hb_render::draw_world(&mut target, &scene, &flight.camera);
         // Shots are drawn at the copy of their position nearest the eye.
         let near = |p: [f32; 3]| {
@@ -589,11 +640,12 @@ fn main() -> Result<(), String> {
         if show_hud {
             if let Some(font) = &hud_font {
                 let readout = format!(
-                    "{}  ALT {:.0}  SPD {:.0}  HP {:.0}  KILLS {}",
+                    "{}  ALT {:.0}  SPD {:.0}  HP {:.0}  EN {:.0}  KILLS {}",
                     level.stem.to_uppercase(),
                     flight.camera.y as f32 / 65536.0,
                     flight.ship.speed(),
                     battle.pilot.health * 100.0,
+                    battle.stores.energy * 100.0,
                     battle.destroyed
                 );
                 // The font is drawn at its authored size, which is 23 pixels
@@ -719,16 +771,28 @@ fn begin(
     level: &Level,
 ) -> (Flight, hb_sim::mission::Mission, Vec<(usize, hb_sim::Follower)>, Vec<hb_formats::text::Placement>, battle::Battle, ShotColours) {
     let mut rng = hb_sim::turret::Rng::new(0x1996);
-    let mission = hb_sim::mission::Mission::new(level.navs.clone(), &level.placements, floor_of(level), &mut rng);
+    let mut mission =
+        hb_sim::mission::Mission::new(level.navs.clone(), &level.placements, floor_of(level), &mut rng);
     if !mission.is_empty() {
         println!("mission: {} points - {}", mission.len(), mission.objective());
     }
+    // The `.PUP`'s powerups go down first, so their indices are the ones the
+    // mission's message pods name.
+    let mut battle = battle::Battle::new(level);
+    let floor = floor_of(level);
+    for p in &level.powerups {
+        let at = p.position.map(|v| v as f32 / 65536.0);
+        let size = level.powerup_size.get(p.kind).copied().unwrap_or(0.0);
+        battle.field.place(at, p.kind, size, floor(at));
+    }
+    let pods: Vec<[f32; 3]> = battle.field.items.iter().map(|p| p.position).collect();
+    mission.place_pods(&pods);
     (
         Flight::new(start_camera(level, &mission)),
         mission,
         followers_for(level),
         level.placements.clone(),
-        battle::Battle::new(level),
+        battle,
         ShotColours::for_palette(&level.palette),
     )
 }

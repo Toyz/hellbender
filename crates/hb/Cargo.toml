@@ -9,3 +9,4 @@ hb-pod = { path = "../hb-pod" }
 hb-formats = { path = "../hb-formats" }
 hb-world = { path = "../hb-world" }
 hb-render = { path = "../hb-render" }
+hb-sim = { path = "../hb-sim" }

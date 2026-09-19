@@ -2,7 +2,7 @@
 title: The simulation
 status: partial
 covers: HELLBEND.EXE logic phases, crates/hb-sim
-worklog: 26, 27, 28, 31, 32, 33, 34
+worklog: 26, 27, 28, 31, 32, 33, 34, 35
 ---
 
 # The simulation
@@ -380,7 +380,7 @@ inside 60 units, 0x10 outside. The label `0x625110` is "Destroy Target",
 | beacon (11) | under 40, and under 20 in height | "Objective complete" |
 | escort (12) | the placement's hit points at or below zero | |
 | message pod (13) | the pod collected (`+0x68`) | |
-| kill (14) | the placement's hit points at or below zero | |
+| kill (14) | the placement's hit points at or below zero | not advanced: the level ends (`0x5125c8`) if the player's hull (`0x5b39ec`) is above zero |
 
 Done plays the point's completion sound and calls `0x4719d0`. Under 80 units
 the proximity sound plays once.
@@ -417,11 +417,69 @@ mission's sounds are in `STARTUP.POD`.
 
 `hb_sim::mission` is this, point for point. What it leaves out: the map
 screen's markers (`0x410c60` marks them), the flash `0x4062f0` starts, the
-guardian's death explosion, message pods (no pods yet), the network kind 15,
+guardian's death explosion, the network kind 15,
 and the manual choice of point (`keyNavChoose`), which hb-fly's Tab already
 uses for changing level. hb-fly's floor for the loader's height check is the
 top of the solid, so a point below y = 0 is left where it is rather than put
 on the tunnel floor.
+
+## Powerups
+
+They live in an array at `0x66fd60`, 24 bytes each, at most 299: the
+position, the kind (bit 31 set once taken), the pickup size, and a timer the
+network game uses to put a taken one back after 120 seconds. They come from
+two places: the level's `.PUP` (`0x426540`) and destroyed actors. The destroy
+routine (`0x40cc3c`) rolls `rand() * 100 / 32767` and drops a powerup when the
+type's chance (`.DEF` line 2, `+0xe8`) is at least the roll - a chance of 0
+never drops - of the type's kind (`+0xec`), or of any of the 31 when that is
+-1 (`rand() * 31 / 32767`). The weapon bunkers (`wbunker.bin`) drop theirs
+every time.
+
+A powerup is put down (`0x426f80`) at least twice its size above the floor
+under it, below the ceiling over it less the same, and under twice
+`0x5055d4`. Its size is its model's radius at the model's own unit (see
+[the model format](../formats/mrgl.md#0x14-mesh-start)): 2.6 units for the
+`f6*` family. Each frame (`0x426cf0`) the player inside that size on every
+axis is offered it (`0x426760`), which applies it or refuses it; the rest are
+drawn turned by two of the view's angles (`0x4266c0` passes `0x5b37c8` and
+`0x5b37c4`), so their one quad faces the eye.
+
+The kinds, by the engine's own names (`0x502308`), and what picking one up
+does. Stocks are slots in an array of 32 at `0x61bce0`, eight bytes each.
+
+| Kind | Name | Effect | Line |
+|---|---|---|---|
+| 0 | Rapid-Fire Lasers | slot 3 +100 | "RFL secured" |
+| 2 | Dispersion Cannon 14 | slot 2 +100 | "Dispersion Cannon secured" |
+| 3 | Dead-On Missiles | slot 18 +20 | "Sledgehammer Rockets secured" |
+| 4, 5 | Vipers, Bion Fury | slot 19 +20 | "Viper Missiles secured" |
+| 7 | Cloak (Multi only) | none alone | message "Cloaking Device" |
+| 9 | Guided MIRV | slot 27 +1 | "Hellion Missiles secured" |
+| 10 | Turbo Thrust | afterburner fuel full (slot 22) | message "Afterburner Fuel" |
+| 11 | Energy Can | hull +25%, refused at 0xfffa | "Hull Repaired" / "fully repaired" |
+| 12 | Cruise | slot 24 +5 | "Scorcher Missiles secured" |
+| 13 | Cluster | slot 25 +10 | "Legion Missiles secured" |
+| 14 | MIRV | slot 26 +1 | "Independence Missile secured" |
+| 15 | MINE | slot 28 +5 | "Doomsday Mines secured" |
+| 16, 17 | Damage 25%, 50% | hull +25% / +50%, refused over 0xea60 | "Hull partially repaired." / "fully restored." |
+| 18 | Damage 100% | hull full, refused over 0xea60 | "Hull fully restored." |
+| 19, 20 | Energy 25%, 50% | main energy +25% / +50%, refused when full | "Energy boost secured." |
+| 21 | Energy 100% | main energy full | "Main energy at 100%" |
+| 22 | Message Pod | the mission's pod point is done (`0x426deb`) | "Message pod retrieved." |
+| 23-30 | Super Weapon Piece 1-8 | a bit in `0x62d634`; all eight make weapon 30 and select it | "Bion technology captured.", then "Weapon complete..." |
+| 1, 6, 8 | not used | taken, nothing | |
+
+The names lag the effects in places - kind 11 is labelled an energy can and
+repairs the hull. A refusal says "Hull undamaged. Repairs not required." or
+"Energy not required." and leaves the powerup where it is; the engine says it
+every frame the player stays inside, the port once. The hull is `0x5b39ec`
+(full `0xffff`) and main energy `0x62d63c`, which starts at half, as the
+shield `0x62d6e0` does (`0x426e90`); energy past full is capped with "Main
+energy at maximum capacity." (`0x4659f0`). The single-player loadout is 20 in
+slot 18, 5 in 19, 2 in 24, slots 1 and 23 unlimited, weapon 23 selected.
+
+`hb_sim::powerup` is this. The port keeps the stocks and the energy but has no
+weapons to spend them on yet.
 
 ## Unknown
 

@@ -46,6 +46,24 @@ pub const POLYGON_ALT: u32 = 0x18;
 /// 226 and whose bit 8 is set, so the field looks like an index with a flag
 /// above it, the same shape as a terrain texture word.
 pub const FLAT_COLOUR: u32 = 0x17;
+/// Texel coordinates for a run of vertices: `+4` the first vertex, `+8` the
+/// count, then `(u, v)` pairs in 16.16. The draw handler (`0x4567c0`) writes
+/// them into the transformed-vertex array beside each vertex, so a polygon
+/// that names vertices by index takes its texture coordinates from them.
+pub const VERTEX_TEXELS: u32 = 0x04;
+/// An indexed polygon: `+4` the corner count, `+8` a 16.16 normal, `+0x14`
+/// the plane constant, `+0x18` the vertex indices. Drawn textured with the
+/// vertices' texels (`0x457bb0`), after the same back-face test as the other
+/// polygons - skipped for a zero normal, which no shipped one has. The
+/// powerups' single quad faces -z, and the engine turns the model toward the
+/// eye to show it.
+pub const INDEXED_POLYGON: u32 = 0x0F;
+/// A material that cycles through frames (`0x458fd0`): `+8` the frame count,
+/// `+0xc` the current frame, `+0x10` seconds a frame in 16.16, `+0x14` the
+/// time run, `+0x18` a changed flag, then from `+0x1c` one 32-byte record per
+/// frame - a texture name, and at `+0x10` a sound played when the frame comes
+/// round.
+pub const FLIPBOOK: u32 = 0x1D;
 
 /// Every node type that carries a polygon payload.
 pub const POLYGON_KINDS: [u32; 5] = [0x0E, 0x11, 0x18, 0x1E, 0x22];
@@ -246,10 +264,32 @@ impl Polygon {
     }
 }
 
+/// A [`FLIPBOOK`] material.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Flipbook {
+    /// Which of [`Model::materials`] it stands for; that entry is the first
+    /// frame.
+    pub material: usize,
+    pub frames: Vec<String>,
+    /// Seconds a frame, 16.16.
+    pub period: i32,
+    /// A sound for each frame, where it has one.
+    pub sounds: Vec<Option<String>>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Model {
+    /// The mesh-start node's second word: model units to a world unit. The
+    /// engine's bounds routine scales vertices by `2 * 0x7fffffff / unit`
+    /// in 16.16 (`0x473ff4`), which is `vertex / unit` world units. A
+    /// placed actor is drawn at its type's radius instead; powerups, which
+    /// have no type, are drawn and picked up at this.
+    pub unit: Option<i32>,
     pub vertices: Vec<Vertex>,
+    /// Texels given per vertex by [`VERTEX_TEXELS`], 16.16; zero where none.
+    pub vertex_texels: Vec<(i32, i32)>,
     pub materials: Vec<String>,
+    pub flipbooks: Vec<Flipbook>,
     pub polygons: Vec<Polygon>,
     /// Child model filenames, for a group node.
     pub children: Vec<String>,
@@ -267,6 +307,9 @@ impl Model {
             model.nodes.push(node);
             let at = node.offset;
             match node.kind {
+                MESH_START if model.unit.is_none() => {
+                    model.unit = Some(i32_at(data, at + 4));
+                }
                 VERTEX_LIST => {
                     let count = i32_at(data, at + 8).max(0) as usize;
                     for i in 0..count {
@@ -281,6 +324,53 @@ impl Model {
                 MATERIAL => {
                     material = Some(model.materials.len());
                     model.materials.push(cstr(&data[at + 8..at + 24]));
+                }
+                VERTEX_TEXELS => {
+                    let first = i32_at(data, at + 4).max(0) as usize;
+                    let count = i32_at(data, at + 8).max(0) as usize;
+                    if model.vertex_texels.len() < first + count {
+                        model.vertex_texels.resize(first + count, (0, 0));
+                    }
+                    for i in 0..count {
+                        let t = at + 12 + i * 8;
+                        model.vertex_texels[first + i] = (i32_at(data, t), i32_at(data, t + 4));
+                    }
+                }
+                FLIPBOOK => {
+                    let count = i32_at(data, at + 8).max(0) as usize;
+                    let frame = |i: usize| at + 0x1c + i * 32;
+                    let frames: Vec<String> = (0..count).map(|i| cstr(&data[frame(i)..frame(i) + 16])).collect();
+                    let sounds = (0..count)
+                        .map(|i| Some(cstr(&data[frame(i) + 16..frame(i) + 32])).filter(|n| !n.is_empty()))
+                        .collect();
+                    if let Some(first) = frames.first() {
+                        material = Some(model.materials.len());
+                        model.flipbooks.push(Flipbook {
+                            material: model.materials.len(),
+                            frames: frames.clone(),
+                            period: i32_at(data, at + 0x10),
+                            sounds,
+                        });
+                        model.materials.push(first.clone());
+                    }
+                }
+                INDEXED_POLYGON => {
+                    let count = i32_at(data, at + 4).max(0) as usize;
+                    let corners = (0..count)
+                        .map(|i| {
+                            let vertex = u32_at(data, at + 0x18 + i * 4);
+                            let (u, v) = model.vertex_texels.get(vertex as usize).copied().unwrap_or((0, 0));
+                            Corner { vertex, u, v }
+                        })
+                        .collect();
+                    model.polygons.push(Polygon {
+                        material,
+                        colour,
+                        kind: node.kind,
+                        normal: [i32_at(data, at + 8), i32_at(data, at + 12), i32_at(data, at + 16)],
+                        plane: i32_at(data, at + 0x14),
+                        corners,
+                    });
                 }
                 FLAT_COLOUR => colour = Some(i32_at(data, at + 8) as u16),
                 POLYGON | POLYGON_ALT | 0x11 | 0x1E | 0x22 => {

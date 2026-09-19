@@ -2,7 +2,7 @@
 title: The .BIN model and its MRGL nodes
 status: partial
 covers: MODELS\*.BIN
-worklog: 5, 9, 16, 17
+worklog: 5, 9, 16, 17, 35
 ---
 
 # The .BIN model and its MRGL nodes
@@ -47,18 +47,18 @@ offset `k` of the record:
 | 0x01 | 16 | |
 | 0x02 | 12 + 12 * n[8] | vertex list |
 | 0x03 | 12 + 4 * n[8] | |
-| 0x04 | 12 + 8 * n[8] | |
-| 0x05 0x06 0x07 0x08 0x0f 0x15 0x19 0x1a 0x1b 0x21 | 24 + 4 * n[4] | |
+| 0x04 | 12 + 8 * n[8] | vertex texels |
+| 0x05 0x06 0x07 0x08 0x0f 0x15 0x19 0x1a 0x1b 0x21 | 24 + 4 * n[4] | indexed polygon (0x0f textured, 0x19 flat) |
 | 0x09 | 32 | |
-| 0x0a 0x0b | 8 | |
+| 0x0a 0x0b | 8 | 0x0a sets the flat colour |
 | 0x0c | 28 | |
 | 0x0d | 24 | material |
 | 0x0e 0x11 0x18 0x1e 0x22 | 24 + 12 * n[4] | polygon |
 | 0x10 | 20 | |
-| 0x12 0x14 | 8 | 0x14 starts a mesh |
+| 0x12 0x14 | 8 | 0x14 starts a mesh; n[4] is its unit |
 | 0x16 | 8 + 4 * n[4] | |
 | 0x17 | 12 | |
-| 0x1d | 28 + 32 * n[8] | |
+| 0x1d | 28 + 32 * n[8] | flipbook material |
 | 0x1f | 12 + 4 * n[8] | |
 | 0x20 | 344 | group |
 | 0x26 | 15,712 | animated model, built from a `.TXT` |
@@ -70,6 +70,57 @@ This table walks all 342 `.BIN` models in both archives so that the last record
 ends exactly at end of file - `tools/mrgl.py check`.
 
 ## Records that are understood
+
+### 0x14, mesh start
+
+`+4` is the model's unit: model coordinates to one world unit. The bounds
+routine `0x473ee0` scales every vertex by `2 * 0x7fffffff / unit` in 16.16
+(`0x473ff4`), which is `vertex / unit` world units, and keeps the min and max
+on each axis, the vertex average, and a radius - the length of the largest
+absolute extent on each axis (`+0x24` of its 52-byte result). A placed actor
+is drawn at its type's radius instead; the powerups, which have no type, are
+drawn and picked up at the unit. The `f6*` powerups have a unit of 8,912, so
+their 16,384-unit quad is 1.84 units to a side's half.
+
+### 0x04, vertex texels
+
+`+4` the first vertex, `+8` a count, then that many `(u, v)` pairs in 16.16
+texels. The draw handler (`0x4567c0`) writes them beside the vertices in the
+transformed-vertex array (`0x59d36c`, 36 bytes a vertex), so the indexed
+polygons that follow take their texture coordinates from their vertices.
+
+### 0x05-0x08, 0x0f, 0x15, 0x19-0x1b, 0x21, indexed polygons
+
+One shape: `+4` the corner count, `+8` a 16.16 normal, `+0x14` the plane
+constant, and from `+0x18` the vertex indices. Every draw handler starts with
+the same back-face test against the eye in model space (`0x5b37d8`), skipped
+when the normal is zero; they differ in how they fill.
+
+- **0x0f** is textured from the vertex texels with a span routine
+  (`0x4a5b1a`) that does not write texel 0 - the powerups and the other
+  sprite-like models are a picture with holes on one quad. 52 polygons in 45
+  models, all with a normal.
+- **0x19** is flat: the normal's light (`0x48a6a0`) picks a shade in the
+  colour set by the last 0x0a record - a ramp index into the tables at
+  `0x50c4e8` (low) and `0x50c528` (high), or a palette index when negative
+  (`0x458acd`). 215 polygons in 34 models, `FMBUNK.BIN` and `FDTRAINX.BIN`
+  among them, which the port does not draw yet.
+
+### 0x1d, flipbook material
+
+A material that changes with time (`0x458fd0`): `+8` the frame count, `+0xc`
+the current frame, `+0x10` seconds a frame in 16.16, `+0x14` the time run so
+far, `+0x18` a changed flag; then 32 bytes a frame, a texture name and at
+`+0x10` a sound played when that frame comes round. The frame is
+`time / period mod count`. The 40 in the archives are the powerups' spinning
+pictures; `F6DAM1.BIN`'s is eight frames at 0.244 seconds each.
+
+### 0x0a, flat colour
+
+`+4` is the colour the flat polygons use (`0x457850` stores it at
+`0x5b3888`). The 0x17 record the port reads colours from does not set it -
+its handler only advances a counter at `0x504280` - which is worth a second
+look at the seven untextured models.
 
 ### 0x02, vertex list
 
@@ -286,9 +337,9 @@ Gouraud shading paths, which is a plausible reason and not evidence for one.
 What colour the 118 polygons in `FANBODY`, `JAW1`, `JAW2` and `SHELL` are, since
 the stream does not say.
 
-Ten other record types appear in the data with no semantics: 0x04, 0x05, 0x06,
-0x0a, 0x0c, 0x0f, 0x12, 0x19, 0x1d and 0x1f, and the `i32` at +4 of the vertex
-list and material records.
+Record types that appear in the data with no semantics yet: 0x0c, 0x12 and
+0x1f, and the fill modes of indexed polygons 0x05 and 0x06; and the `i32` at
++4 of the vertex list and material records.
 
 Whether the 256-unit texture space is a repeat or a scale, given the textures
 are 64 x 64. This port scales - see

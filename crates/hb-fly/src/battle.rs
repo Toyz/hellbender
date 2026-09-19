@@ -6,6 +6,7 @@ use hb_formats::text::Placement;
 use hb_render::Level;
 use hb_sim::combat::{self, Health, HitVolume, Pilot, Shot, Side, Stop};
 use hb_sim::flyer::{Flyer, Target};
+use hb_sim::powerup::{self, Field, Stores};
 use hb_sim::turret::{Launch, Missile, Rng, Turret};
 
 /// The behaviour classes that fly. 7 and 53 run the dogfight routine
@@ -49,6 +50,11 @@ pub struct Battle {
     pub shots: Vec<Flying>,
     pub missiles: Vec<Missile>,
     pub pilot: Pilot,
+    /// The powerups lying about, and what the player has picked up.
+    pub field: Field,
+    pub stores: Stores,
+    /// The powerups the player was inside last frame.
+    touching: Vec<usize>,
     pub destroyed: usize,
     pub deaths: usize,
     rng: Rng,
@@ -84,6 +90,9 @@ impl Battle {
             shots: Vec::new(),
             missiles: Vec::new(),
             pilot: Pilot::default(),
+            field: Field::default(),
+            stores: Stores::default(),
+            touching: Vec::new(),
             destroyed: 0,
             deaths: 0,
             rng: Rng::new(0x1996),
@@ -224,6 +233,13 @@ impl Battle {
             let scaled = damage * combat::multiplier(&level.kinds[original], kind);
             if self.health[i].take(scaled) {
                 self.destroyed += 1;
+                // What it leaves behind (`0x40cc3c`), before it becomes its
+                // wreck.
+                if let Some(k) = powerup::drop_for(&level.kinds[original], &mut self.rng) {
+                    let at = combat::position_of(&live[i]);
+                    let size = level.powerup_size.get(k).copied().unwrap_or(0.0);
+                    self.field.place(at, k, size, ground(at[0], at[2]));
+                }
                 live[i].kind = level.wreck_mesh[original].unwrap_or(usize::MAX);
                 noises.push(Noise::Destroyed(original));
             }
@@ -240,10 +256,25 @@ impl Battle {
     }
 }
 
+impl Battle {
+    /// Offer the player every powerup they are inside. Returns what to say
+    /// and the indices taken.
+    pub fn pick_up(&mut self, player: [f32; 3]) -> (Vec<powerup::Event>, Vec<usize>) {
+        let mut events = Vec::new();
+        if !self.pilot.alive() {
+            return (events, Vec::new());
+        }
+        let taken =
+            self.field.step(player, &mut self.pilot, &mut self.stores, &mut self.touching, &mut events);
+        (events, taken)
+    }
+}
+
 /// The placements as the mission sees them: where each stands now and what
 /// it has left.
 pub struct Standing<'a> {
     pub health: &'a mut [Health],
+    pub hull: f32,
     pub live: &'a [Placement],
     pub placed: &'a [Placement],
 }
@@ -257,6 +288,10 @@ impl hb_sim::mission::World for Standing<'_> {
             hit_points: if h.destroyed { 0.0 } else { h.hit_points },
             max: self.placed.get(index)?.hit_points as f32 / 65536.0,
         })
+    }
+
+    fn hull(&self) -> f32 {
+        self.hull
     }
 
     fn restore(&mut self, index: usize) {

@@ -322,3 +322,23 @@ fn every_shipped_mission_already_carries_its_sync_points() {
     }
     assert_eq!(levels, 26);
 }
+
+#[test]
+fn a_kill_point_ends_the_level_when_its_target_falls() {
+    let navs = vec![
+        start(),
+        point(Kind::Kill, [0.0; 3], Data::Actor(0)),
+        point(Kind::JumpZone, [0.0, 0.0, 300.0], Data::None),
+    ];
+    let mut m = Mission::new(navs, &[], flat, &mut Rng::new(1));
+    let mut world = Actors::at(&[[0.0, 0.0, 50.0]]);
+    m.step(&mut world, [0.0; 3], 0, 0.1, flat);
+    assert_eq!(m.label, "Destroy Target");
+    assert_eq!(m.distance, 50.0);
+    world.actors[0].hit_points = 0.0;
+    let events = m.step(&mut world, [0.0; 3], 0, 0.1, flat);
+    assert_eq!(events, [Event::Sound("kill.wav".into())]);
+    assert_eq!(m.outcome, Some(Outcome::Jumped));
+    // Left, not advanced: the jump zone after it was never current.
+    assert_eq!(m.nav(m.current).kind, Kind::Kill);
+}

@@ -30,8 +30,10 @@ hb - inspect Hellbender's data
   hb fly <level> <out.png> [x z yaw height pitch] [--bare]
                                     one frame from in-level; --bare skips the cockpit
   hb bench <level> [mode]           frames a second drawing a turn in place
-  hb look <level> <n> <out.png> [distance]
-                                    placement n, framed from the south and above
+  hb look <level> <n> <out.png> [distance] [--powerup K] [--at S]
+                                    placement n, framed from the south and above;
+                                    --powerup draws powerup kind K there instead,
+                                    --at sets the clock for flipbook textures
   hb font <out.png> [text]          a specimen of the front end's typeface
   hb demo <n> <seconds> <out.png>   a frame of a recorded attract-mode flight
   hb check                          parse everything and report what fails
@@ -468,6 +470,26 @@ fn cmd_look(name: &str, index: &str, out: &Path, rest: &[&str]) -> Result<(), St
         .get(n)
         .ok_or_else(|| format!("{name} places {}", level.placements.len()))?;
     let kind = &level.kinds[p.kind];
+    // `--powerup K` draws powerup kind K where the placement stands, alone.
+    let powerup: Option<usize> = match rest.iter().position(|a| *a == "--powerup") {
+        Some(i) => Some(
+            rest.get(i + 1)
+                .and_then(|k| k.parse().ok())
+                .filter(|&k: &usize| k < hb_sim::powerup::KINDS.len())
+                .ok_or("--powerup takes a kind, 0 to 30")?,
+        ),
+        None => None,
+    };
+    let mut rest = rest.to_vec();
+    if let Some(i) = rest.iter().position(|a| *a == "--powerup") {
+        rest.drain(i..(i + 2).min(rest.len()));
+    }
+    // `--at S` sets the clock that turns flipbook textures.
+    let mut seconds = 0.0f32;
+    if let Some(i) = rest.iter().position(|a| *a == "--at") {
+        seconds = rest.get(i + 1).and_then(|v| v.parse().ok()).ok_or("--at takes seconds")?;
+        rest.drain(i..(i + 2).min(rest.len()));
+    }
     let distance: f32 = match rest.first() {
         Some(d) => d.parse().map_err(|_| "distance must be world units")?,
         None => (kind.radius() as f32 / 65536.0 * 4.0).max(10.0),
@@ -489,7 +511,20 @@ fn cmd_look(name: &str, index: &str, out: &Path, rest: &[&str]) -> Result<(), St
     let (w, h) = hb_render::Target::MODE_200;
     let mut target = hb_render::Target::new(w, h);
     target.clear(0);
-    let drawn = hb_render::draw_world(&mut target, &level.scene(), &camera);
+    let mut scene = level.scene();
+    scene.seconds = seconds;
+    let alone;
+    if let Some(k) = powerup {
+        let mesh = level.powerup_mesh[k].ok_or("that powerup's model did not load")?;
+        alone = [hb_formats::text::Placement { kind: mesh, heading: 0, ..p }];
+        scene.placements = &alone;
+        println!(
+            "powerup {k} {:?}: size {:.2} units",
+            hb_sim::powerup::KINDS[k].0,
+            level.powerup_size[k]
+        );
+    }
+    let drawn = hb_render::draw_world(&mut target, &scene, &camera);
     let rgb = target.to_rgb(&level.palette);
     std::fs::write(out, png::rgb(w, h, &rgb)).map_err(|e| e.to_string())?;
     println!(

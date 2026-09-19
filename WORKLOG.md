@@ -45,3 +45,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 32 | [Eighty units: how far the engine draws, fogs and thinks](worklog/0032-eighty-units-how-far-the-engine-draws-fogs-and-thinks.md) | 2026-09-18 | decomp,render,engine,port |
 | 33 | [The flyers make passes, and a tracer for the x87 code](worklog/0033-the-flyers-make-passes-and-a-tracer-for-the-x87-code.md) | 2026-09-18 | decomp,engine,port,tooling |
 | 34 | [The mission runs from the .NAV file](worklog/0034-the-mission-runs-from-the-nav-file.md) | 2026-09-18 | decomp,format,engine,port |
+| 35 | [Powerups, and the sprite models they are drawn with](worklog/0035-powerups-and-the-sprite-models.md) | 2026-09-18 | decomp,format,engine,render,port |

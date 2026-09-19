@@ -30,6 +30,11 @@ pub struct Scene<'a> {
     /// The 16.16 radius each mesh is drawn at. Models are normalised to
     /// +/-1.0, so this is the object's half-extent in the world.
     pub mesh_radius: &'a [i32],
+    /// Each mesh's flipbook materials with their frames loaded, and the
+    /// clock that turns them: a flipbook shows frame `seconds / period`,
+    /// wrapping (`0x458fd0`).
+    pub mesh_flipbooks: &'a [Vec<crate::level::Flip>],
+    pub seconds: f32,
     /// The level's ambient light, 0-255: `.LVL` line 19 over 256. A ground
     /// vertex whose shade word has bit 8 set takes this.
     pub ambient: u8,
@@ -185,10 +190,11 @@ fn draw_objects(target: &mut Target, scene: &Scene, camera: &Camera, drawn: &mut
             continue;
         };
         let textures = &scene.mesh_textures[p.kind];
+        let flips = scene.mesh_flipbooks.get(p.kind).map_or(&[][..], Vec::as_slice);
         let radius = scene.mesh_radius.get(p.kind).copied().unwrap_or(1 << 16);
         let (wx, wz) = rebase(eye, p.x, p.z);
         let angles = [p.heading, p.pitch as u16, p.roll as u16];
-        if draw_mesh(target, scene, camera, mesh, textures, wx, p.y, wz, radius, angles) {
+        if draw_mesh(target, scene, camera, mesh, textures, flips, wx, p.y, wz, radius, angles) {
             drawn.models += 1;
         }
     }
@@ -220,6 +226,7 @@ fn draw_mesh(
     camera: &Camera,
     mesh: &hb_formats::mrgl::Model,
     textures: &[Option<Image>],
+    flips: &[crate::level::Flip],
     x: i32,
     y: i32,
     z: i32,
@@ -248,11 +255,21 @@ fn draw_mesh(
     };
 
     let shade = shade_for(scene, camera);
+    // The indexed polygons' span routine (`0x4a5b1a`) skips texel 0, so their
+    // textures have holes: the powerups are shapes on a quad, not the quad.
+    let see_through = Shade { index_zero_is_clear: true, ..shade_for(scene, camera) };
     let mut any = false;
     for poly in &mesh.polygons {
+        let shade = if poly.kind == hb_formats::mrgl::INDEXED_POLYGON { &see_through } else { &shade };
         // Each polygon records the material node that preceded it, or a flat
         // colour when the mesh is untextured.
-        let texture = poly.material.and_then(|m| textures.get(m)).and_then(Option::as_ref);
+        let texture = match poly.material.and_then(|m| flips.iter().find(|f| f.material == m)) {
+            Some(flip) if !flip.frames.is_empty() && flip.period > 0.0 => {
+                let frame = (scene.seconds / flip.period) as usize % flip.frames.len();
+                flip.frames[frame].as_ref()
+            }
+            _ => poly.material.and_then(|m| textures.get(m)).and_then(Option::as_ref),
+        };
         if texture.is_none() && poly.colour.is_none() {
             continue;
         }
@@ -276,12 +293,12 @@ fn draw_mesh(
         for i in 1..corners.len().saturating_sub(1) {
             let tri = [corners[0], corners[i], corners[i + 1]];
             match texture {
-                Some(texture) => target.triangle(tri, texture, &shade),
+                Some(texture) => target.triangle(tri, texture, shade),
                 None => {
                     // The low byte is the palette index; bit 8 is set in three
                     // of the 270 flat-colour nodes and is not understood.
                     let index = (poly.colour.unwrap_or(0) & 0xff) as u8;
-                    target.flat_triangle(tri, index, &shade);
+                    target.flat_triangle(tri, index, shade);
                 }
             }
         }
