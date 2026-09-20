@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-33 entries: audio 2, build 1, content 4, decomp 12, engine 6, format 21, port 27, render 17, test 3, tooling 3, ui 1, world 10.
+48 entries: audio 2, build 1, content 4, decomp 26, engine 16, format 26, port 39, render 21, test 3, tooling 3, ui 1, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -58,3 +58,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 45 | [The super weapon](worklog/0045-the-super-weapon.md) | 2026-09-20 | decomp,engine,port |
 | 46 | [Sweeping the step](worklog/0046-sweeping-the-step.md) | 2026-09-20 | port |
 | 47 | [The doors are in the .QKE](worklog/0047-the-doors-are-in-the-qke.md) | 2026-09-20 | decomp,format |
+| 48 | [The last three numbers in the .LVL](worklog/0048-the-last-three-numbers-in-the-lvl.md) | 2026-09-20 | decomp,format |

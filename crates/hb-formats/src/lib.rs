@@ -8,6 +8,7 @@ pub mod act;
 pub mod anim;
 pub mod colour;
 pub mod font;
+pub mod glt;
 pub mod course;
 pub mod demo;
 pub mod lvl;

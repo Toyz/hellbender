@@ -2,7 +2,7 @@
 title: The .GLT lights, .QKE moving geometry and .TTY ground types
 status: partial
 covers: DATA\*.GLT, DATA\*.QKE, DATA\*.TTY
-worklog: 15, 47
+worklog: 15, 47, 48
 ---
 
 # .GLT, .QKE and .TTY
@@ -10,6 +10,10 @@ worklog: 15, 47
 Three small per-level text files, all count-prefixed in the house style.
 
 ## .GLT - destructible lights
+
+The extended ground light table, in the loader's own words: its error is
+`Bad ext ground light`. It says which textures mean a light, and which to put
+in their place when the light is off or shot out.
 
 A count, then per entry three texture names and two parameter lines.
 
@@ -22,9 +26,46 @@ ZLTE1BRK.RAW
 32768,4,1
 ```
 
-The three states are readable from the names: lit, unlit, broken. `262144` is
-4.0 in 16.16 and `131072` is 2.0. Ten levels ship one, between 231 and 983
-bytes.
+The three states are readable from the names: lit, unlit, broken. The reader
+is `0x48c4c0` and the writer `0x48c6c0`, and between them they give the record
+in full: three sixteen-byte names, then the first two numbers, then three
+texture indices the loader fills by matching each name against the level's
+[texture list](lvl.md) (`0x48c2a6`), then the six numbers left. In memory that
+is 92 bytes in an array at `0x5d05f0` counted by `0x5d05e0`.
+
+The fourth line may carry two numbers rather than five, and then there is no
+fifth line and the record takes the loader's defaults (`0x48c630`). Every one
+of the 90 shipped records uses the long form, so the short one is only the
+older files' shape.
+
+[Line 32](lvl.md) of the `.LVL` names the file, and where that line is empty -
+as it is in most levels - the loader takes line 9's name instead
+(`0x44c60a`); either way it cuts the name at the dot and appends `.glt`. Ten
+files ship and all 26 levels resolve to one of them.
+
+At level load, straight after the `.QKE`, `0x48bd60` runs over the level's
+faces - its locals point at the chambers' texture words at `0x6bdfb4` - and
+compares each face's texel, the low twelve bits, against every record's lit
+and unlit index (`0x48bdb7`). A face wearing either is a light: the routine
+projects it (`0x41adf0`, `0x41b0b0`) and adds it to a list counted at
+`0x5cafe0`. Nothing in the level files marks a light; they are marked by what
+they are painted with.
+
+The eight numbers are not read out of the engine. The first is a whole number
+of units in 16.16 - 2, 4, 6 or 10 - and the second is 90000 (1.373) or 65535
+(1.0). The third and sixth are smaller and less regular, 2.0 down to 0.03.
+The fourth is 6 in all 90 records and the fifth 1 in all but one. The seventh
+is 0, 4 or 6, the eighth 1 to 8.
+
+```
+21 records  262144,90000,131072,6,1   32768,6,2
+13 records  262144,90000,131072,6,1   32768,4,1
+10 records  131072,90000,32768,6,1    32768,0,2
+ 5 records  655360,90000,131072,6,1   32768,4,2
+ ...
+```
+
+`hb_formats::glt` parses all ten files.
 
 ## .QKE - moving geometry
 
@@ -96,11 +137,15 @@ record shape cannot be read from the data.
 
 ## Unknown
 
-Every numeric field of `.GLT`. In `.QKE`: what the motion line's five numbers
-mean exactly - a distance and a rate fits the values but has not been read out
-of the engine - what the flags line counts, and what the number after
-`!--Additional quake info--` and the switch block's number select. The record
-shape of `.TTY`, which no shipped level uses.
+What the eight numbers of a `.GLT` record set, and what puts a light out:
+the unlit and broken textures are loaded and indexed and the load-time scan
+finds the faces wearing them, but the code that swaps one texture for
+another has not been read, nor has what the list at `0x5cafe0` is for. In
+`.QKE`: what the motion line's five numbers mean exactly - a distance and a
+rate fits the values but has not been read out of the engine - what the
+flags line counts, and what the number after `!--Additional quake info--`
+and the switch block's number select. The record shape of `.TTY`, which no
+shipped level uses.
 
 A ground quake and a box quake turn out to share their whole record shape;
 only the third line differs, a rectangle of cells against one cell and a box

@@ -50,14 +50,26 @@ pub struct Level {
     /// chamber array). `HOTH2` and `HOTH3` give no direction.
     pub chamber_light: [i64; 3],
     pub chamber_ambient: i64,
-    /// Line 22, read into `0x666f54`.
-    pub unknown_22: i64,
+    /// Line 22: the fog colour, as a palette index. When the `.FOG` on line
+    /// 16 is missing the engine builds the table itself, fading to the
+    /// colour at `0x5b3350 + 3*index` (`0x485ed0`), and the last two rows of
+    /// the ramp send every colour to this index.
+    pub fog_colour: i64,
     /// Lines 24-28, `None` where the file says `null`.
     pub story_movies: [Option<String>; 5],
-    pub unknown_30: i64,
+    /// Line 30: the altitude of the sky layer, in the same units a terrain
+    /// height byte is read at - the engine keeps it shifted up fifteen at
+    /// `0x5055d4`, so 255 is 127.5. Nothing is drawn across it (`0x42f4f0`),
+    /// a dropped powerup may not start above twice it (`0x426fd4`), and the
+    /// wreck animation is only taken below half of it (`0x465541`).
+    pub sky_height: i64,
+    /// Line 31: the `.CRS` courses.
     pub courses: String,
-    pub glt: String,
-    pub unknown_33: i64,
+    /// Line 32: the `.GLT` ground light table. Empty in most levels, and the
+    /// loader then takes line 9's stem instead (`0x44c60a`).
+    pub ground_lights: String,
+    /// Line 33, read into `0x667074`, which nothing reads back.
+    pub unused_33: i64,
     /// Line 35. CD audio track, 0 for none.
     pub redbook_track: i64,
     pub briefing_movie: Option<String>,
@@ -110,12 +122,12 @@ impl Level {
             ambient: int(&l, 18, "LVL ambient")?,
             chamber_light: triple(19, "LVL chamber light")?,
             chamber_ambient: int(&l, 20, "LVL chamber ambient")?,
-            unknown_22: int(&l, 21, "LVL line 22")?,
+            fog_colour: int(&l, 21, "LVL line 22")?,
             story_movies: [opt(23), opt(24), opt(25), opt(26), opt(27)],
-            unknown_30: int(&l, 29, "LVL line 30")?,
+            sky_height: int(&l, 29, "LVL line 30")?,
             courses: l[30].clone(),
-            glt: l[31].clone(),
-            unknown_33: int(&l, 32, "LVL line 33")?,
+            ground_lights: l[31].clone(),
+            unused_33: int(&l, 32, "LVL line 33")?,
             redbook_track: int(&l, 34, "LVL line 35")?,
             briefing_movie: opt(36),
             death_movie: opt(37),

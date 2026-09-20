@@ -23,7 +23,7 @@ The containers and record layouts.
 | [The .DMO recorded flight](formats/demo.md) | solid | DEMO\DEMO1.DMO, DEMO\DEMO2.DMO, DEMO\DEMO3.DMO |
 | [The .BIN and .NDX font](formats/font.md) | solid | STARTUP\FONT.BIN, STARTUP\FONT.NDX |
 | [The level text files - .DEF, .NAV, .TXT, .TEX, .ANI, .LVL family](formats/level-text.md) | partial | DATA\*.DEF, DATA\*.NAV, DATA\*.TXT, DATA\*.TEX, DATA\*.ANI, DEMO\*.DMO |
-| [The .LVL manifest](formats/lvl.md) | partial | LEVELS\*.LVL |
+| [The .LVL manifest](formats/lvl.md) | solid | LEVELS\*.LVL |
 | [The .BIN model and its MRGL nodes](formats/mrgl.md) | partial | MODELS\*.BIN |
 | [The .POD archive](formats/pod.md) | solid | system/GAME.POD, system/STARTUP.POD |
 | [The .RAW image](formats/raw.md) | solid | ART\*.RAW, DATA\*.RAW |

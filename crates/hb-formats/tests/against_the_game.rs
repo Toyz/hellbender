@@ -8,7 +8,7 @@
 
 use std::path::PathBuf;
 
-use hb_formats::{act, anim, colour, course, font, lvl, mrgl, nav, raw, terrain, text};
+use hb_formats::{act, anim, colour, course, font, glt, lvl, mrgl, nav, raw, terrain, text};
 use hb_pod::Pod;
 
 fn game_dir() -> PathBuf {
@@ -1309,4 +1309,43 @@ fn every_quake_file_parses_and_its_entries_name_cells() {
     assert!(boxes > 500, "{boxes} box quakes");
     assert!(doors > 100, "{doors} of them are doors");
     assert!(live > 0, "{live} live");
+}
+
+/// Every `.GLT` parses, every record names three textures and takes the long
+/// form, and the name the loader derives - line 32's stem, or line 9's where
+/// line 32 is empty - is a file that is there.
+#[test]
+fn every_ground_light_table_parses_and_names_three_textures() {
+    let pod = archive!("GAME.POD");
+    let (mut files, mut records) = (std::collections::BTreeSet::new(), 0);
+    for e in pod.entries().iter().filter(|e| e.ext() == "lvl") {
+        let level = lvl::Level::parse(pod.bytes(e)).unwrap();
+        let named = if level.ground_lights.trim().is_empty() {
+            level.files[7].clone()
+        } else {
+            level.ground_lights.clone()
+        };
+        let stem = named.split('.').next().unwrap().to_ascii_lowercase();
+        let Ok(bytes) = pod.read("data", &format!("{stem}.glt")) else { continue };
+        let lights = glt::parse(bytes).unwrap_or_else(|why| panic!("{stem}: {why}"));
+        if !files.insert(stem.clone()) {
+            continue;
+        }
+        records += lights.len();
+        for light in &lights {
+            for texture in light.textures() {
+                assert!(
+                    texture.to_ascii_lowercase().ends_with(".raw"),
+                    "{stem}: {texture}"
+                );
+            }
+            // The long form: the fourth number is 6 and the fifth 1 or 0.
+            assert_eq!(light.numbers[3], 6, "{stem}: {:?}", light.numbers);
+            assert!((0..=1).contains(&light.numbers[4]), "{stem}: {:?}", light.numbers);
+            // The first reads as a size: 2, 4, 6 or 10 units.
+            assert!([2.0, 4.0, 6.0, 10.0].contains(&light.size()), "{stem}: {}", light.size());
+        }
+    }
+    assert_eq!(files.len(), 10, "ten tables for 26 levels: {files:?}");
+    assert_eq!(records, 90);
 }
