@@ -109,5 +109,21 @@ tools/docs.py check
 
 ## No game data here
 
-This repository contains no copyrighted game content. It expects you to have
-your own copy of the disc.
+This repository contains no game content: no art, no sound, no music, no
+levels, no executable, and no extracted copies of any of them. Everything here
+is either written from scratch or a description of how the shipped files are
+laid out, worked out from the retail binary with the tools under `tools/`.
+
+To run anything you need your own copy of Hellbender. Point `original` at it -
+a symlink to the installed game or the mounted disc, so that
+`original/system/GAME.POD` exists - or set `HB_GAME` to that directory. The
+tests skip themselves when neither is there.
+
+Hellbender is Microsoft's; the trademarks and the game's content belong to
+their owners. This project is unaffiliated with Microsoft and with Terminal
+Reality, and is not endorsed by either.
+
+## Licence
+
+The code and documentation in this repository are MIT licensed - see
+[LICENSE](LICENSE). That covers this work only, not anything the game ships.

@@ -273,15 +273,12 @@ Not a model and not a placement list. The first two lines name a model and a
 backdrop image, then free prose terminated by a line holding a single `.`:
 
 ```
-Globe.Bin
-Morbos00.Raw
-PLANET: Eyrie
-MISSION: Savior
-
-The Bion shock troops are leaving
-planet Eyrie by the thousands aboard
+Globe.Bin                     a model
+Morbos00.Raw                  a backdrop
+PLANET: <name>                the briefing's own text follows, as many
+MISSION: <name>               lines as it likes
 ...
-.
+.                             a line holding one dot ends it
 ```
 
 `MODELS\*.TXT` is a completely different thing - an animated model - and shares
