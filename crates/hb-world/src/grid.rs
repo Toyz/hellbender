@@ -139,6 +139,13 @@ pub const SAMPLE_HIGH: i32 = 0xABB9;
 ///
 /// `groundTriangleMidpoint`, `0x428900`. The four cases are the cross product
 /// of the cell's parity and the half.
+/// A solid box of the world, 16.16, as [`Grid::boxes_near`] reports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Solid {
+    pub min: [i32; 3],
+    pub max: [i32; 3],
+}
+
 pub fn sample_point(cell: Cell, half: Half) -> (i32, i32) {
     let (ox, oz) = cell.origin();
     let (fx, fz) = match (cell.diagonal(), half) {
@@ -381,6 +388,34 @@ impl<'a> Grid<'a> {
 
     /// The top of whatever is at a world position: the ground, or a box
     /// standing on it. What a flying thing must stay above.
+    /// Every box within `reach` of (x, z), as a solid the collision can push
+    /// against. The coordinates are in the copy of the wrapping world the
+    /// query point is in, so they can be compared with it directly.
+    pub fn boxes_near(&self, x: i32, z: i32, reach: i32) -> Vec<Solid> {
+        let mut out = Vec::new();
+        let (first_x, last_x) = ((x - reach) >> 19, (x + reach) >> 19);
+        let (first_z, last_z) = ((z - reach) >> 19, (z + reach) >> 19);
+        for cx in first_x..=last_x {
+            for cz in first_z..=last_z {
+                let cell = Cell::new(cx & (SIDE as i32 - 1), cz & (SIDE as i32 - 1));
+                for layer in Layer::BOX_LAYERS {
+                    if !self.has_box(layer, cell) {
+                        continue;
+                    }
+                    let Some((bottom, top)) = self.box_span(layer, cell) else { continue };
+                    if bottom >= top {
+                        continue;
+                    }
+                    out.push(Solid {
+                        min: [cx << 19, bottom, cz << 19],
+                        max: [(cx + 1) << 19, top, (cz + 1) << 19],
+                    });
+                }
+            }
+        }
+        out
+    }
+
     pub fn ceiling_of_solid(&self, x: i32, z: i32) -> i32 {
         let cell = Cell::containing(x, z);
         let mut top = self.height_at(Layer::Ground, x, z).unwrap_or(0);

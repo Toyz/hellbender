@@ -2,7 +2,7 @@
 title: The simulation
 status: partial
 covers: HELLBEND.EXE logic phases, crates/hb-sim
-worklog: 26, 27, 28, 31, 32, 33, 34, 35, 37, 38
+worklog: 26, 27, 28, 31, 32, 33, 34, 35, 37, 38, 40, 41
 ---
 
 # The simulation
@@ -411,7 +411,7 @@ missiles and the player's health and shield. What is its own:
 | choice | why |
 | --- | --- |
 | Enemy shots do not hit other actors | The engine's do. A muzzle can sit inside its own turret's box, and the engine's exclusion, if any, is not read. |
-| A dead player starts again at the level's start, whole | What the engine does at death is not read. |
+| A dead player starts again at the level's start, whole | The engine explodes the ship and puts the loadout back (worklog 40); what it then does - the wreck flies on and blows up two units over the ground (`0x464920`), and the mission fails - is not ported. |
 | No view shake | The shake's amounts are not read. |
 | Shots and missiles are points | The engine draws models by kind (`0x4769cf`). |
 | A group model is its first child | Only the SAM site uses one. The engine's frame advance is not read. |
@@ -509,6 +509,28 @@ and the manual choice of point (`keyNavChoose`), which hb-fly's Tab already
 uses for changing level. hb-fly's floor for the loader's height check is the
 top of the solid, so a point below y = 0 is left where it is rather than put
 on the tunnel floor.
+
+## The ship against the world
+
+`0x427280` is the ship's collision, and it runs on the position the flight
+model just produced, with the one before it. It grows a box a unit each way
+(`0x10000`) around the pair and asks every cell that box spans for the
+surfaces in it: `0x4279b0` walks the cells between the two corners and
+`0x428790` collects them, the ground's two triangles and the boxes' faces
+above the ground, the chamber's below it, chosen by a mask.
+
+For each surface the position is behind, `0x4277c0` puts it back: the signed
+distance from the plane, `dot(normal, position - a point on it)`, wrapped on x
+and z like every other distance in the world, times `0x103e8` - a hundredth
+over - pushed back along the normal. Position only: the flight model's
+velocity is not touched, so the ship slides along what it hits rather than
+stopping dead.
+
+The port keeps the ground with its height query and does the boxes as solids:
+`hb_sim::collide` pushes the ship, a sphere of the engine's one unit, out of
+the face it is least far through, with the same fraction over. What it does
+not have is the engine's swept test between the old and new positions, so a
+fast enough ship can still pass through a thin box in one frame.
 
 ## Explosions
 

@@ -52,9 +52,6 @@ fn game_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("original"))
 }
 
-/// How far above the surface the eye is held when collision is on.
-const CLEARANCE: i32 = 2 << 16;
-
 /// The player's ship and the eye that rides in it.
 struct Flight {
     ship: hb_sim::flight::Ship,
@@ -112,23 +109,40 @@ impl Flight {
         self.camera.yaw = Angle(heading as i32 as u16);
     }
 
-    /// Keep the ship above the ground and above anything standing on it.
+    /// Keep the ship out of the ground and out of the boxes.
     ///
-    /// The engine has a real collision system - `intersectingBoxSurface` and
-    /// the ground triangle queries are part of it - and this is not it. It is
-    /// the height query used honestly: find the top of whatever is under the
-    /// ship and refuse to go below it.
+    /// The ground is the height query used honestly: find the surface under
+    /// the ship and refuse to go below it by more than the ship's own unit.
+    /// The boxes are `hb_sim::collide`, which pushes the ship out of the face
+    /// it is least far through, as the engine's response does (`0x4277c0`).
     fn settle(&mut self, grid: &hb_world::Grid) {
         self.grounded = false;
         if !self.collide {
             return;
         }
-        let floor = grid.ceiling_of_solid(self.camera.x, self.camera.z) + CLEARANCE;
-        if self.camera.y < floor {
-            self.ship.position[1] = floor as f32 / 65536.0;
-            self.camera.y = floor;
+        let reach = (hb_sim::collide::SHIP * 65536.0) as i32;
+        let solids: Vec<hb_sim::collide::Solid> = grid
+            .boxes_near(self.camera.x, self.camera.z, reach)
+            .into_iter()
+            .map(hb_sim::collide::Solid::of)
+            .collect();
+        let (moved, push) =
+            hb_sim::collide::push_out(self.ship.position, hb_sim::collide::SHIP, &solids);
+        self.ship.position = moved;
+        if push == Some(hb_sim::collide::Push::Up) {
             self.grounded = true;
         }
+        // The ground underneath, which the boxes sit on.
+        let fixed = |v: f32| (v * 65536.0) as i32;
+        let ground = grid
+            .height_at(hb_formats::terrain::Layer::Ground, fixed(moved[0]), fixed(moved[2]))
+            .unwrap_or(0);
+        let floor = ground as f32 / 65536.0 + hb_sim::collide::SHIP;
+        if self.ship.position[1] < floor {
+            self.ship.position[1] = floor;
+            self.grounded = true;
+        }
+        self.sync_camera();
     }
 }
 

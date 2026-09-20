@@ -366,6 +366,7 @@ version = "0.1.0"
 dependencies = [
  "hb-formats",
  "hb-pod",
+ "hb-world",
 ]
 
 [[package]]

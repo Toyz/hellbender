@@ -5,6 +5,7 @@
 //! What is transcribed and what is this crate's own choice is said at each
 //! step, the same way `hb-render` does.
 
+pub mod collide;
 pub mod combat;
 pub mod course;
 pub mod explosion;
