@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-52 entries: audio 2, build 1, content 4, decomp 29, engine 19, format 27, port 41, render 21, test 3, tooling 3, ui 1, world 10.
+53 entries: audio 2, build 1, content 4, decomp 30, engine 19, format 27, port 42, render 21, test 3, tooling 3, ui 1, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -63,3 +63,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 50 | [KREASH.MIX is the end of a table](worklog/0050-kreash-mix-is-the-end-of-a-table.md) | 2026-09-20 | decomp,format |
 | 51 | [What opens a door](worklog/0051-what-opens-a-door.md) | 2026-09-20 | decomp,engine |
 | 52 | [The doors open](worklog/0052-the-doors-open.md) | 2026-09-20 | port,engine |
+| 53 | [The ground moves too](worklog/0053-the-ground-moves-too.md) | 2026-09-20 | decomp,port |

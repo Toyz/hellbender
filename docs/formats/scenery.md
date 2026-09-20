@@ -115,7 +115,7 @@ What the game does with them:
 - **Ground quakes**, 767 of them, name a rectangle of cells by two corners,
   both inside the 128 x 128 grid, and move that patch of the ground's
   heightfield. `0x4121d0` walks the rectangle with `& 0x7f` at each step, so
-  a patch may wrap around the world's edge.
+  a patch may wrap around the world's edge. See below.
 - **Box quakes**, 1,193 of them, name one cell and which of the two box sets
   it moves - 747 move set B and 446 set A. 813 of them name at least two
   sounds, and those sounds are `1-0UDOOR.WAV` and `1-0DDOOR.WAV` and their
@@ -159,6 +159,37 @@ top already at the first, so their first move arrives at once and what they
 really do is close. The motion line's first number is not part of this: it
 only picks which edge the switch code compares when it asks whether a box
 has moved (`0x410fb9`).
+
+### The ground list
+
+Same machine, a rectangle of cells rather than one box. `0x4121d0` walks the
+rectangle and hands each cell to `0x411b80`, which runs the entry through the
+same six states off its own jump table at `0x4121b0`. Every cell steps by the
+same amount, so the patch keeps its shape, and the travel is simply the first
+height less the second - a cell has one height, so there is no thickness to
+take off.
+
+The where line's **fifth number is the layer**: 1 the ground, 2 a chamber's
+floor, 3 its ceiling (`0x411ba3`, which indexes the cell into `0x73bcc0`,
+`0x6bdfb0` or `0x6bdfb2`). Across the 26 levels 290 entries move the ground,
+126 a chamber floor and 323 a chamber ceiling.
+
+A ground entry's flags line has four numbers rather than five, so everything
+shifts down one: the first is the mode byte, the second and third are bits,
+and the **fourth** is the four-bit field that says what the entry watches.
+That is why no ground entry is shot open - the field is 4 or 0 in every one
+of them, never 1 - and it is where the 320 entries that never stop come from:
+with the mode byte at 1 and the first bit set, the resting state puts the
+entry straight back into its cycle (`0x411c45`), so it runs up and down for
+as long as the level lasts. The rest wait for a box to move.
+
+The kind byte picks the mover. **1** is the one above, 737 of the 739 live
+entries. **3**, one entry, reads the ship's own cell and whether it is above
+or below zero first (`0x411548`) and moves relative to that. **2**, one
+entry, matches neither and is skipped.
+
+`hb_sim::quake` runs both lists, and `hb-fly` writes the moved cells back
+into the terrain.
 
 ### Switches and the boxes that watch them
 
@@ -231,9 +262,9 @@ What the eight numbers of a `.GLT` record set, and what puts a light out:
 the unlit and broken textures are loaded and indexed and the load-time scan
 finds the faces wearing them, but the code that swaps one texture for
 another has not been read, nor has what the list at `0x5cafe0` is for. In
-`.QKE`: what the ground quake's kinds 1 and 3 do differently, and what the
-flags line's first number - the mode byte the resting state tests - selects.
-The record shape of `.TTY`, which no shipped level uses.
+`.QKE`: what the flags line's first number - the mode byte the resting state
+tests - selects beyond 1, and what a kind 3 ground entry does with the ship's
+cell. The record shape of `.TTY`, which no shipped level uses.
 
 A ground quake and a box quake turn out to share their whole record shape;
 only the third line differs, a rectangle of cells against one cell and a box

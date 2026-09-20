@@ -373,10 +373,11 @@ fn main() -> Result<(), String> {
     let (mut flight, mut mission, mut followers, mut live, mut battle, mut colours) = begin(&level);
     let mut doors = doors_of(&level);
     println!(
-        "sim: {} of {} objects follow a course, {} doors",
+        "sim: {} of {} objects follow a course, {} doors, {} moving patches of ground",
         followers.len(),
         live.len(),
-        doors.doors.len()
+        doors.doors.len(),
+        doors.patches.len()
     );
 
     // Combat. The laser sound is the one the engine names; a destroyed
@@ -1117,21 +1118,46 @@ fn begin(
     )
 }
 
-/// The level's doors, with each box's altitudes as the terrain has them.
-fn doors_of(level: &Level) -> hb_sim::quake::Doors {
-    hb_sim::quake::Doors::new(&level.quake.boxes, |(x, z), set| {
-        let layer = if set == 1 { &level.terrain.boxes_a } else { &level.terrain.boxes_b };
-        (layer.bottom.at(x, z), layer.top.at(x, z))
+/// The level's doors and moving ground, with every cell's altitude as the
+/// terrain has it.
+fn doors_of(level: &Level) -> hb_sim::quake::Quakes {
+    use hb_sim::quake::Layer;
+    hb_sim::quake::Quakes::new(&level.quake, |layer, (x, z)| match layer {
+        Layer::BoxA => (level.terrain.boxes_a.bottom.at(x, z), level.terrain.boxes_a.top.at(x, z)),
+        Layer::BoxB => (level.terrain.boxes_b.bottom.at(x, z), level.terrain.boxes_b.top.at(x, z)),
+        Layer::Ground => {
+            let h = level.terrain.ground.at(x, z);
+            (h, h)
+        }
+        Layer::ChamberFloor => {
+            let h = level.terrain.chambers.floor.at(x, z);
+            (h, h)
+        }
+        Layer::ChamberCeiling => {
+            let h = level.terrain.chambers.ceiling.at(x, z);
+            (h, h)
+        }
     })
 }
 
-/// Write a moved box back into the terrain, which is where the renderer and
+/// Write a moved cell back into the terrain, which is where the renderer and
 /// the collision both read it from.
 fn move_box(terrain: &mut hb_formats::terrain::Terrain, m: &hb_sim::quake::Moved) {
-    let layer = if m.set == 1 { &mut terrain.boxes_a } else { &mut terrain.boxes_b };
+    use hb_sim::quake::Layer;
     let at = (m.cell.1 as usize & 127) * 128 + (m.cell.0 as usize & 127);
-    layer.bottom.values[at] = m.bottom;
-    layer.top.values[at] = m.top;
+    match m.layer {
+        Layer::BoxA => {
+            terrain.boxes_a.bottom.values[at] = m.bottom;
+            terrain.boxes_a.top.values[at] = m.top;
+        }
+        Layer::BoxB => {
+            terrain.boxes_b.bottom.values[at] = m.bottom;
+            terrain.boxes_b.top.values[at] = m.top;
+        }
+        Layer::Ground => terrain.ground.values[at] = m.top,
+        Layer::ChamberFloor => terrain.chambers.floor.values[at] = m.top,
+        Layer::ChamberCeiling => terrain.chambers.ceiling.values[at] = m.top,
+    }
 }
 
 /// The surface under a point, for the mission (`0x41c300` finds the floor

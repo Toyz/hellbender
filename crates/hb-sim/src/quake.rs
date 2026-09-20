@@ -1,4 +1,4 @@
-//! The doors and lifts of a level's `.QKE`.
+//! The doors, lifts and moving ground of a level's `.QKE`.
 //!
 //! `processBoxQuake` (`0x410ec0`) runs each live box entry through a six-way
 //! state machine: resting, a delay, moving out, a hold, moving back, a hold.
@@ -17,19 +17,57 @@
 //! the point begins its cycle (`0x4107a0`). While it moves it wakes the
 //! entries that watch it, by id or by cell (`0x410da0`).
 //!
+//! The ground list is the same machine over a rectangle of cells rather than
+//! one box (`0x4121d0`, `0x411b80`). Each entry names a layer - the ground,
+//! a chamber's floor or its ceiling - and every cell in its rectangle steps
+//! by the same amount, up to the first height and back to the second. None of
+//! the shipped ones is shot open: 320 of the 739 start themselves and never
+//! stop, and the rest wait for a box to move.
+//!
 //! See `docs/formats/scenery.md`.
 
-use hb_formats::quake::{Entry, Watches};
+use hb_formats::quake::Watches;
 
 /// Altitudes here are the terrain's own words - a stored height shifted up
 /// eight - so this many to a world unit.
 pub const WORD: f32 = 256.0;
 
-/// What sets an entry going, from the flags line's fifth number.
+/// Which grid an entry moves. A box entry names one of the two box sets
+/// (the third number of its where line); a ground entry names the ground or
+/// one of a chamber's two surfaces (the fifth number of its where line, read
+/// at `0x411ba3`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Layer {
+    BoxA,
+    BoxB,
+    Ground,
+    ChamberFloor,
+    ChamberCeiling,
+}
+
+impl Layer {
+    fn of_box(set: i64) -> Layer {
+        if set == 1 { Layer::BoxA } else { Layer::BoxB }
+    }
+
+    fn of_ground(which: i64) -> Option<Layer> {
+        match which {
+            1 => Some(Layer::Ground),
+            2 => Some(Layer::ChamberFloor),
+            3 => Some(Layer::ChamberCeiling),
+            _ => None,
+        }
+    }
+}
+
+/// What sets an entry going, from the flags line's last number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Trigger {
     /// 1: a shot landing inside it.
     Shot,
+    /// A ground entry with its mode byte at 1 and its first bit set: it
+    /// starts itself and so never stops (`0x411c20`).
+    Always,
     /// 2: a call by id, which nothing in the shipped game makes.
     Called(i64),
     /// 3 and 4: another entry moving. Carries what it watches.
@@ -78,12 +116,13 @@ pub struct Door {
     pub top: f32,
 }
 
-/// What one frame did to a door, for the caller to write into the world.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// What one frame did to a cell, for the caller to write into the world.
+/// A box layer moves both altitudes; the others have one height, and it
+/// arrives in both fields.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Moved {
-    pub door: usize,
+    pub layer: Layer,
     pub cell: (i32, i32),
-    pub set: i64,
     pub bottom: i16,
     pub top: i16,
 }
@@ -95,9 +134,67 @@ pub struct Played {
     pub cell: (i32, i32),
 }
 
+
+/// One ground entry: a rectangle of cells on one layer, all stepping
+/// together.
+#[derive(Debug, Clone)]
+pub struct Patch {
+    /// The corner the rectangle starts at, as (x, z).
+    pub from: (i32, i32),
+    /// How many cells it covers in x and in z. The engine walks the span
+    /// with `& 0x7f` at each step, so a rectangle may wrap the world
+    /// (`0x4121e7`).
+    pub span: (i32, i32),
+    pub layer: Layer,
+    /// The height the cells rise to, and the one they come back to.
+    pub target: f32,
+    pub rest: f32,
+    pub seconds: [f32; 4],
+    pub delay: f32,
+    pub trigger: Trigger,
+    pub id: i64,
+    pub state: State,
+    pub timer: f32,
+    /// How far every cell has moved from where the level left it.
+    pub offset: f32,
+    /// Each cell's height at load, row by row over the rectangle.
+    base: Vec<i16>,
+}
+
+impl Patch {
+    /// Every cell of the rectangle, wrapped into the grid.
+    pub fn cells(&self) -> impl Iterator<Item = (i32, i32)> + '_ {
+        let (x0, z0) = self.from;
+        let (sx, sz) = self.span;
+        (0..sz).flat_map(move |dz| (0..sx).map(move |dx| ((x0 + dx) & 127, (z0 + dz) & 127)))
+    }
+
+    /// The height the arrival test watches: the first cell of the rectangle,
+    /// where the engine tests each cell in turn and lets the first one to
+    /// arrive change the state.
+    fn reference(&self) -> f32 {
+        self.base.first().copied().unwrap_or(0) as f32 + self.offset
+    }
+
+    /// The travel is the two heights apart - a ground cell has one height,
+    /// so there is no thickness to take off (`0x411c70`).
+    fn speed(&self, out: bool) -> f32 {
+        let seconds = if out { self.seconds[0] } else { self.seconds[2] };
+        if seconds <= 0.0 {
+            return f32::INFINITY;
+        }
+        (self.target - self.rest) / seconds
+    }
+
+    fn goes_anywhere(&self) -> bool {
+        self.target != 0.0 || self.rest != 0.0
+    }
+}
+
 #[derive(Debug, Clone, Default)]
-pub struct Doors {
+pub struct Quakes {
     pub doors: Vec<Door>,
+    pub patches: Vec<Patch>,
     pub sounds: Vec<Played>,
 }
 
@@ -124,18 +221,23 @@ impl Door {
     }
 }
 
-impl Doors {
-    /// Build from the `.QKE`'s box list. `at` gives a cell's current bottom
-    /// and top in altitude words; entries whose kind is 0 are left out, as
-    /// the engine's per-frame walk skips them (`0x4122e0`).
-    pub fn new(entries: &[Entry], mut at: impl FnMut((i32, i32), i64) -> (i16, i16)) -> Doors {
-        let doors = entries
+impl Quakes {
+    /// Build from a parsed `.QKE`. `at` gives a cell's current bottom and
+    /// top in altitude words - for the one-height layers both are that
+    /// height. Entries whose kind is 0 are left out, as the engine's
+    /// per-frame walk skips them (`0x4122e0`).
+    pub fn new(
+        quake: &hb_formats::quake::Quake,
+        mut at: impl FnMut(Layer, (i32, i32)) -> (i16, i16),
+    ) -> Quakes {
+        let doors = quake
+            .boxes
             .iter()
             .filter(|e| e.live() && e.where_.len() == 3)
             .map(|e| {
                 let cell = (e.where_[1] as i32, e.where_[0] as i32);
                 let set = e.where_[2];
-                let (bottom, top) = at(cell, set);
+                let (bottom, top) = at(Layer::of_box(set), cell);
                 let sound = |n: usize| e.sounds.get(n).cloned().flatten();
                 Door {
                     cell,
@@ -159,7 +261,52 @@ impl Doors {
                 }
             })
             .collect();
-        Doors { doors, sounds: Vec::new() }
+
+        // The ground list: kind 1 is the one the engine moves, and kind 3
+        // keys off where the ship is instead - one entry in the shipped
+        // levels, and not ported.
+        let patches = quake
+            .ground
+            .iter()
+            .filter(|e| e.kind == 1 && e.where_.len() == 5)
+            .filter_map(|e| {
+                let layer = Layer::of_ground(e.where_[4])?;
+                let from = (e.where_[0] as i32, e.where_[1] as i32);
+                let span = (
+                    ((e.where_[2] - e.where_[0]) as i32 & 127) + 1,
+                    ((e.where_[3] - e.where_[1]) as i32 & 127) + 1,
+                );
+                let mut patch = Patch {
+                    from,
+                    span,
+                    layer,
+                    target: e.heights[0] as f32,
+                    rest: e.heights[1] as f32,
+                    seconds: e.timing(),
+                    delay: e.delay(),
+                    // A ground entry's flags line has four numbers, so the
+                    // watch kind is its last (`0x410dcd`), and the mode byte
+                    // and first bit are its first two (`0x411c20`).
+                    trigger: match (e.flags.first(), e.flags.get(1), e.flags.get(3)) {
+                        (Some(1), Some(1), _) => Trigger::Always,
+                        (_, _, Some(1)) => Trigger::Shot,
+                        _ => match e.watches_ground() {
+                            Some(what) => Trigger::Watching(what),
+                            None => Trigger::Never,
+                        },
+                    },
+                    id: e.extra,
+                    state: State::Rest,
+                    timer: 0.0,
+                    offset: 0.0,
+                    base: Vec::new(),
+                };
+                patch.base = patch.cells().map(|c| at(layer, c).0).collect();
+                Some(patch)
+            })
+            .collect();
+
+        Quakes { doors, patches, sounds: Vec::new() }
     }
 
     /// A shot landed at this point - cell (x, z) and altitude in words.
@@ -191,8 +338,8 @@ impl Doors {
         d.timer = 0.0;
     }
 
-    /// One frame. Returns the cells whose box moved, and collects any sounds
-    /// in [`Doors::sounds`].
+    /// One frame. Returns every cell that moved, and collects any sounds in
+    /// [`Quakes::sounds`].
     pub fn step(&mut self, dt: f32) -> Vec<Moved> {
         let mut moved = Vec::new();
         let mut woken = Vec::new();
@@ -203,11 +350,79 @@ impl Doors {
                 woken.push(i);
             }
         }
-        // A moving box wakes whatever watches it (`0x410da0`).
+        // A moving box wakes whatever watches it (`0x410da0`). A moving
+        // patch wakes nothing - the ground mover calls no one.
         for i in woken {
             self.wake_watchers(i);
         }
+        for i in 0..self.patches.len() {
+            if self.step_patch(i, dt) {
+                let patch = &self.patches[i];
+                let (layer, offset) = (patch.layer, patch.offset);
+                for (cell, base) in patch.cells().zip(patch.base.iter()) {
+                    let height = (*base as f32 + offset).round() as i16;
+                    moved.push(Moved { layer, cell, bottom: height, top: height });
+                }
+            }
+        }
         moved
+    }
+
+    /// One frame of one ground entry. True when its cells moved.
+    fn step_patch(&mut self, i: usize, dt: f32) -> bool {
+        let patch = &mut self.patches[i];
+        match patch.state {
+            // An entry that starts itself is never resting for long: the
+            // engine puts it straight back into its cycle (`0x411c45`).
+            State::Rest => {
+                if patch.trigger == Trigger::Always {
+                    patch.state = State::About;
+                    patch.timer = 0.0;
+                }
+                false
+            }
+            State::About => {
+                patch.timer += dt;
+                if patch.timer < patch.delay {
+                    return false;
+                }
+                patch.timer = 0.0;
+                patch.state = State::Out;
+                false
+            }
+            State::Hold | State::Settle => {
+                patch.timer += dt;
+                let wait =
+                    if patch.state == State::Hold { patch.seconds[1] } else { patch.seconds[3] };
+                if patch.timer < wait {
+                    return false;
+                }
+                patch.timer = 0.0;
+                patch.state = if patch.state == State::Hold { State::Back } else { State::Rest };
+                false
+            }
+            State::Out | State::Back => {
+                let out = patch.state == State::Out;
+                let step = patch.speed(out) * dt * if out { 1.0 } else { -1.0 };
+                let height = patch.reference();
+                let arrived = !patch.goes_anywhere()
+                    || !step.is_finite()
+                    || if out { height + step >= patch.target } else { height + step <= patch.rest };
+                if arrived {
+                    let to = match (patch.goes_anywhere(), out) {
+                        (false, _) => 0.0,
+                        (true, true) => patch.target - height,
+                        (true, false) => patch.rest - height,
+                    };
+                    patch.offset += to;
+                    patch.timer = 0.0;
+                    patch.state = if out { State::Hold } else { State::Settle };
+                    return to != 0.0;
+                }
+                patch.offset += step;
+                true
+            }
+        }
     }
 
     /// Returns `Some(true)` when the box moved this frame.
@@ -275,33 +490,36 @@ impl Doors {
     fn report(&self, i: usize) -> Moved {
         let d = &self.doors[i];
         Moved {
-            door: i,
+            layer: Layer::of_box(d.set),
             cell: d.cell,
-            set: d.set,
             bottom: d.bottom.round() as i16,
             top: d.top.round() as i16,
         }
     }
 
-    /// Start every resting door watching the one that just moved.
+    /// Start everything resting that watches the box which just moved -
+    /// the other boxes (`0x410d00`) and the ground patches (`0x410da0`).
     fn wake_watchers(&mut self, moving: usize) {
         let (id, cell, set) = {
             let d = &self.doors[moving];
             (d.id, d.cell, d.set)
         };
-        for i in 0..self.doors.len() {
-            if self.doors[i].state != State::Rest {
-                continue;
+        let watches = |trigger: Trigger| match trigger {
+            Trigger::Watching(Watches::Link(link)) => link == id,
+            Trigger::Watching(Watches::Cell { row, column, set: s }) => {
+                (column as i32, row as i32) == cell && s == set
             }
-            let wakes = match self.doors[i].trigger {
-                Trigger::Watching(Watches::Link(link)) => link == id,
-                Trigger::Watching(Watches::Cell { row, column, set: s }) => {
-                    (column as i32, row as i32) == cell && s == set
-                }
-                _ => false,
-            };
-            if wakes {
+            _ => false,
+        };
+        for i in 0..self.doors.len() {
+            if self.doors[i].state == State::Rest && watches(self.doors[i].trigger) {
                 self.start(i);
+            }
+        }
+        for patch in &mut self.patches {
+            if patch.state == State::Rest && watches(patch.trigger) {
+                patch.state = State::About;
+                patch.timer = 0.0;
             }
         }
     }

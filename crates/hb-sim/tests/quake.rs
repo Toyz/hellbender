@@ -1,7 +1,7 @@
 //! The door cycle: shot open, up, hold, down, rest.
 
 use hb_formats::quake::Entry;
-use hb_sim::quake::{Doors, State, Trigger};
+use hb_sim::quake::{Layer, Quakes, State, Trigger};
 
 /// A box entry as the file gives one: cell (column 65, row 48) of set A,
 /// rising to 7040 from a resting bottom of 128, one second each way with a
@@ -21,8 +21,12 @@ fn door() -> Entry {
 }
 
 /// The box as the terrain has it: 640 thick, resting with its bottom at 128.
-fn resting() -> Doors {
-    Doors::new(&[door()], |_, _| (128, 768))
+fn resting() -> Quakes {
+    quakes(vec![door()], Vec::new())
+}
+
+fn quakes(boxes: Vec<Entry>, ground: Vec<Entry>) -> Quakes {
+    Quakes::new(&hb_formats::quake::Quake { ground, boxes }, |_, _| (128, 768))
 }
 
 #[test]
@@ -95,7 +99,7 @@ fn a_door_that_watches_an_id_follows_the_one_that_carries_it() {
     second.where_ = vec![48, 66, 1];
     second.extra = 0;
 
-    let mut doors = Doors::new(&[first, second], |_, _| (128, 768));
+    let mut doors = quakes(vec![first, second], Vec::new());
     assert!(matches!(doors.doors[1].trigger, Trigger::Watching(_)));
     doors.shot((65, 48), 400.0);
     doors.step(1.0 / 30.0);
@@ -115,7 +119,7 @@ fn a_door_that_watches_an_id_follows_the_one_that_carries_it() {
 fn an_entry_with_two_zero_heights_never_goes_anywhere() {
     let mut still = door();
     still.heights = [0, 0];
-    let mut doors = Doors::new(&[still], |_, _| (128, 768));
+    let mut doors = quakes(vec![still], Vec::new());
     doors.shot((65, 48), 400.0);
     for _ in 0..30 {
         doors.step(1.0 / 30.0);
@@ -123,6 +127,94 @@ fn an_entry_with_two_zero_heights_never_goes_anywhere() {
     let door = &doors.doors[0];
     assert_eq!(door.bottom, 128.0);
     assert_eq!(door.top, 768.0);
+}
+
+/// A ground entry as the file gives one: the single cell (60, 40) of the
+/// chamber ceiling, rising from -7040 to -3200 over two seconds, holding
+/// none, and starting itself - the shape 320 of the shipped entries have.
+fn patch() -> Entry {
+    Entry {
+        kind: 1,
+        heights: [-3200, -7040],
+        where_: vec![60, 40, 60, 40, 3],
+        watch: [0, 0, 0, 0],
+        motion: [0, 131072, 0, 131072, 0],
+        flags: vec![1, 1, 1, 0],
+        sounds: vec![None; 5],
+        extra: 0,
+        switch: None,
+    }
+}
+
+#[test]
+fn a_patch_that_starts_itself_runs_up_and_down_for_ever() {
+    let mut quakes = Quakes::new(
+        &hb_formats::quake::Quake { ground: vec![patch()], boxes: Vec::new() },
+        |_, _| (-7040, -7040),
+    );
+    assert_eq!(quakes.patches.len(), 1);
+    assert_eq!(quakes.patches[0].layer, Layer::ChamberCeiling);
+    assert_eq!(quakes.patches[0].cells().count(), 1);
+    assert_eq!(quakes.patches[0].trigger, Trigger::Always);
+
+    // Nothing has to start it: two seconds of frames take it to the top.
+    let mut highest = f32::MIN;
+    for _ in 0..(2 * 30 + 2) {
+        for m in quakes.step(1.0 / 30.0) {
+            assert_eq!(m.cell, (60, 40));
+            assert_eq!(m.bottom, m.top, "a ground cell has one height");
+            highest = highest.max(m.top as f32);
+        }
+    }
+    assert!((highest - -3200.0).abs() < 200.0, "it reached {highest}");
+    // It holds for nothing at all, so it is at the top or already coming
+    // back down.
+    assert!(matches!(quakes.patches[0].state, State::Hold | State::Back));
+
+    // And two more bring it back down and start it over.
+    let mut lowest = f32::MAX;
+    for _ in 0..(2 * 30 + 2) {
+        for m in quakes.step(1.0 / 30.0) {
+            lowest = lowest.min(m.top as f32);
+        }
+    }
+    assert!((lowest - -7040.0).abs() < 200.0, "it came back to {lowest}");
+    // It may be resting for this one frame, but it starts itself again the
+    // next, and comes back up.
+    quakes.step(1.0 / 30.0);
+    assert_ne!(quakes.patches[0].state, State::Rest, "it never stays settled");
+    let mut again = f32::MIN;
+    for _ in 0..(2 * 30 + 2) {
+        for m in quakes.step(1.0 / 30.0) {
+            again = again.max(m.top as f32);
+        }
+    }
+    assert!((again - -3200.0).abs() < 200.0, "the second time up reached {again}");
+}
+
+#[test]
+fn a_patch_covers_every_cell_of_its_rectangle_and_wraps() {
+    let mut wide = patch();
+    // Two by three, starting three cells short of the world's edge.
+    wide.where_ = vec![126, 40, 127, 42, 1];
+    let quakes = Quakes::new(
+        &hb_formats::quake::Quake { ground: vec![wide], boxes: Vec::new() },
+        |_, _| (0, 0),
+    );
+    let cells: Vec<_> = quakes.patches[0].cells().collect();
+    assert_eq!(cells.len(), 6);
+    assert_eq!(cells[0], (126, 40));
+    assert_eq!(cells[5], (127, 42));
+    assert!(cells.iter().all(|c| (0..128).contains(&c.0) && (0..128).contains(&c.1)));
+
+    // And one that runs over the edge wraps rather than leaving the grid.
+    let mut over = patch();
+    over.where_ = vec![127, 40, 1, 40, 1];
+    let quakes = Quakes::new(
+        &hb_formats::quake::Quake { ground: vec![over], boxes: Vec::new() },
+        |_, _| (0, 0),
+    );
+    assert_eq!(quakes.patches[0].cells().collect::<Vec<_>>(), vec![(127, 40), (0, 40), (1, 40)]);
 }
 
 fn game_dir() -> std::path::PathBuf {
@@ -153,9 +245,16 @@ fn the_shipped_doors_rest_where_their_second_height_says() {
         .unwrap();
         let Ok(bytes) = pod.read("data", &format!("{stem}.qke")) else { continue };
         let quake = hb_formats::quake::parse(bytes).unwrap();
-        let doors = Doors::new(&quake.boxes, |(x, z), set| {
-            let layer = if set == 1 { &terrain.boxes_a } else { &terrain.boxes_b };
-            (layer.bottom.at(x, z), layer.top.at(x, z))
+        let doors = Quakes::new(&quake, |layer, (x, z)| match layer {
+            Layer::BoxA => (terrain.boxes_a.bottom.at(x, z), terrain.boxes_a.top.at(x, z)),
+            Layer::BoxB => (terrain.boxes_b.bottom.at(x, z), terrain.boxes_b.top.at(x, z)),
+            Layer::Ground => (terrain.ground.at(x, z), terrain.ground.at(x, z)),
+            Layer::ChamberFloor => {
+                (terrain.chambers.floor.at(x, z), terrain.chambers.floor.at(x, z))
+            }
+            Layer::ChamberCeiling => {
+                (terrain.chambers.ceiling.at(x, z), terrain.chambers.ceiling.at(x, z))
+            }
         });
         for door in &doors.doors {
             // An entry with two zero heights has nowhere to go, and 264 of

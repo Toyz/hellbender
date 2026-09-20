@@ -177,6 +177,21 @@ impl Entry {
         }
     }
 
+    /// The same for a ground entry, whose flags line has four numbers
+    /// rather than five, so the watch kind is the last of them
+    /// (`0x410dcd`).
+    pub fn watches_ground(&self) -> Option<Watches> {
+        match self.flags.get(3)? {
+            3 if self.where_.len() >= 4 => Some(Watches::Cell {
+                row: self.watch[0],
+                column: self.watch[1],
+                set: self.watch[2],
+            }),
+            4 if self.watch[0] >= 0 => Some(Watches::Link(self.watch[0])),
+            _ => None,
+        }
+    }
+
     /// Seconds it waits after being thrown, before it starts to move
     /// (`0x411337`). 0 in every shipped entry.
     pub fn delay(&self) -> f32 {
