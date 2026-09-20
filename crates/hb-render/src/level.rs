@@ -68,6 +68,13 @@ pub struct Level {
     /// The sky texture, 64 x 64. `None` for the levels whose sky slot names a
     /// zero-length `.VOX`, which are the ones set in space.
     pub sky: Option<Image>,
+    /// The star field the space levels draw instead of a sky plane, empty
+    /// everywhere else. See [`stars`].
+    pub stars: Vec<Star>,
+    /// How many times the field is drawn: `space.vox` draws it twice, the
+    /// second pass with the axes swapped, and `stars.vox` once (`0x4506e0`,
+    /// `0x450500`).
+    pub star_passes: u8,
     /// The sky texture's own indices remapped into the level's palette.
     ///
     /// A sky palette shares almost nothing with its level's - `FLOAT.ACT` and
@@ -116,6 +123,14 @@ impl Level {
         [u as f32 / 65536.0, v as f32 / 65536.0]
     }
 
+    /// The altitude of the sky layer, in units: the `.LVL`'s
+    /// [line 30](../../../docs/formats/lvl.md), which the sky setup keeps
+    /// shifted up fifteen at `0x5055d4`. 127.5 in 24 levels, 95.0 in
+    /// `KREASH` and 65.0 in `JURASIC`.
+    pub fn sky_height(&self) -> f32 {
+        self.manifest.sky_height as f32 * 32768.0 / 65536.0
+    }
+
     /// The sky's scroll after `seconds`.
     pub fn sky_scroll(&self, seconds: f32) -> [f32; 2] {
         let [u, v] = self.sky_drift();
@@ -123,6 +138,42 @@ impl Level {
     }
 }
 
+
+/// One of the 2,000 points the space levels draw for a sky.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Star {
+    /// Where it is, as a 16.16 offset from the eye - the engine zeroes the
+    /// camera's position before transforming, so a star never moves.
+    pub at: [i32; 3],
+    /// Its palette index, 0 to 31, which is the grey ramp at the bottom of
+    /// every level palette: a star's brightness.
+    pub colour: u8,
+}
+
+/// The star field, as `0x44f6f0` generates it once at startup: x and z are
+/// `(rand() - 0x4000) << 8`, so +-64.0; y is `rand() << 8`, 0 to 128.0,
+/// negated for the second thousand so the field surrounds the eye; and the
+/// colour is `rand() >> 10`. Nothing about the stars is in a file, which is
+/// why a `.VOX` is zero bytes long - it only has to be named.
+///
+/// `rand` here is the C runtime's, which is what the game calls: the seed
+/// times 214013 plus 2531011, taking bits 16 to 30.
+pub fn stars() -> Vec<Star> {
+    let mut seed: u32 = 1;
+    let mut rand = || {
+        seed = seed.wrapping_mul(214013).wrapping_add(2531011);
+        ((seed >> 16) & 0x7fff) as i32
+    };
+    (0..2000)
+        .map(|i| {
+            let x = (rand() - 0x4000) << 8;
+            let y = rand() << 8;
+            let z = (rand() - 0x4000) << 8;
+            let colour = (rand() >> 10) as u8;
+            Star { at: [x, if i < 1000 { y } else { -y }, z], colour }
+        })
+        .collect()
+}
 
 /// An animated texture, with every name already resolved to a texture index.
 #[derive(Debug, Clone)]
@@ -223,6 +274,16 @@ impl Level {
             .slot("sky")
             .and_then(|(dir, file)| read(dir, file))
             .and_then(|b| Image::parse_guessed(&b).ok().flatten());
+        let vox = manifest
+            .slot("sky")
+            .map(|(_, file)| file.to_ascii_lowercase())
+            .filter(|file| file.ends_with(".vox"));
+        let star_passes = match vox.as_deref() {
+            Some("space.vox") => 2,
+            Some(_) => 1,
+            None => 0,
+        };
+        let stars = if star_passes > 0 { stars() } else { Vec::new() };
         let sky_remap = (|| {
             let (dir, name) = manifest.slot("sky_palette")?;
             let sky_palette = Palette::parse(&read(dir, name)?).ok()?;
@@ -473,6 +534,8 @@ impl Level {
             animations,
             sky,
             sky_remap,
+            stars,
+            star_passes,
             light: ramp("light"),
             fog: ramp("fog"),
             kinds,
@@ -518,6 +581,9 @@ impl Level {
             sun_ambient: (self.manifest.ambient as f32 / 65536.0).clamp(0.0, 1.0),
             ambient: (self.manifest.ambient >> 8).clamp(0, 255) as u8,
             sky_scroll: [0.0, 0.0],
+            sky_height: self.sky_height(),
+            stars: &self.stars,
+            star_passes: self.star_passes,
         }
     }
 

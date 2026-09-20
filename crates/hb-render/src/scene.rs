@@ -46,6 +46,13 @@ pub struct Scene<'a> {
     /// How far the sky texture has drifted, in the 256-unit texture space:
     /// [`crate::Level::sky_drift`] times the seconds elapsed.
     pub sky_scroll: [f32; 2],
+    /// The altitude of the sky layer in units, the `.LVL`'s line 30 - the
+    /// engine keeps it at `0x5055d4`. 127.5 in most levels.
+    pub sky_height: f32,
+    /// The star field, for the levels set in space.
+    pub stars: &'a [crate::level::Star],
+    /// How many passes of it to draw: 1 for `stars.vox`, 2 for `space.vox`.
+    pub star_passes: u8,
 }
 
 /// How far the engine draws: ten cells each way of the eye's cell. The ground
@@ -76,6 +83,7 @@ pub fn draw_world(target: &mut Target, scene: &Scene, camera: &Camera) -> Drawn 
         target.colour.fill(fog.shade(15, 1));
     }
     draw_sky(target, scene, camera);
+    draw_stars(target, scene, camera);
     let reach = REACH_CELLS;
     // The eye's cell before wrapping. The camera's coordinates are signed and
     // unbounded, so the walk has to start from the same frame the camera is
@@ -109,10 +117,12 @@ pub fn draw_world(target: &mut Target, scene: &Scene, camera: &Camera) -> Drawn 
     drawn
 }
 
-/// The sky: a textured plane at altitude 128.0, the engine's `0x44fd70`.
+/// The sky: a textured plane at the level's sky altitude, the engine's
+/// `0x44fd70`.
 ///
 /// The engine builds one quad at `(+-0x1fffff, 0, +-0x1fffff)` about the
-/// point `(0, [0x5055d4], 0)` - 128.0 - with the camera's offset from that
+/// point `(0, [0x5055d4], 0)` - the `.LVL`'s line 30, 127.5 in most levels -
+/// with the camera's offset from that
 /// point divided by 256, which projects exactly like a quad 8,192 units each
 /// way of the world's origin. Its corner coordinates span `+-0x3fffffff` about
 /// a scroll offset, so in world terms `u = scroll + 2x` and `v = scroll + 2z`
@@ -122,13 +132,13 @@ pub fn draw_world(target: &mut Target, scene: &Scene, camera: &Camera) -> Drawn 
 ///
 /// Drawn here by casting each pixel's ray onto the plane, which is what a
 /// perspective-correct rasteriser would produce from the quad. The engine
-/// draws the plane only while the eye is below 126.0 - the cloud layer is 2.0
-/// thick (`[0x5055d8]`), inside it the frame is cleared, and above it a
+/// draws the plane only while the eye is below the layer - it is 2.0 thick
+/// (`[0x5055d8]`), inside it the frame is cleared, and above it a
 /// different routine (`0x450d10`) draws the clouds from above, which this
 /// renderer does not have yet.
 fn draw_sky(target: &mut Target, scene: &Scene, camera: &Camera) {
-    const HEIGHT: f32 = 128.0;
     const LAYER: f32 = 2.0;
+    let height = scene.sky_height;
     const EXTENT: f32 = 8192.0;
     let (Some(sky), Some(remap)) = (scene.sky, scene.sky_remap) else {
         return;
@@ -139,11 +149,11 @@ fn draw_sky(target: &mut Target, scene: &Scene, camera: &Camera) {
     // into it first.
     let wrap = |v: i32| ((v << 6) >> 6) as f32 / 65536.0;
     let eye = [wrap(camera.x), camera.y as f32 / 65536.0, wrap(camera.z)];
-    if w == 0 || h == 0 || eye[1] >= HEIGHT - LAYER {
+    if w == 0 || h == 0 || eye[1] >= height - LAYER {
         return;
     }
     let ([sx, sy], [cx, cy]) = Camera::screen(target.width, target.height);
-    let above = HEIGHT - eye[1];
+    let above = height - eye[1];
     for y in 0..target.height {
         let vy = (cy - (y as f32 + 0.5)) / sy;
         for x in 0..target.width {
@@ -162,6 +172,46 @@ fn draw_sky(target: &mut Target, scene: &Scene, camera: &Camera) {
             let tx = ((u * w as f32 / 256.0).floor() as i64).rem_euclid(w as i64) as usize;
             let ty = ((v * h as f32 / 256.0).floor() as i64).rem_euclid(h as i64) as usize;
             target.colour[y * target.width + x] = remap[sky.pixels[ty * w + tx] as usize];
+        }
+    }
+}
+
+/// The stars, for the levels whose sky slot names a `.VOX`: the engine's
+/// `0x450500`, and `0x4506e0` for the second pass.
+///
+/// Each point is transformed by the camera's rotation alone - the engine
+/// zeroes the camera's position first (`0x450517`) - so the field never
+/// moves, however far the ship flies. A star is one pixel of its own palette
+/// index, which is the grey ramp at the bottom of the palette. The second
+/// pass draws the same list with the axes swapped and one negated
+/// (`0x450747`), which is how `space.vox` gets twice the stars out of one
+/// list.
+fn draw_stars(target: &mut Target, scene: &Scene, camera: &Camera) {
+    if scene.star_passes == 0 {
+        return;
+    }
+    let ([sx, sy], [cx, cy]) = Camera::screen(target.width, target.height);
+    for pass in 0..scene.star_passes {
+        for star in scene.stars {
+            let [x, y, z] = star.at;
+            let at = if pass == 0 { [x, y, z] } else { [z, -y, x] };
+            let view = camera.to_view(
+                camera.x.wrapping_add(at[0]),
+                camera.y.wrapping_add(at[1]),
+                camera.z.wrapping_add(at[2]),
+            );
+            if view[2] <= 0.0 {
+                continue;
+            }
+            let px = view[0] * sx / view[2] + cx;
+            let py = cy - view[1] * sy / view[2];
+            if px < 0.0 || py < 0.0 {
+                continue;
+            }
+            let (px, py) = (px as usize, py as usize);
+            if px < target.width && py < target.height {
+                target.colour[py * target.width + px] = star.colour;
+            }
         }
     }
 }

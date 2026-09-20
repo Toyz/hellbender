@@ -28,7 +28,7 @@ The containers and record layouts.
 | [The .POD archive](formats/pod.md) | solid | system/GAME.POD, system/STARTUP.POD |
 | [The .RAW image](formats/raw.md) | solid | ART\*.RAW, DATA\*.RAW |
 | [The .GLT lights, .QKE moving geometry and .TTY ground types](formats/scenery.md) | partial | DATA\*.GLT, DATA\*.QKE, DATA\*.TTY |
-| [The sky](formats/sky.md) | partial | ART\SKY.RAW, ART\NEWSKY.RAW, ART\JURASKYY.RAW, ART\*SK*.ACT |
+| [The sky](formats/sky.md) | solid | ART\SKY.RAW, ART\NEWSKY.RAW, ART\JURASKYY.RAW, ART\*SK*.ACT |
 | [The terrain grids](formats/terrain.md) | partial | DATA\*.RAW, DATA\*.CLR, DATA\*.RA0-RA5, DATA\*.CL0-CL2 |
 
 ## Engine

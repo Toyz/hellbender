@@ -1,8 +1,8 @@
 ---
 title: The sky
-status: partial
+status: solid
 covers: ART\SKY.RAW, ART\NEWSKY.RAW, ART\JURASKYY.RAW, ART\*SK*.ACT
-worklog: 21, 25, 30
+worklog: 21, 25, 30, 49
 ---
 
 # The sky
@@ -67,16 +67,20 @@ sky texture index  ->  minus 48  ->  sky palette RGB  ->  level .MAP  ->  frame 
 Rendering `JURASIC` that way gives a red-orange sky over dark rock, which is
 what its palette ramp says it should be.
 
-## How the engine draws it: a ceiling at 128
+## How the engine draws it: a ceiling at the level's own altitude
 
-The sky is not a dome or a cylinder. It is a flat, textured plane at altitude
-128.0 - half a unit above the highest the terrain goes - drawn by `0x44fd70`:
+The sky is not a dome or a cylinder. It is a flat, textured plane just above
+the highest the terrain goes, drawn by `0x44fd70`:
 
 - The routine sets up a transform about `(0, [0x5055d4], 0)`, where
-  `[0x5055d4]` is 128.0, then divides the camera's offset from that point by
-  256 (`0x44fe2b`) and builds one quad at `(+-0x1fffff, 0, +-0x1fffff)`. Scaling
-  the camera and the geometry together does not change a projection, so this
-  is a quad 8,192 units each way of the world's origin, at y = 128.
+  `[0x5055d4]` is the level's sky altitude - [line 30](lvl.md) of the `.LVL`
+  shifted up fifteen, which is 127.5 in 24 levels, 95.0 in `KREASH` and 65.0
+  in `JURASIC`. The 128.0 sitting in `0x5055d4` in the executable's data is
+  only the value before a level loads. It then divides the camera's offset
+  from that point by 256 (`0x44fe2b`) and builds one quad at
+  `(+-0x1fffff, 0, +-0x1fffff)`. Scaling the camera and the geometry together
+  does not change a projection, so this is a quad 8,192 units each way of the
+  world's origin, at the sky altitude.
 - Its corners' texture coordinates are a scroll offset `+-0x3fffffff`, so in
   world terms `u = scroll + 2x`, `v = scroll + 2z`, in the 256-unit texture
   space: one tile of the 64 x 64 texture every 128 units, about two units a
@@ -88,14 +92,22 @@ The sky is not a dome or a cylinder. It is a flat, textured plane at altitude
 - It is drawn at full intensity (`0x48a510(0xffff)`), with no fog.
 
 The background routine at `0x451180` chooses by altitude. `[0x5055d8]` is 2.0,
-the cloud layer's half thickness:
+the layer's half thickness, and nothing ever writes it:
 
 ```
-eye below 126.0             the plane, seen from below (0x44fd70), if the
+eye below height - 2.0      the plane, seen from below (0x44fd70), if the
                             INI's skyTextureFlag is set; a plain one if not
-eye 126.0 to 130.0          the frame is cleared - inside the cloud
-eye above 130.0             0x450d10, the clouds from above
+within 2.0 of the height    the frame is cleared - inside the cloud
+eye above height + 2.0      0x450d10, the clouds from above
 ```
+
+`0x450d10` is the same plane from the other side: it advances the same scroll
+by the same line 41 drift (`0x450d38`) and sets up about the same
+`(0, [0x5055d4], 0)`.
+
+Below the layer with nothing to draw the frame is simply cleared: if the eye
+is at or under zero and the level has neither box cells nor chambers,
+`0x451180` fills with index -1 and returns before choosing at all.
 
 When a level has no box cells and no chambers, `0x44fd70` also draws four
 walls from the plane's edges down to a 10-unit square under the eye.
@@ -103,6 +115,32 @@ walls from the plane's edges down to a 10-unit square under the eye.
 `hb-render` casts each pixel's ray onto the plane, which is what a
 perspective-correct rasteriser makes of the quad, and draws nothing past the
 quad's edge.
+
+## The space levels draw stars instead
+
+The sky setup compares the name from line 11 against `stars.vox` and
+`space.vox` (`0x44f783`, `0x44f7bb`) and sets `0x59d144` to 1 or 2; either way
+it also blacks out the sixteen palette entries at `0x5b3620`, so a space level
+has no gradient band. The background routine then calls `0x450500` for
+`stars.vox` and `0x4506e0` for `space.vox` in place of the plane.
+
+Both draw the same fixed list of points at `0x655e40` with their own colours
+from `0x65bc30`. The camera's position is zeroed before the transform
+(`0x450517`) and only its rotation is used, so the stars are infinitely far
+away and do not move as the ship flies.
+
+The list is 2,000 stars, generated once at startup by `0x44f6f0`: x and z
+are `(rand() - 0x4000) << 8`, which is +-64.0, y is `rand() << 8`, 0 to
+128.0, negated for the second thousand so the field surrounds the eye, and
+the colour is `rand() >> 10`, 0 to 31. Nothing about them is in a file -
+which is why a `.VOX` is zero bytes long. It only has to be named.
+
+`0x4506e0` is `0x450500` and then a second pass over the same list with the
+axes swapped and one negated (`0x450747`), so `space.vox` is the same star
+field drawn twice over, twice as dense.
+
+`ROID`, `ROID2` and `SHIP` name `space.vox`; `ROID3`, `ROID4` and `SHIP2`
+name `stars.vox`.
 
 ## Notes
 
@@ -117,7 +155,7 @@ the level's palette. The two only meet through the `.MAP`.
 
 ## Unknown
 
-Why the index bias is 48. What `0x450d10` draws above the clouds, and what the
-space levels' routines (`0x450500`, `0x4506e0`, chosen by `[0x59d144]`) draw.
-What `.LVL` line 42 does. `"Sky clip overflow!"` belongs to the polygon clipper
-at `0x4141a0`, which clips ground polygons against altitude 128.
+Why the index bias is 48 - it holds for all twenty levels with a sky texture
+and is consistent enough to rely on, but nothing says where the number comes
+from. `"Sky clip overflow!"` belongs to the polygon clipper at `0x4141a0`,
+which clips ground polygons against altitude 128.
