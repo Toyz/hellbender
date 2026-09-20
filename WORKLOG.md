@@ -50,3 +50,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 37 | [The player's guns, and the energy that feeds them](worklog/0037-the-players-guns-and-the-energy-that-feeds-them.md) | 2026-09-18 | decomp,engine,port |
 | 38 | [Missiles, and the lock](worklog/0038-missiles-and-the-lock.md) | 2026-09-18 | decomp,engine,port |
 | 39 | [Shots are models](worklog/0039-shots-are-models.md) | 2026-09-20 | decomp,render,port |
+| 40 | [Explosions](worklog/0040-explosions.md) | 2026-09-20 | decomp,engine,render,port |

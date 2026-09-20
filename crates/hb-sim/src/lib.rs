@@ -7,6 +7,7 @@
 
 pub mod combat;
 pub mod course;
+pub mod explosion;
 pub mod flight;
 pub mod flyer;
 pub mod mission;

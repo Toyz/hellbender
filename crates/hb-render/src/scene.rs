@@ -703,6 +703,37 @@ pub const GRID_SIDE: usize = SIDE;
 ///
 /// The engine's own shot is a model (`bullet.bin` is in STARTUP.POD) and this
 /// is a stand-in until weapons are read properly.
+/// A square facing the eye, textured, with texel 0 left clear: the puffs of
+/// an explosion (`0x4771e0`), which lays its corners out 4 to 251 across the
+/// texture and turns them by the view's angles.
+pub fn draw_sprite(
+    target: &mut Target,
+    scene: &Scene,
+    camera: &Camera,
+    position: [f32; 3],
+    half: f32,
+    texture: &Image,
+) {
+    // The eye's right and up in the world, so the square faces it.
+    let right = camera.to_world_direction([1.0, 0.0, 0.0]);
+    let up = camera.to_world_direction([0.0, 1.0, 0.0]);
+    let corner = |sx: f32, sy: f32| -> Option<Vertex> {
+        let at: [f32; 3] =
+            std::array::from_fn(|k| position[k] + right[k] * sx * half + up[k] * sy * half);
+        let fixed = |v: f32| (v * 65536.0) as i32;
+        let (x, y, depth) = project_onto(camera, target.width, target.height, fixed(at[0]), fixed(at[1]), fixed(at[2]))?;
+        let (u, v) = ((sx * 0.5 + 0.5) * (UV_HI - UV_LO) + UV_LO, (0.5 - sy * 0.5) * (UV_HI - UV_LO) + UV_LO);
+        Some(Vertex { x, y, depth, u, v, light: 255.0 })
+    };
+    let corners: Option<Vec<Vertex>> =
+        [(-1.0, 1.0), (1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)].iter().map(|&(x, y)| corner(x, y)).collect();
+    let Some(corners) = corners else { return };
+    let shade = Shade { index_zero_is_clear: true, ..shade_for(scene, camera) };
+    for i in 1..3 {
+        target.triangle([corners[0], corners[i], corners[i + 1]], texture, &shade);
+    }
+}
+
 pub fn draw_spark(target: &mut Target, camera: &Camera, position: [f32; 3], index: u8) {
     let at = [
         (position[0] * 65536.0) as i32,

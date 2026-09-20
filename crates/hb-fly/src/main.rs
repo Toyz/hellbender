@@ -755,6 +755,20 @@ fn main() -> Result<(), String> {
         for (at, colour) in sparks {
             hb_render::scene::draw_spark(&mut target, &flight.camera, at, colour);
         }
+        // The explosions, each a square facing the eye on its own frame.
+        for puff in &battle.blasts.puffs {
+            let Some(frame) = puff.frame() else { continue };
+            if let Some(Some(texture)) = level.blast.get(frame) {
+                hb_render::scene::draw_sprite(
+                    &mut target,
+                    &scene,
+                    &flight.camera,
+                    near(puff.position),
+                    puff.size,
+                    texture,
+                );
+            }
+        }
         // Brackets on the locked target. The engine's lock display is not
         // read; this only shows what is locked.
         if let Some(i) = battle.guns.lock {

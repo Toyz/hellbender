@@ -100,6 +100,8 @@ pub struct Level {
     pub shot_mesh: Vec<Option<usize>>,
     /// The Valkyrie Cannon's three muzzle flashes.
     pub muzzle_mesh: [Option<usize>; 3],
+    /// The explosion's frames, `blast1.raw` upward.
+    pub blast: Vec<Option<Image>>,
     /// The powerups the level's `.PUP` lays out.
     pub powerups: Vec<text::PlacedPowerup>,
 }
@@ -399,6 +401,11 @@ impl Level {
         let muzzle_mesh = hb_sim::weapons::MUZZLE
             .map(|name| load_shot(name, &mut meshes, &mut mesh_textures, &mut mesh_radius));
 
+        // The explosion's sixteen frames, `blast1.raw` to `blast16.raw`.
+        let blast: Vec<Option<Image>> = (1..=hb_sim::explosion::FRAMES)
+            .map(|n| read("art", &format!("blast{n}.raw")).and_then(|b| Image::parse_guessed(&b).ok().flatten()))
+            .collect();
+
         let powerups = manifest
             .slot("powerups")
             .and_then(|(dir, file)| read(dir, file))
@@ -451,6 +458,7 @@ impl Level {
             .collect();
 
         Ok(Level {
+            blast,
             shot_mesh,
             muzzle_mesh,
             mesh_flipbooks,

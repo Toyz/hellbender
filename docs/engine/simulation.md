@@ -510,6 +510,24 @@ uses for changing level. hb-fly's floor for the loader's height check is the
 top of the solid, so a point below y = 0 is left where it is rather than put
 on the tunnel floor.
 
+## Explosions
+
+`0x47f3f0` makes one out of eleven puffs into the effect pool at `0x612230`,
+sixteen slots of 32 bytes: ten of twice its size scattered within it, and one
+of four times at the centre (`0x476f90` takes the first free slot, or writes
+over the first). A puff keeps a position, a size, a clock and a rate - a
+quarter to three quarters of real time, drawn at random - and a two-second
+life it never reaches, because `0x4771e0` drops it once its clock passes
+sixteen frames of a sixteenth of a second each. It is drawn as a square facing
+the eye, textured `blast1.raw` to `blast16.raw`, its corners a size out.
+
+The player's death is one of these two units across, and then the loadout goes
+back to what it started with (`0x465560`, `0x464850`, `0x464998`, which are
+being shot down, flying into the ground and flying into a ceiling). What the
+engine does for a destroyed actor is a different path - `0x40cb3c` spawns an
+actor of its own (`0x40c7d0`) - and is not read; the port uses the puffs
+there too, at the type's radius.
+
 ## Powerups
 
 They live in an array at `0x66fd60`, 24 bytes each, at most 299: the

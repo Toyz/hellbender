@@ -33,7 +33,8 @@ hb - inspect Hellbender's data
   hb look <level> <n> <out.png> [distance] [--powerup K] [--at S]
                                     placement n, framed from the south and above;
                                     --powerup draws powerup kind K there instead,
-                                    --at sets the clock for flipbook textures
+                                    --at sets the clock for flipbook textures,
+                                    --blast draws explosion frame N there
   hb font <out.png> [text]          a specimen of the front end's typeface
   hb demo <n> <seconds> <out.png>   a frame of a recorded attract-mode flight
   hb check                          parse everything and report what fails
@@ -484,6 +485,12 @@ fn cmd_look(name: &str, index: &str, out: &Path, rest: &[&str]) -> Result<(), St
     if let Some(i) = rest.iter().position(|a| *a == "--powerup") {
         rest.drain(i..(i + 2).min(rest.len()));
     }
+    // `--blast N` draws explosion frame N where the placement stands.
+    let mut blast: Option<usize> = None;
+    if let Some(i) = rest.iter().position(|a| *a == "--blast") {
+        blast = Some(rest.get(i + 1).and_then(|v| v.parse().ok()).ok_or("--blast takes a frame, 0 to 15")?);
+        rest.drain(i..(i + 2).min(rest.len()));
+    }
     // `--at S` sets the clock that turns flipbook textures.
     let mut seconds = 0.0f32;
     if let Some(i) = rest.iter().position(|a| *a == "--at") {
@@ -525,6 +532,17 @@ fn cmd_look(name: &str, index: &str, out: &Path, rest: &[&str]) -> Result<(), St
         );
     }
     let drawn = hb_render::draw_world(&mut target, &scene, &camera);
+    if let Some(frame) = blast {
+        let texture = level
+            .blast
+            .get(frame)
+            .and_then(Option::as_ref)
+            .ok_or("that explosion frame did not load")?;
+        let at = [p.x, p.y, p.z].map(|v| v as f32 / 65536.0);
+        let size = (kind.radius() as f32 / 65536.0).clamp(0.5, 8.0) * 2.0;
+        hb_render::scene::draw_sprite(&mut target, &scene, &camera, at, size, texture);
+        println!("explosion frame {frame} at size {size:.1}");
+    }
     let rgb = target.to_rgb(&level.palette);
     std::fs::write(out, png::rgb(w, h, &rgb)).map_err(|e| e.to_string())?;
     println!(

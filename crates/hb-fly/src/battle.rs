@@ -6,6 +6,7 @@ use hb_formats::text::Placement;
 use hb_render::Level;
 use hb_sim::combat::{self, Health, HitVolume, Pilot, Shot, Side, Stop};
 use hb_sim::flyer::{Flyer, Target};
+use hb_sim::explosion::Blasts;
 use hb_sim::powerup::{self, Field, Stores};
 use hb_sim::weapons::{Guns, Pose, Volley};
 use hb_sim::turret::{Launch, Missile, Rng, Struck, Turret};
@@ -55,6 +56,8 @@ pub struct Battle {
     pub field: Field,
     pub stores: Stores,
     pub guns: Guns,
+    /// The explosions burning (`hb_sim::explosion`).
+    pub blasts: Blasts,
     /// How long the afterburner's tank has been empty.
     empty_for: f32,
     /// The powerups the player was inside last frame.
@@ -97,6 +100,7 @@ impl Battle {
             field: Field::default(),
             stores: Stores::default(),
             guns: Guns::default(),
+            blasts: Blasts::default(),
             empty_for: 0.0,
             touching: Vec::new(),
             destroyed: 0,
@@ -129,6 +133,7 @@ impl Battle {
     ) -> Vec<Noise> {
         let mut noises = Vec::new();
         self.pilot.since_hit += dt;
+        self.blasts.step(dt);
 
         // Turrets think whether or not anyone is near.
         let target = self.pilot.alive().then_some(player);
@@ -256,6 +261,13 @@ impl Battle {
             let scaled = damage * combat::multiplier(&level.kinds[original], kind);
             if self.health[i].take(scaled) {
                 self.destroyed += 1;
+                // The port's own: an explosion the size of what was
+                // destroyed. The engine spawns an actor of its own for this
+                // (`0x40c7d0`), which is not read; the puffs are the
+                // engine's (`0x47f3f0`).
+                let radius = level.kinds[original].radius() as f32 / 65536.0;
+                let at = combat::position_of(&live[i]);
+                self.blasts.burst(at, radius.clamp(0.5, 8.0), &mut self.rng);
                 // What it leaves behind (`0x40cc3c`), before it becomes its
                 // wreck.
                 if let Some(k) = powerup::drop_for(&level.kinds[original], &mut self.rng) {
@@ -272,6 +284,12 @@ impl Battle {
             noises.push(Noise::PlayerHit(self.rng.below(5)));
             if self.pilot.take(player_damage) {
                 self.deaths += 1;
+                // The engine's own death: an explosion two units across at
+                // the ship, and the loadout back to what it started with
+                // (`0x465560`).
+                self.blasts.burst(player, 2.0, &mut self.rng);
+                self.stores = Stores::default();
+                self.guns = Guns::default();
                 noises.push(Noise::Died);
             }
         }

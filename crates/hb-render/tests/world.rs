@@ -157,3 +157,23 @@ fn shots_are_drawn_as_their_models() {
     let drawn = hb_render::draw_world(&mut target, &scene, &camera);
     assert_eq!(drawn.models, 1, "the shot should be drawn");
 }
+
+#[test]
+fn an_explosion_puff_draws() {
+    let Some(level) = level("hoth") else { return };
+    let texture = level.blast[2].as_ref().expect("blast3.raw");
+    let (w, h) = Target::MODE_200;
+    let mut target = Target::new(w, h);
+    target.clear(0);
+    let camera = Camera::looking_at(64 << 19, 40 << 16, 64 << 19, Angle(0));
+    let scene = level.scene();
+    let eye = [
+        camera.x as f32 / 65536.0,
+        camera.y as f32 / 65536.0,
+        camera.z as f32 / 65536.0,
+    ];
+    let at = [eye[0], eye[1], eye[2] + 10.0];
+    hb_render::scene::draw_sprite(&mut target, &scene, &camera, at, 3.0, texture);
+    let lit = target.colour.iter().filter(|&&c| c != 0).count();
+    assert!(lit > 200, "only {lit} pixels");
+}
