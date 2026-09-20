@@ -372,6 +372,7 @@ fn main() -> Result<(), String> {
     // rewritten from them each frame), and the fight.
     let (mut flight, mut mission, mut followers, mut live, mut battle, mut colours) = begin(&level);
     let mut doors = doors_of(&level);
+    let mut hoverers = hoverers_for(&level);
     println!(
         "sim: {} of {} objects follow a course, {} doors, {} moving patches of ground",
         followers.len(),
@@ -457,6 +458,7 @@ fn main() -> Result<(), String> {
             play_music(&level);
             (flight, mission, followers, live, battle, colours) = begin(&level);
             doors = doors_of(&level);
+            hoverers = hoverers_for(&level);
             last_eye = eye_of(&flight.camera);
             ended = 0.0;
             dying = None;
@@ -702,6 +704,7 @@ fn main() -> Result<(), String> {
                     println!("shot down ({} so far) - starting again", battle.deaths);
                     (flight, mission, followers, live, battle, colours) = begin(&level);
                     doors = doors_of(&level);
+                    hoverers = hoverers_for(&level);
                     last_eye = eye_of(&flight.camera);
                     dying = None;
                     ended = 0.0;
@@ -790,6 +793,18 @@ fn main() -> Result<(), String> {
             if *left <= 0.0 {
                 flash = None;
             }
+        }
+
+        for (i, hover, radius) in &mut hoverers {
+            if battle.health[*i].destroyed
+                || !hb_sim::combat::in_range(eye, hb_sim::combat::position_of(&live[*i]))
+            {
+                continue;
+            }
+            let (at, heading) = hover.step(dt, *radius);
+            let placed = &mut live[*i];
+            [placed.x, placed.y, placed.z] = at.map(|v| (v * 65536.0) as i32);
+            placed.heading = heading as u16;
         }
 
         for (i, follower) in &mut followers {
@@ -1041,13 +1056,33 @@ fn followers_for(level: &Level) -> Vec<(usize, hb_sim::Follower)> {
         .enumerate()
         .filter_map(|(i, p)| {
             let kind = level.kinds.get(p.kind)?;
-            // The flyers' routine does not read the course.
-            if battle::FLYING.contains(&kind.class()) {
+            // An actor runs one routine, and the flyers' and the hovering
+            // class's do not read the course.
+            if battle::FLYING.contains(&kind.class()) || kind.class() == 26 {
                 return None;
             }
             let c = kind.course;
             let course = level.courses.get(usize::try_from(c).ok()?)?;
             Some((i, hb_sim::Follower::new(course, [p.x, p.y, p.z])?))
+        })
+        .collect()
+}
+
+/// Class 26, the things that hover and turn: `0x40ab80` bobs them about
+/// where the level put them.
+fn hoverers_for(level: &Level) -> Vec<(usize, hb_sim::hover::Hover, f32)> {
+    level
+        .placements
+        .iter()
+        .enumerate()
+        .filter_map(|(i, p)| {
+            let kind = level.kinds.get(p.kind)?;
+            if kind.class() != 26 {
+                return None;
+            }
+            let at = [p.x, p.y, p.z].map(|v| v as f32 / 65536.0);
+            let radius = kind.radius() as f32 / 65536.0;
+            Some((i, hb_sim::hover::Hover::new(at, p.heading as f32), radius))
         })
         .collect()
 }

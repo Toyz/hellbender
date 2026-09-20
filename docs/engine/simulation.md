@@ -78,10 +78,33 @@ class   types   routine    what
     9     454   -          bunkers and domes: visibility only
    10     118   0x408c30   turret
    47      97   0x421240   course follower (phase 0 read, see above)
+   26       ?   0x40ab80   hovers: bobs and turns on the spot, see below
    25       0   0x40aa90   rises from the ground playing missile.wav; unused
 ```
 
 The other classes' routines are listed by the table and not yet read.
+
+Counted over placements rather than types, the classes that matter are 0 with
+1,874, 9 with 1,436, 10 with 1,378, 7 with 597, 26 with 523, 53 with 511 and
+47 with 285. The flyers - 7, 53, 56, 59, 60 - come to 1,673 between them.
+
+## Class 26 hovers
+
+`0x40ab80` is four lines long and drives 523 of the placements: the asteroids,
+the Death Ankhs, the floating stones. The first frame it copies the actor's
+position into the record at `+0x4c` and marks the record done. Every frame
+after it adds the frame time over eight to a phase at `+0x68` and to the
+actor's heading, and sets the actor's altitude to the remembered one plus the
+sine of the phase times a quarter of its type's radius.
+
+The frame time over eight is 8,192 of the 16-bit circle a second, so both the
+bob and the turn come round in eight seconds, and the bob is a quarter of the
+actor's own size. The sine is `0x429ea0`: a 256-entry table at `0x66f320`
+indexed by the angle's high byte and interpolated on its low one.
+
+Its jump table entry skips the visibility computation the neighbouring
+classes run (`0x40c305` jumps past it), but the actor loop's 80-unit test
+still applies, so one far away holds still. `hb_sim::hover` is this.
 
 An actor thinks only while it is **within 80 units of the eye on both x and
 z**. The routine that runs a class (`0x40bb00`) has no range test itself, but
@@ -649,9 +672,14 @@ weapons to spend them on yet.
 ## Unknown
 
 Everything past phase 0 of the course follower: speeds, curve fitting, what
-happens at the end of a course, how the seven logic routines differ. The other
-63 behaviour classes, including the flyers (53, 56, 60) that make up most of
-what moves. The player's rate of fire. What happens at death, and what follows
-a won or lost mission. How the ship collides with the ground and boxes.
-How the engine picks which shot model to draw. Line 2 of the type record and
-line 7's first two values.
+happens at the end of a course, how the seven logic routines differ.
+
+The behaviour classes still unread, by how many placements they drive: 1 with
+109 - the bottom gun turrets and floating guns, which aim at the player, so
+another shooter - 14 with 96, 17 with 54, 55 with 49, 58 with 34, 18 with 29,
+3 with 15, 35 with 12, and the handful of scripted ones: 50 to 52 for the
+shuttle and its escort, 62 to 64 for Nyx. Classes 56, 59 and 60 borrow the
+class-53 flyer in this port; their own routines are not read.
+
+What follows a won or lost mission. Line 2 of the type record and line 7's
+first two values. Where a sound is, which lives in the mixer.

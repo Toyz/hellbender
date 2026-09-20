@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-53 entries: audio 2, build 1, content 4, decomp 30, engine 19, format 27, port 42, render 21, test 3, tooling 3, ui 1, world 10.
+54 entries: audio 2, build 1, content 4, decomp 31, engine 20, format 27, port 43, render 21, test 3, tooling 3, ui 1, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -64,3 +64,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 51 | [What opens a door](worklog/0051-what-opens-a-door.md) | 2026-09-20 | decomp,engine |
 | 52 | [The doors open](worklog/0052-the-doors-open.md) | 2026-09-20 | port,engine |
 | 53 | [The ground moves too](worklog/0053-the-ground-moves-too.md) | 2026-09-20 | decomp,port |
+| 54 | [The things that hover](worklog/0054-the-things-that-hover.md) | 2026-09-20 | decomp,engine,port |
