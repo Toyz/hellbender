@@ -62,6 +62,10 @@ pub struct Battle {
     empty_for: f32,
     /// The powerups the player was inside last frame.
     touching: Vec<usize>,
+    /// Where the player's shots and missiles hit the world this frame. The
+    /// engine hands each of these to the quake code, which is what opens a
+    /// door (`0x410b80`).
+    pub ground_hits: Vec<[f32; 3]>,
     pub destroyed: usize,
     pub deaths: usize,
     rng: Rng,
@@ -97,6 +101,7 @@ impl Battle {
             shots: Vec::new(),
             missiles: Vec::new(),
             pilot: Pilot::default(),
+            ground_hits: Vec::new(),
             field: Field::default(),
             stores: Stores::default(),
             guns: Guns::default(),
@@ -185,6 +190,8 @@ impl Battle {
         let health = &self.health;
         let mut hits: Vec<(usize, f32, i32)> = Vec::new();
         let mut player_damage = 0.0f32;
+        self.ground_hits.clear();
+        let mut ground_hits: Vec<[f32; 3]> = Vec::new();
         for flying in &mut self.shots {
             let shot = &mut flying.shot;
             let stop = combat::step_shot(
@@ -199,6 +206,9 @@ impl Battle {
             match stop {
                 Some(Stop::Object(i)) => hits.push((i, shot.damage, shot.kind)),
                 Some(Stop::Player) if self.pilot.alive() => player_damage += shot.damage,
+                Some(Stop::Ground) if shot.side == Side::Player => {
+                    ground_hits.push(shot.position)
+                }
                 _ => {}
             }
             if stop.is_some() {
@@ -276,12 +286,17 @@ impl Battle {
                             hits.push((i, m.damage, m.kind));
                             m.age = f32::MAX;
                         }
+                        Some(Struck::Ground) => {
+                            ground_hits.push(m.position);
+                            m.age = f32::MAX;
+                        }
                         Some(_) => m.age = f32::MAX,
                         None => {}
                     }
                 }
             }
         }
+        self.ground_hits = ground_hits;
         for (at, damage, kind) in scorched {
             for i in combat::splash(at, hb_sim::turret::SUPER_REACH, live, |i| !self.health[i].destroyed) {
                 hits.push((i, damage, kind));

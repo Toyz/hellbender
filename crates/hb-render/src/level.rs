@@ -111,6 +111,8 @@ pub struct Level {
     pub blast: Vec<Option<Image>>,
     /// The powerups the level's `.PUP` lays out.
     pub powerups: Vec<text::PlacedPowerup>,
+    /// The level's `.QKE`: the doors and the ground that moves.
+    pub quake: hb_formats::quake::Quake,
 }
 
 impl Level {
@@ -467,6 +469,13 @@ impl Level {
             .map(|n| read("art", &format!("blast{n}.raw")).and_then(|b| Image::parse_guessed(&b).ok().flatten()))
             .collect();
 
+        let quake = manifest
+            .slot("quake")
+            .and_then(|(dir, file)| read(dir, file))
+            .map(|b| hb_formats::quake::parse(&b).map_err(|e| e.to_string()))
+            .transpose()?
+            .unwrap_or_default();
+
         let powerups = manifest
             .slot("powerups")
             .and_then(|(dir, file)| read(dir, file))
@@ -527,6 +536,7 @@ impl Level {
             powerup_mesh,
             powerup_size,
             powerups,
+            quake,
             mips,
             wreck_mesh,
             destroy_sound,

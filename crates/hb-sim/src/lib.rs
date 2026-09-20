@@ -14,6 +14,7 @@ pub mod flight;
 pub mod flyer;
 pub mod mission;
 pub mod powerup;
+pub mod quake;
 pub mod turret;
 pub mod weapons;
 

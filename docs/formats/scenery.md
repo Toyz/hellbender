@@ -142,13 +142,23 @@ state byte through a six-way jump table at `0x411474`:
 
 Both of the cell's altitude words move by the same step, so the box keeps its
 thickness and translates; the record remembers where it is at `+0x44` and
-`+0x48`. The step comes from `0x410e40`: the distance left to travel divided
-by the number of frames the move is allowed, which is the motion line's
-second number (going out) or fourth (coming back) divided by the frame time.
-**So those two numbers are durations in seconds, not rates** - a door takes
-2.0 or 3.0 seconds whatever its height - and the third and fifth are the
-pauses at each end. The first selects which of the box's two altitudes is
-compared against which height.
+`+0x48`. The step comes from `0x410e40`: the travel, divided by the number of
+frames the move is allowed, which is the motion line's second number (going
+out) or fourth (coming back) divided by the frame time. **So those two
+numbers are durations in seconds, not rates** - a door takes 2.0 or 3.0
+seconds whatever its height - and the third and fifth are the pauses at each
+end. The travel itself is the first height less the second less the box's
+thickness, so it is the same both ways.
+
+The two heights are where the box's two edges end up: moving out raises the
+**top** until it reaches the first height (`0x411026`), and moving back
+lowers the **bottom** until it reaches the second (`0x4111c2`). The shipped
+levels park a box at one end or the other - `FLOAT`'s doors sit with their
+bottom at the second height and rise, while some of `HOTH`'s sit with their
+top already at the first, so their first move arrives at once and what they
+really do is close. The motion line's first number is not part of this: it
+only picks which edge the switch code compares when it asks whether a box
+has moved (`0x410fb9`).
 
 ### Switches and the boxes that watch them
 
@@ -181,6 +191,28 @@ become one bit each where the value is 1, and the fifth is the four-bit
 field above, shifted up three. The first number becomes a mode byte, which
 the resting state tests against 1.
 
+### What starts one
+
+Shooting it. A projectile's impact calls `0x410b80` with the point it hit,
+and that asks the box list (`0x4107a0`) and the ground list (`0x4108a0`) for
+anything there. A box quake answers if it is resting, if the flags line's
+fifth number is 1 - 422 of the live entries - and if the point is between the
+altitudes it is currently at; the entry then goes to the about-to state with
+its timer cleared, and the cycle above runs. Both call sites guard on the
+shot belonging to the player whose id is in `0x503c68`, which is 0 in a
+single-player game.
+
+A moving box quake pulls others along with it. While it steps, it looks for
+the ground quakes that watch it - by cell or by id - and puts each of them
+into the about-to state as well (`0x410da0`), so one shot can move a door and
+the ground under it together.
+
+Two more ways in exist and are dead: `0x410bc0` and `0x410c10` start every
+entry whose flags line's fifth number is 2 and whose watch id matches a
+number passed in - 60 live entries are waiting for that - but nothing in the
+shipped executable calls either. So the fifth number is a taxonomy: 1 is
+shot, 2 is called by id and never is, 3 watches a cell, 4 watches an id.
+
 `hb_formats::quake` parses all 26 files to their last line.
 
 ## .TTY - the ground type list
@@ -199,9 +231,8 @@ What the eight numbers of a `.GLT` record set, and what puts a light out:
 the unlit and broken textures are loaded and indexed and the load-time scan
 finds the faces wearing them, but the code that swaps one texture for
 another has not been read, nor has what the list at `0x5cafe0` is for. In
-`.QKE`: what throws a switch in the first place - the state machine and the
-link from switch to door are read, but not what puts a switch out of its
-resting state - and what the ground quake's kinds 1 and 3 do differently.
+`.QKE`: what the ground quake's kinds 1 and 3 do differently, and what the
+flags line's first number - the mode byte the resting state tests - selects.
 The record shape of `.TTY`, which no shipped level uses.
 
 A ground quake and a box quake turn out to share their whole record shape;

@@ -371,7 +371,13 @@ fn main() -> Result<(), String> {
     // placements that follow a course (`live` is the copy the renderer draws,
     // rewritten from them each frame), and the fight.
     let (mut flight, mut mission, mut followers, mut live, mut battle, mut colours) = begin(&level);
-    println!("sim: {} of {} objects follow a course", followers.len(), live.len());
+    let mut doors = doors_of(&level);
+    println!(
+        "sim: {} of {} objects follow a course, {} doors",
+        followers.len(),
+        live.len(),
+        doors.doors.len()
+    );
 
     // Combat. The laser sound is the one the engine names; a destroyed
     // object plays its type's own destroy sound, falling back to a blast.
@@ -410,6 +416,18 @@ fn main() -> Result<(), String> {
         let dt = (now - last).as_secs_f32().min(0.1);
         last = now;
 
+        // The doors, before anything borrows the terrain to read it: a moved
+        // box is written straight back into the grid, so the renderer and the
+        // collision both see it where it now is.
+        for moved in doors.step(dt) {
+            move_box(&mut level.terrain, &moved);
+        }
+        for played in std::mem::take(&mut doors.sounds) {
+            if let (Some(music), Some(s)) = (music.as_ref(), sound(&played.name.to_ascii_lowercase())) {
+                music.effect(&s, 0.6);
+            }
+        }
+
         let tab = window.is_key_down(Key::Tab);
         // The port's own: after a mission ends, three seconds with the result
         // on the HUD, then the next level if it was won and this one again
@@ -437,6 +455,7 @@ fn main() -> Result<(), String> {
             describe(&level);
             play_music(&level);
             (flight, mission, followers, live, battle, colours) = begin(&level);
+            doors = doors_of(&level);
             last_eye = eye_of(&flight.camera);
             ended = 0.0;
             dying = None;
@@ -609,6 +628,17 @@ fn main() -> Result<(), String> {
         } else {
             battle.step(&level, &mut live, [0.0, 1.0e6, 0.0], [0.0; 3], None, dt, &|_| false, &ground)
         };
+        // A shot that hit the world opens any door it landed in
+        // (`0x410b80`): the cell it hit, and its altitude in the terrain's
+        // own words.
+        for hit in std::mem::take(&mut battle.ground_hits) {
+            let cell = hb_world::grid::Cell::containing(
+                (hit[0] * 65536.0) as i32,
+                (hit[2] * 65536.0) as i32,
+            );
+            doors.shot((cell.x, cell.z), hit[1] * hb_sim::quake::WORD);
+        }
+
         for noise in noises {
             let (name, volume) = match noise {
                 battle::Noise::Destroyed(kind) => {
@@ -670,6 +700,7 @@ fn main() -> Result<(), String> {
                 Some(hb_sim::death::Wants::Over) => {
                     println!("shot down ({} so far) - starting again", battle.deaths);
                     (flight, mission, followers, live, battle, colours) = begin(&level);
+                    doors = doors_of(&level);
                     last_eye = eye_of(&flight.camera);
                     dying = None;
                     ended = 0.0;
@@ -1084,6 +1115,23 @@ fn begin(
         battle,
         ShotColours::for_palette(&level.palette),
     )
+}
+
+/// The level's doors, with each box's altitudes as the terrain has them.
+fn doors_of(level: &Level) -> hb_sim::quake::Doors {
+    hb_sim::quake::Doors::new(&level.quake.boxes, |(x, z), set| {
+        let layer = if set == 1 { &level.terrain.boxes_a } else { &level.terrain.boxes_b };
+        (layer.bottom.at(x, z), layer.top.at(x, z))
+    })
+}
+
+/// Write a moved box back into the terrain, which is where the renderer and
+/// the collision both read it from.
+fn move_box(terrain: &mut hb_formats::terrain::Terrain, m: &hb_sim::quake::Moved) {
+    let layer = if m.set == 1 { &mut terrain.boxes_a } else { &mut terrain.boxes_b };
+    let at = (m.cell.1 as usize & 127) * 128 + (m.cell.0 as usize & 127);
+    layer.bottom.values[at] = m.bottom;
+    layer.top.values[at] = m.top;
 }
 
 /// The surface under a point, for the mission (`0x41c300` finds the floor
