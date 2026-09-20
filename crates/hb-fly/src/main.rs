@@ -679,9 +679,10 @@ fn main() -> Result<(), String> {
                 });
             }
         }
-        scene.placements = &drawn;
-        hb_render::draw_world(&mut target, &scene, &flight.camera);
-        // Shots are drawn at the copy of their position nearest the eye.
+        // Shots and missiles are models too (`0x4769cf`): along their own
+        // flight, except the kinds the engine holds facing the eye, and the
+        // Valkyrie's three muzzle flashes in turn. A kind whose model did
+        // not load stays a spark.
         let near = |p: [f32; 3]| {
             [
                 eye[0] + hb_sim::combat::wrapped(p[0] - eye[0]),
@@ -689,15 +690,70 @@ fn main() -> Result<(), String> {
                 eye[2] + hb_sim::combat::wrapped(p[2] - eye[2]),
             ]
         };
+        let fixed = |v: f32| (v * 65536.0) as i32;
+        let shot_at = |drawn: &mut Vec<hb_formats::text::Placement>, mesh, at: [f32; 3], angles: (u16, u16)| {
+            drawn.push(hb_formats::text::Placement {
+                kind: mesh,
+                hit_points: 0,
+                x: fixed(at[0]),
+                y: fixed(at[1]),
+                z: fixed(at[2]),
+                pitch: angles.1 as i32,
+                roll: 0,
+                heading: angles.0,
+            });
+        };
+        // Which way a velocity points, in the engine's circle.
+        let along = |v: [f32; 3]| {
+            let turn = 65536.0 / std::f32::consts::TAU;
+            let flat = (v[0] * v[0] + v[2] * v[2]).sqrt();
+            ((v[0].atan2(v[2]) * turn) as i32 as u16, (-v[1].atan2(flat) * turn) as i32 as u16)
+        };
+        let mut sparks: Vec<([f32; 3], u8)> = Vec::new();
+        let mut muzzle_frame = 0usize;
         for flying in &battle.shots {
-            let colour = match flying.shot.side {
-                hb_sim::combat::Side::Player => colours.player,
-                hb_sim::combat::Side::Enemy => colours.enemy,
+            let s = &flying.shot;
+            let at = near(s.position);
+            let mesh = if s.kind == hb_sim::weapons::VALKYRIE as i32 {
+                muzzle_frame += 1;
+                level.muzzle_mesh[(muzzle_frame - 1) % 3]
+            } else {
+                level.shot_mesh.get(s.kind as usize).copied().flatten()
             };
-            hb_render::scene::draw_spark(&mut target, &flight.camera, near(flying.shot.position), colour);
+            match mesh {
+                Some(mesh) => {
+                    let angles = if hb_sim::weapons::FACES_THE_EYE.contains(&s.kind) {
+                        (flight.camera.yaw.0, flight.camera.pitch.0)
+                    } else {
+                        along(s.velocity)
+                    };
+                    shot_at(&mut drawn, mesh, at, angles);
+                }
+                None => sparks.push((
+                    at,
+                    match s.side {
+                        hb_sim::combat::Side::Player => colours.player,
+                        hb_sim::combat::Side::Enemy => colours.enemy,
+                    },
+                )),
+            }
         }
         for missile in &battle.missiles {
-            hb_render::scene::draw_spark(&mut target, &flight.camera, near(missile.position), colours.missile);
+            let at = near(missile.position);
+            match level.shot_mesh.get(missile.kind as usize).copied().flatten() {
+                Some(mesh) => shot_at(
+                    &mut drawn,
+                    mesh,
+                    at,
+                    (missile.heading as i32 as u16, missile.pitch as i32 as u16),
+                ),
+                None => sparks.push((at, colours.missile)),
+            }
+        }
+        scene.placements = &drawn;
+        hb_render::draw_world(&mut target, &scene, &flight.camera);
+        for (at, colour) in sparks {
+            hb_render::scene::draw_spark(&mut target, &flight.camera, at, colour);
         }
         // Brackets on the locked target. The engine's lock display is not
         // read; this only shows what is locked.

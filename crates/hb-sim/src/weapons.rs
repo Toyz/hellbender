@@ -31,40 +31,44 @@ pub struct Row {
     pub rate: i32,
     pub sound: &'static str,
     pub model: &'static str,
+    /// The row's first word: 0 draws the shot as a laser turned by its own
+    /// angles or held facing the eye, 1 as a missile, 2 not at all
+    /// (`0x476473` only loads a model for 0 and 1).
+    pub draw: i32,
 }
 
 pub const ROWS: [Row; 31] = [
-    Row { code: "", name: "Purple Laser", speed: 2097152, damage: 4096, cycles: false, rate: 0, sound: "", model: "laser.bin" },
-    Row { code: "SKL", name: "Servo Kinetic Laser", speed: 2097152, damage: 4096, cycles: true, rate: 6, sound: "laser4.wav", model: "laser3.bin" },
-    Row { code: "DIS", name: "Dispersion Cannon 14", speed: 1572864, damage: 8192, cycles: true, rate: 2, sound: "laser3.wav", model: "laser4.bin" },
-    Row { code: "RFL", name: "Rapid Fire Laser", speed: 4194304, damage: 4096, cycles: true, rate: 6, sound: "laser5.wav", model: "laser5.bin" },
-    Row { code: "", name: "Fire Ball", speed: 2097152, damage: 16384, cycles: false, rate: 0, sound: "", model: "laser6.bin" },
-    Row { code: "", name: "Green Laser", speed: 2097152, damage: 16384, cycles: false, rate: 0, sound: "", model: "laser7.bin" },
-    Row { code: "", name: "Red Laser", speed: 2097152, damage: 16384, cycles: false, rate: 0, sound: "", model: "laser8.bin" },
-    Row { code: "", name: "Blue Laser", speed: 2097152, damage: 16384, cycles: false, rate: 0, sound: "", model: "laser9.bin" },
-    Row { code: "", name: "Bullet", speed: 2097152, damage: 16384, cycles: false, rate: 0, sound: "", model: "bullet.bin" },
-    Row { code: "Boss1", name: "Purple Ball for Mine", speed: 0, damage: 16384, cycles: false, rate: 0, sound: "", model: "wboss1.bin" },
-    Row { code: "Boss2", name: "Blue Fireball for Artic", speed: 0, damage: 16384, cycles: false, rate: 0, sound: "", model: "wboss2.bin" },
-    Row { code: "Boss3", name: "Gold ball for Canyon", speed: 0, damage: 16384, cycles: false, rate: 0, sound: "", model: "wboss3.bin" },
-    Row { code: "Boss4", name: "Atom Weapon for asteroid", speed: 0, damage: 16384, cycles: false, rate: 0, sound: "", model: "wboss4.bin" },
-    Row { code: "Boss5", name: "Purple Ring", speed: 0, damage: 16384, cycles: false, rate: 0, sound: "", model: "wboss5.bin" },
-    Row { code: "Boss6", name: "Boss W6", speed: 0, damage: 16384, cycles: false, rate: 0, sound: "", model: "wboss6.bin" },
-    Row { code: "Boss7", name: "Boss W7", speed: 0, damage: 16384, cycles: false, rate: 0, sound: "", model: "wboss7.bin" },
-    Row { code: "Boss8", name: "Boss W8", speed: 0, damage: 16384, cycles: false, rate: 0, sound: "", model: "wboss8.bin" },
-    Row { code: "", name: "Enemy missile", speed: 0, damage: 16384, cycles: false, rate: 0, sound: "", model: "missile.bin" },
-    Row { code: "HAM", name: "Dead On Missile", speed: 4194304, damage: 65536, cycles: true, rate: 1, sound: "missile.wav", model: "rocket4.bin" },
-    Row { code: "VIP", name: "Viper Missile", speed: 4194304, damage: 65536, cycles: true, rate: 1, sound: "missl-2.wav", model: "viper6.bin" },
-    Row { code: " ", name: "Super missile", speed: 0, damage: 0, cycles: false, rate: 0, sound: "", model: "" },
-    Row { code: " ", name: "Smart bomb", speed: 0, damage: 0, cycles: false, rate: 0, sound: "", model: "" },
-    Row { code: "FLY", name: "Afterburner", speed: 0, damage: 8192, cycles: false, rate: 6, sound: "", model: "" },
-    Row { code: "VAL", name: "Valkyrie Cannon", speed: 8388608, damage: 8192, cycles: true, rate: 6, sound: "m-gun-r.wav", model: "" },
-    Row { code: "SCR", name: "Cruise Missile", speed: 4194304, damage: 65536, cycles: true, rate: 1, sound: "missl-1.wav", model: "cruise5.bin" },
-    Row { code: "LGN", name: "Cluster Missile", speed: 4194304, damage: 65536, cycles: true, rate: 1, sound: "missl-3.wav", model: "cluster7.bin" },
-    Row { code: "TIM", name: "MIRV Missile", speed: 4194304, damage: 65536, cycles: false, rate: 1, sound: "missl-4.wav", model: "mirv8.bin" },
-    Row { code: "HEL", name: "Guided MIRV Missile", speed: 4194304, damage: 65536, cycles: false, rate: 1, sound: "missl-4.wav", model: "gmirv9.bin" },
-    Row { code: "DDM", name: "Floating Mine", speed: 4194304, damage: 65536, cycles: false, rate: 1, sound: "mines-x8.wav", model: "mine.bin" },
-    Row { code: "CLOK", name: "Cloak", speed: 0, damage: 0, cycles: false, rate: 1, sound: "cloak-b.wav", model: "" },
-    Row { code: "TEX", name: "Super Weapon", speed: 3145728, damage: 65536, cycles: false, rate: 1, sound: "missile.wav", model: "mine.bin" },
+    Row { code: "", name: "Purple Laser", speed: 2097152, damage: 4096, cycles: false, rate: 0, sound: "", model: "laser.bin", draw: 0 },
+    Row { code: "SKL", name: "Servo Kinetic Laser", speed: 2097152, damage: 4096, cycles: true, rate: 6, sound: "laser4.wav", model: "laser3.bin", draw: 0 },
+    Row { code: "DIS", name: "Dispersion Cannon 14", speed: 1572864, damage: 8192, cycles: true, rate: 2, sound: "laser3.wav", model: "laser4.bin", draw: 0 },
+    Row { code: "RFL", name: "Rapid Fire Laser", speed: 4194304, damage: 4096, cycles: true, rate: 6, sound: "laser5.wav", model: "laser5.bin", draw: 0 },
+    Row { code: "", name: "Fire Ball", speed: 2097152, damage: 16384, cycles: false, rate: 0, sound: "", model: "laser6.bin", draw: 0 },
+    Row { code: "", name: "Green Laser", speed: 2097152, damage: 16384, cycles: false, rate: 0, sound: "", model: "laser7.bin", draw: 0 },
+    Row { code: "", name: "Red Laser", speed: 2097152, damage: 16384, cycles: false, rate: 0, sound: "", model: "laser8.bin", draw: 0 },
+    Row { code: "", name: "Blue Laser", speed: 2097152, damage: 16384, cycles: false, rate: 0, sound: "", model: "laser9.bin", draw: 0 },
+    Row { code: "", name: "Bullet", speed: 2097152, damage: 16384, cycles: false, rate: 0, sound: "", model: "bullet.bin", draw: 0 },
+    Row { code: "Boss1", name: "Purple Ball for Mine", speed: 0, damage: 16384, cycles: false, rate: 0, sound: "", model: "wboss1.bin", draw: 0 },
+    Row { code: "Boss2", name: "Blue Fireball for Artic", speed: 0, damage: 16384, cycles: false, rate: 0, sound: "", model: "wboss2.bin", draw: 0 },
+    Row { code: "Boss3", name: "Gold ball for Canyon", speed: 0, damage: 16384, cycles: false, rate: 0, sound: "", model: "wboss3.bin", draw: 0 },
+    Row { code: "Boss4", name: "Atom Weapon for asteroid", speed: 0, damage: 16384, cycles: false, rate: 0, sound: "", model: "wboss4.bin", draw: 0 },
+    Row { code: "Boss5", name: "Purple Ring", speed: 0, damage: 16384, cycles: false, rate: 0, sound: "", model: "wboss5.bin", draw: 0 },
+    Row { code: "Boss6", name: "Boss W6", speed: 0, damage: 16384, cycles: false, rate: 0, sound: "", model: "wboss6.bin", draw: 0 },
+    Row { code: "Boss7", name: "Boss W7", speed: 0, damage: 16384, cycles: false, rate: 0, sound: "", model: "wboss7.bin", draw: 0 },
+    Row { code: "Boss8", name: "Boss W8", speed: 0, damage: 16384, cycles: false, rate: 0, sound: "", model: "wboss8.bin", draw: 0 },
+    Row { code: "", name: "Enemy missile", speed: 0, damage: 16384, cycles: false, rate: 0, sound: "", model: "missile.bin", draw: 1 },
+    Row { code: "HAM", name: "Dead On Missile", speed: 4194304, damage: 65536, cycles: true, rate: 1, sound: "missile.wav", model: "rocket4.bin", draw: 1 },
+    Row { code: "VIP", name: "Viper Missile", speed: 4194304, damage: 65536, cycles: true, rate: 1, sound: "missl-2.wav", model: "viper6.bin", draw: 1 },
+    Row { code: " ", name: "Super missile", speed: 0, damage: 0, cycles: false, rate: 0, sound: "", model: "", draw: 2 },
+    Row { code: " ", name: "Smart bomb", speed: 0, damage: 0, cycles: false, rate: 0, sound: "", model: "", draw: 2 },
+    Row { code: "FLY", name: "Afterburner", speed: 0, damage: 8192, cycles: false, rate: 6, sound: "", model: "", draw: 2 },
+    Row { code: "VAL", name: "Valkyrie Cannon", speed: 8388608, damage: 8192, cycles: true, rate: 6, sound: "m-gun-r.wav", model: "", draw: 2 },
+    Row { code: "SCR", name: "Cruise Missile", speed: 4194304, damage: 65536, cycles: true, rate: 1, sound: "missl-1.wav", model: "cruise5.bin", draw: 1 },
+    Row { code: "LGN", name: "Cluster Missile", speed: 4194304, damage: 65536, cycles: true, rate: 1, sound: "missl-3.wav", model: "cluster7.bin", draw: 1 },
+    Row { code: "TIM", name: "MIRV Missile", speed: 4194304, damage: 65536, cycles: false, rate: 1, sound: "missl-4.wav", model: "mirv8.bin", draw: 1 },
+    Row { code: "HEL", name: "Guided MIRV Missile", speed: 4194304, damage: 65536, cycles: false, rate: 1, sound: "missl-4.wav", model: "gmirv9.bin", draw: 1 },
+    Row { code: "DDM", name: "Floating Mine", speed: 4194304, damage: 65536, cycles: false, rate: 1, sound: "mines-x8.wav", model: "mine.bin", draw: 2 },
+    Row { code: "CLOK", name: "Cloak", speed: 0, damage: 0, cycles: false, rate: 1, sound: "cloak-b.wav", model: "", draw: 2 },
+    Row { code: "TEX", name: "Super Weapon", speed: 3145728, damage: 65536, cycles: false, rate: 1, sound: "missile.wav", model: "mine.bin", draw: 1 },
 ];
 
 /// What the player starts with selected (`0x426ebf`): the Valkyrie Cannon.
@@ -126,6 +130,15 @@ pub const AIRBORNE: [i64; 34] = [
 pub fn airborne(class: i64) -> bool {
     AIRBORNE.contains(&class)
 }
+
+/// The three models the Valkyrie Cannon's shots cycle through, one a draw
+/// (`0x476a44`, `0x61ad70`).
+pub const MUZZLE: [&str; 3] = ["muzzle.bin", "muzzle2.bin", "muzzle3.bin"];
+
+/// The shot kinds drawn facing the eye rather than along their own flight
+/// (`0x476a09` in the table at `0x476a7c`): the fireballs, the balls and the
+/// bosses' weapons.
+pub const FACES_THE_EYE: [i32; 10] = [2, 4, 9, 10, 11, 12, 13, 14, 15, 16];
 
 /// The line below which weapon or shield energy is "low", 0x199a.
 const LOW: f32 = 0x199a as f32 / 65536.0;

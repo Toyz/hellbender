@@ -95,6 +95,11 @@ pub struct Level {
     pub powerup_mesh: Vec<Option<usize>>,
     /// For each kind, how close the player must come to pick it up, units.
     pub powerup_size: Vec<f32>,
+    /// For each weapon kind, the index in `meshes` of the model its shots
+    /// are drawn with.
+    pub shot_mesh: Vec<Option<usize>>,
+    /// The Valkyrie Cannon's three muzzle flashes.
+    pub muzzle_mesh: [Option<usize>; 3],
     /// The powerups the level's `.PUP` lays out.
     pub powerups: Vec<text::PlacedPowerup>,
 }
@@ -365,6 +370,35 @@ impl Level {
                 None => Vec::new(),
             })
             .collect();
+        // The shots' models, by weapon kind, and the Valkyrie's three
+        // muzzle flashes after them. The engine draws a shot at size 1.0
+        // (`0x4769e9`), which is this renderer's scale of 1.0 in 16.16.
+        let mut shot_mesh = Vec::with_capacity(hb_sim::weapons::ROWS.len());
+        let load_shot = |name: &str,
+                             meshes: &mut Vec<Option<mrgl::Model>>,
+                             mesh_textures: &mut Vec<Vec<Option<Image>>>,
+                             mesh_radius: &mut Vec<i32>|
+         -> Option<usize> {
+            let model = read("models", name).and_then(|b| mrgl::Model::parse(&b).ok())?;
+            let textures = model
+                .materials
+                .iter()
+                .map(|n| read("art", n).and_then(|b| Image::parse_guessed(&b).ok().flatten()))
+                .collect();
+            meshes.push(Some(model));
+            mesh_textures.push(textures);
+            mesh_radius.push(1 << 16);
+            Some(meshes.len() - 1)
+        };
+        for row in hb_sim::weapons::ROWS {
+            let slot = (row.draw <= 1 && !row.model.is_empty())
+                .then(|| load_shot(row.model, &mut meshes, &mut mesh_textures, &mut mesh_radius))
+                .flatten();
+            shot_mesh.push(slot);
+        }
+        let muzzle_mesh = hb_sim::weapons::MUZZLE
+            .map(|name| load_shot(name, &mut meshes, &mut mesh_textures, &mut mesh_radius));
+
         let powerups = manifest
             .slot("powerups")
             .and_then(|(dir, file)| read(dir, file))
@@ -417,6 +451,8 @@ impl Level {
             .collect();
 
         Ok(Level {
+            shot_mesh,
+            muzzle_mesh,
             mesh_flipbooks,
             navs,
             powerup_mesh,

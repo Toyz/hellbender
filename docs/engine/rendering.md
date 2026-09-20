@@ -47,6 +47,10 @@ This page is about the port. What the original does is under
   headlight - is not modelled.
 - Powerups and other sprite-like models: a flipbook texture turned by the
   clock, on a polygon whose texel 0 is not drawn (`0x4a5b1a`).
+- Shots and missiles: the model their weapon row names, at size 1.0, turned
+  along their flight or held facing the eye by kind, with the Valkyrie
+  Cannon's three muzzle flashes cycling one a draw. The port drew coloured
+  points until worklog 39.
 - The three screen sizes the art is drawn for: 320x200, 320x400, 640x480.
 - The projection: 90 degrees across and 90 degrees down, whatever the screen's
   shape, with the scales and centre the engine's viewport setup derives

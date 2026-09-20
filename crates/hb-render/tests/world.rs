@@ -117,3 +117,43 @@ fn untouched_tiles_meet_best_the_engines_way_round() {
         assert!(scores[0] * 1.15 < others, "{stem}: {scores:?}");
     }
 }
+
+/// Every weapon the port fires has a model for its shots, the Valkyrie has
+/// its three muzzle flashes, and a shot in front of the eye is drawn.
+#[test]
+fn shots_are_drawn_as_their_models() {
+    let Some(level) = level("hoth") else { return };
+    for w in hb_sim::weapons::PORTED {
+        let row = hb_sim::weapons::ROWS[w];
+        if row.draw <= 1 && !row.model.is_empty() {
+            assert!(level.shot_mesh[w].is_some(), "{} has no model for {}", row.name, row.model);
+        }
+    }
+    // The Valkyrie draws no shot model of its own; it flashes instead.
+    assert_eq!(hb_sim::weapons::ROWS[hb_sim::weapons::VALKYRIE].draw, 2);
+    assert!(level.muzzle_mesh.iter().all(Option::is_some));
+    // The engine draws a shot at size 1.0.
+    let mesh = level.shot_mesh[hb_sim::weapons::VIPER].unwrap();
+    assert_eq!(level.mesh_radius[mesh], 1 << 16);
+
+    // One in front of the eye lands on the screen.
+    let (w, h) = Target::MODE_200;
+    let mut target = Target::new(w, h);
+    target.clear(0);
+    let camera = Camera::looking_at(64 << 19, 40 << 16, 64 << 19, Angle(0));
+    let shot = hb_formats::text::Placement {
+        kind: mesh,
+        hit_points: 0,
+        x: 64 << 19,
+        y: 40 << 16,
+        z: (64 << 19) + (6 << 16),
+        pitch: 0,
+        roll: 0,
+        heading: 0,
+    };
+    let held = [shot];
+    let mut scene = level.scene();
+    scene.placements = &held;
+    let drawn = hb_render::draw_world(&mut target, &scene, &camera);
+    assert_eq!(drawn.models, 1, "the shot should be drawn");
+}

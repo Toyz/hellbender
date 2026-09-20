@@ -230,8 +230,9 @@ kind   speed   damage   sound
 24,25   64.0   1.0      missl-1.wav, missl-3.wav
 ```
 
-Rows 9-17 and 20-22 have speed zero. A row is 68 bytes that begin 28 bytes
-before the speed: a 16-byte model name, four unused bytes, an 8-byte HUD code
+Rows 9-17 and 20-22 have speed zero. A row is 68 bytes that begin 32 bytes
+before the speed: a word saying how its shots are drawn - 0 a laser, 1 a
+missile, 2 not at all - a 16-byte model name, an 8-byte HUD code
 (`VAL`, `SKL`, `DIS`, `RFL`, `HAM`, `VIP`, `SCR`, `LGN`...), then speed,
 damage, a flag the next-weapon key stops on (`+8`), volleys a second
 (`+0xc`), the fire sound (`+0x10`), and two words. The names are a table of
@@ -284,6 +285,14 @@ is the floating mine (28); a key for an empty
 dispersion cannon or rapid-fire laser says it is "not in arsenal".
 `keySelectNextWeapon` (`=`, `0x479ca0`) steps round the weapons with a stock
 whose row flag allows it.
+
+**A shot is drawn as a model** (`0x4769cf`), at size 1.0, from the table the
+weapon rows' names are loaded into (`0x61bc60`, `0x476473`): turned by its own
+angles, or held facing the eye for kinds 2, 4 and 9-16 (the fireballs, the
+balls and the bosses' weapons). The Valkyrie Cannon has no shot model; it
+cycles `muzzle.bin`, `muzzle2.bin` and `muzzle3.bin`, one a draw
+(`0x476a44`). The laser models are quads with a texture that has holes, like
+the powerups'; the missiles are solid models.
 
 **Missiles** (`0x47cd70`) leave from under one wing or the other in turn
 (`0x50f088`) - half a unit ahead, a unit to the side and a unit down - along
