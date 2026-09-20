@@ -692,8 +692,12 @@ weapons to spend them on yet.
 Everything past phase 0 of the course follower: speeds, curve fitting, what
 happens at the end of a course, how the seven logic routines differ.
 
-The behaviour classes still unread, by how many placements they drive: 14 with
-96, 17 with 54, 55 with 49, 58 with 34, 18 with 29,
+The behaviour classes still unread, by how many placements they drive: 14
+with 96 - it aims exactly as class 1 does, but from a point it asks the
+model for rather than from the actor's origin (`0x406bf0` walks to a
+`0x26` animated-model node and `0x46edd0` returns a position from it), eases
+its angles through `0x408ee0` rather than `0x4068f0`, and turns something
+else after it fires; porting it waits on the animated models - 17 with 54, 55 with 49, 58 with 34, 18 with 29,
 3 with 15, 35 with 12, and the handful of scripted ones: 50 to 52 for the
 shuttle and its escort, 62 to 64 for Nyx. Classes 56, 59 and 60 borrow the
 class-53 flyer in this port; their own routines are not read.
