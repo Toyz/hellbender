@@ -2,7 +2,7 @@
 title: The colour tables - .MAP, .LTE, .FOG, .MIX
 status: partial
 covers: FOG\*.MAP, FOG\*.LTE, FOG\*.FOG, FOG\*.MIX, DATA\*.LTE
-worklog: 6, 11
+worklog: 6, 11, 50
 ---
 
 # The colour tables
@@ -93,9 +93,30 @@ Indices 240 to 255 blend to 0 rather than to themselves, which is the table
 saying they may not be blended at all.
 
 Only `VGA.MIX` is populated at 65,536 bytes. Every per-level `.MIX` in GAME.POD
-is zero-length except `KREASH.MIX` at 7,936 bytes, which is not a multiple of
-256 and so is not the same shape. Translucency in a level either falls back to
-`VGA.MIX` or is off.
+is zero-length except `KREASH.MIX` at 7,936 bytes, which is 31 rows of 256 -
+part of a table, not a table.
+
+The engine does not notice. The loader at `0x485140` swaps the level's
+extension for `.mix`, opens it in `FOG\`, and reads it with one
+`fread(0x5f2e70, 256, 256)` (`0x485197`) whose return it never looks at: a
+short file leaves the remaining 57,600 bytes of the buffer holding whatever
+was there before.
+
+What is in the 7,936 bytes is the **end** of a table, with something else in
+front of it. Reading the file as rows 225 to 255 of a 65,536-byte table, the
+last sixteen rows come out exactly right: `mix[a][0] == a` and
+`mix[a][a] == a` hold for all of 240 to 255, both reading 240, 241, ... 255
+straight down. The fifteen rows before them fail the same two tests, so they
+are not rows 225 to 239 of that table. Reading the file as the first 31 rows
+instead - which is what a truncated write would leave - fails everywhere.
+
+So it is a fragment of an interrupted build: the last 4,096 bytes of a mix
+table for `KREASH`, with 3,840 bytes of something else ahead of them. (Its
+reserved rows also disagree with `VGA.MIX`, where 240 to 255 blend to 0
+rather than to themselves - one more sign that the two files were not made
+the same way.)
+
+Translucency in a level either falls back to `VGA.MIX` or is off.
 
 ## The palette is 240 colours plus 16 reserved
 
@@ -122,6 +143,14 @@ indices included.
 
 ## Unknown
 
-What `KREASH.MIX`'s 7,936 bytes are. How `.MAP` was generated. How the terrain
-shading database's per-cell bytes index into these ramps, given that they are
-not in 0-15 - see [terrain](terrain.md).
+How `.MAP` was generated.
+
+How an intensity picks one of the sixteen rows. The per-cell bytes of the
+[terrain shading database](terrain.md) do not index a row directly: the
+ground draw takes the byte for each vertex and shifts it up eight
+(`0x414e30`), so what the rasteriser interpolates across a triangle is an
+intensity from 0 to 0.996 rather than a row number - and a vertex whose
+following flag byte has bit 0 set takes the level's ambient (line 19 of the
+[.LVL](lvl.md)) in place of its own. Sixteen rows over that range means the
+top four bits, inverted, which is what this port does; the span loop that
+would say so for certain has not been read.
