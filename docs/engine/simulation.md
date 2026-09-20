@@ -565,9 +565,10 @@ The port keeps the ground with its height query and does the boxes as solids:
 the face it is least far through, with the same fraction over. Underground it
 holds the ship between the chamber's floor and ceiling, sampled across the
 ship's own unit, and backs it out the way it came when those two meet - the
-crude form of the engine's wall. What it does not have is the engine's swept
-test between the old and new positions, so a fast enough ship can still pass
-through a thin box in one frame.
+crude form of the engine's wall. Where the engine covers the whole step with
+one query box, the port walks the step in pieces of half a unit and resolves
+each, stopping at the first that holds the ship: the same effect for anything
+the ship can fly into, at up to ten queries a frame instead of one.
 
 ## Explosions
 

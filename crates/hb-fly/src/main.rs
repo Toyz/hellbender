@@ -114,87 +114,104 @@ impl Flight {
         self.camera.yaw = Angle(heading as i32 as u16);
     }
 
-    /// Keep the ship out of the ground and out of the boxes.
+    /// Keep the ship out of the ground, the boxes and the tunnel walls.
     ///
-    /// The ground is the height query used honestly: find the surface under
-    /// the ship and refuse to go below it by more than the ship's own unit.
-    /// The boxes are `hb_sim::collide`, which pushes the ship out of the face
-    /// it is least far through, as the engine's response does (`0x4277c0`).
+    /// The engine tests the box that covers where the ship was and where it
+    /// is going (`0x427280`), so nothing is crossed in one frame. This walks
+    /// the step in pieces no longer than half the ship's unit and resolves
+    /// each, which comes to the same thing for anything it can fly into.
     fn settle(&mut self, grid: &hb_world::Grid) {
         self.grounded = false;
         if !self.collide {
             return;
         }
-        let reach = (hb_sim::collide::SHIP * 65536.0) as i32;
+        let target = self.ship.position;
+        let travel: [f32; 3] = std::array::from_fn(|k| {
+            if k == 1 {
+                target[k] - self.was[k]
+            } else {
+                hb_sim::combat::wrapped(target[k] - self.was[k])
+            }
+        });
+        let length = (travel[0] * travel[0] + travel[1] * travel[1] + travel[2] * travel[2]).sqrt();
+        let pieces = (length / (hb_sim::collide::SHIP / 2.0)).ceil().max(1.0) as usize;
+        let mut at = target;
+        for piece in 1..=pieces {
+            let t = piece as f32 / pieces as f32;
+            let along: [f32; 3] = std::array::from_fn(|k| self.was[k] + travel[k] * t);
+            let (resolved, held) = self.resolve(grid, along);
+            at = resolved;
+            if held {
+                break;
+            }
+        }
+        self.ship.position = at;
+        self.sync_camera();
+    }
+
+    /// One position against the world: out of the boxes, above the ground, or
+    /// inside the tunnel. Returns where it belongs and whether it was held
+    /// back, which ends the sweep.
+    ///
+    /// The boxes are `hb_sim::collide`, which pushes the ship out of the face
+    /// it is least far through, as the engine's response does (`0x4277c0`).
+    /// The ground and the chamber are height queries, sampled across the
+    /// ship's own unit rather than under its middle.
+    fn resolve(&mut self, grid: &hb_world::Grid, position: [f32; 3]) -> ([f32; 3], bool) {
+        let fixed = |v: f32| (v * 65536.0) as i32;
+        let unit = hb_sim::collide::SHIP;
         let solids: Vec<hb_sim::collide::Solid> = grid
-            .boxes_near(self.camera.x, self.camera.z, reach)
+            .boxes_near(fixed(position[0]), fixed(position[2]), (unit * 65536.0) as i32)
             .into_iter()
             .map(hb_sim::collide::Solid::of)
             .collect();
-        let (moved, push) =
-            hb_sim::collide::push_out(self.ship.position, hb_sim::collide::SHIP, &solids);
-        self.ship.position = moved;
+        let (mut at, push) = hb_sim::collide::push_out(position, unit, &solids);
+        let mut held = push.is_some();
         if push == Some(hb_sim::collide::Push::Up) {
             self.grounded = true;
         }
-        // The ground underneath. The engine's query box covers the ship's
-        // own unit, so the ground is sampled across that box and not only
-        // under its middle - a slope rising under one side would otherwise
-        // come through the view.
-        let fixed = |v: f32| (v * 65536.0) as i32;
-        let unit = hb_sim::collide::SHIP;
-        let ground = [(0.0, 0.0), (-unit, -unit), (unit, -unit), (-unit, unit), (unit, unit)]
-            .into_iter()
-            .filter_map(|(dx, dz)| {
-                grid.height_at(
-                    hb_formats::terrain::Layer::Ground,
-                    fixed(moved[0] + dx),
-                    fixed(moved[2] + dz),
-                )
-            })
-            .max()
-            .unwrap_or(0);
-        let floor = ground as f32 / 65536.0 + hb_sim::collide::SHIP;
-        // Underground the ground is not what holds the ship: the chamber is,
-        // and it is two heightfields, a floor and a ceiling, with rock where
-        // they meet (`0x4290f0` reads both at the cell's four corners). The
-        // engine collides with their triangles; this keeps the ship between
-        // them and backs it out of rock.
-        let cell = hb_world::Cell::containing(fixed(self.ship.position[0]), fixed(self.ship.position[2]));
-        let inside = self.ship.position[1] < 0.0 && grid.has_chamber(cell);
-        if inside {
-            let sample = |layer, dx: f32, dz: f32| {
-                grid.height_at(layer, fixed(self.ship.position[0] + dx), fixed(self.ship.position[2] + dz))
-                    .map(|h| h as f32 / 65536.0)
-            };
-            let corners = [(0.0, 0.0), (-unit, -unit), (unit, -unit), (-unit, unit), (unit, unit)];
+        let corners = [(0.0, 0.0), (-unit, -unit), (unit, -unit), (-unit, unit), (unit, unit)];
+        let sample = |layer, at: [f32; 3], dx: f32, dz: f32| {
+            grid.height_at(layer, fixed(at[0] + dx), fixed(at[2] + dz)).map(|h| h as f32 / 65536.0)
+        };
+        // Underground the chamber holds the ship, not the ground: two
+        // heightfields with rock where they meet (`0x4290f0`).
+        let cell = hb_world::Cell::containing(fixed(at[0]), fixed(at[2]));
+        if at[1] < 0.0 && grid.has_chamber(cell) {
             let roof = corners
                 .into_iter()
-                .filter_map(|(dx, dz)| sample(hb_formats::terrain::Layer::ChamberCeiling, dx, dz))
+                .filter_map(|(dx, dz)| sample(hb_formats::terrain::Layer::ChamberCeiling, at, dx, dz))
                 .fold(f32::MAX, f32::min);
             let bed = corners
                 .into_iter()
-                .filter_map(|(dx, dz)| sample(hb_formats::terrain::Layer::ChamberFloor, dx, dz))
+                .filter_map(|(dx, dz)| sample(hb_formats::terrain::Layer::ChamberFloor, at, dx, dz))
                 .fold(f32::MIN, f32::max);
             if roof - bed < unit * 2.0 {
-                // Rock: back out the way it came, keeping the height.
-                self.ship.position[0] = self.was[0];
-                self.ship.position[2] = self.was[2];
+                // Rock: it goes no further this frame.
                 self.grounded = true;
-            } else {
-                if self.ship.position[1] < bed + unit {
-                    self.ship.position[1] = bed + unit;
-                    self.grounded = true;
-                }
-                if self.ship.position[1] > roof - unit {
-                    self.ship.position[1] = roof - unit;
-                }
+                return (self.was, true);
             }
-        } else if self.ship.position[1] < floor {
-            self.ship.position[1] = floor;
-            self.grounded = true;
+            if at[1] < bed + unit {
+                at[1] = bed + unit;
+                self.grounded = true;
+                held = true;
+            }
+            if at[1] > roof - unit {
+                at[1] = roof - unit;
+                held = true;
+            }
+            return (at, held);
         }
-        self.sync_camera();
+        let ground = corners
+            .into_iter()
+            .filter_map(|(dx, dz)| sample(hb_formats::terrain::Layer::Ground, at, dx, dz))
+            .fold(f32::MIN, f32::max);
+        if at[1] < ground + unit {
+            at[1] = ground + unit;
+            self.grounded = true;
+            held = true;
+        }
+        (at, held)
     }
 }
 
