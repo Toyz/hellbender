@@ -225,6 +225,7 @@ impl Battle {
 
         let health = &self.health;
         let volumes = &self.volumes;
+        let mut children: Vec<(Missile, Vec<usize>)> = Vec::new();
         for m in &mut self.missiles {
             match m.side {
                 Side::Enemy => match m.step(dt, target, solid) {
@@ -235,6 +236,19 @@ impl Battle {
                     Some(false) => m.age = f32::MAX,
                     None => {}
                 },
+                // A MIRV breaks up a second in, into ten of its own and a
+                // blast of 32 units (`0x477b90`).
+                Side::Player if m.splitting() => {
+                    let targets: Vec<usize> = live
+                        .iter()
+                        .enumerate()
+                        .filter(|&(i, _)| !health[i].destroyed)
+                        .filter(|(_, p)| combat::in_range(m.position, combat::position_of(p)))
+                        .map(|(i, _)| i)
+                        .collect();
+                    children.push((*m, targets));
+                    m.age = f32::MAX;
+                }
                 // The player's: home on the target while it stands, strike
                 // whatever they fly into.
                 Side::Player => {
@@ -253,6 +267,18 @@ impl Battle {
                     }
                 }
             }
+        }
+        for (parent, targets) in children {
+            self.missiles.extend(parent.split(&mut self.rng, &targets));
+            for i in combat::splash(
+                parent.position,
+                hb_sim::turret::SPLIT_REACH,
+                live,
+                |i| !self.health[i].destroyed,
+            ) {
+                hits.push((i, hb_sim::turret::SPLIT_DAMAGE, parent.kind));
+            }
+            self.blasts.burst(parent.position, 4.0, &mut self.rng);
         }
         self.missiles.retain(Missile::alive);
 

@@ -36,7 +36,8 @@ hb-fly - fly around a Hellbender level
   space         fire                  b       drop a beacon
   ` 1 2 3       Valkyrie cannon, dispersion cannon, servo-kinetic and
                 rapid-fire lasers        =       next weapon
-  4 5 6         Dead-On, cruise and Viper missiles   v   lock the next target
+  4 5 6 8 9     Dead-On, cruise, Viper, MIRV and guided MIRV missiles
+  v             lock the next target
   , .           main energy to the weapons, to the shield
   esc           quit
 
@@ -546,6 +547,8 @@ fn main() -> Result<(), String> {
                 (Key::Key4, '4'),
                 (Key::Key5, '5'),
                 (Key::Key6, '6'),
+                (Key::Key8, '8'),
+                (Key::Key9, '9'),
             ] {
                 if window.is_key_pressed(key.0, minifb::KeyRepeat::No) {
                     if let Some(&(_, w)) = hb_sim::weapons::KEYS.iter().find(|(c, _)| *c == key.1) {

@@ -221,3 +221,31 @@ fn shooting_a_real_placement_destroys_it() {
     assert_eq!(target.hit_points, 81920);
     assert_eq!(shots, 20);
 }
+
+#[test]
+fn a_blast_catches_everything_in_its_cube() {
+    let at = |x: f32, y: f32, z: f32| hb_formats::text::Placement {
+        kind: 0,
+        hit_points: 65536,
+        x: (x * 65536.0) as i32,
+        y: (y * 65536.0) as i32,
+        z: (z * 65536.0) as i32,
+        pitch: 0,
+        roll: 0,
+        heading: 0,
+    };
+    let placed = [
+        at(0.0, 0.0, 0.0),
+        at(31.0, 31.0, 31.0),
+        at(33.0, 0.0, 0.0),
+        at(0.0, 0.0, -32.0),
+        at(20.0, 20.0, 20.0),
+    ];
+    // A cube, so the corner at 31 on every axis is in and 33 out on one is
+    // not; the dead are skipped.
+    let caught = hb_sim::combat::splash([0.0; 3], 32.0, &placed, |i| i != 4);
+    assert_eq!(caught, vec![0, 1, 3]);
+    // It wraps like every other distance.
+    let far = [at(0.0, 0.0, 511.0)];
+    assert_eq!(hb_sim::combat::splash([0.0, 0.0, -511.0], 32.0, &far, |_| true), vec![0]);
+}

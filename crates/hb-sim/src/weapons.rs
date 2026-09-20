@@ -85,17 +85,21 @@ pub const VALKYRIE: usize = 23;
 /// "Scorcher Missiles": locks on things on the ground, flies ten seconds.
 pub const CRUISE: usize = 24;
 
-/// The weapons this port can fire. The cluster, MIRV and guided MIRV
-/// missiles split in flight (`0x47cec0`, `0x477b90`, `0x477d10`), the mine
-/// is dropped (`0x47d82a`) and the super weapon burns what it passes
-/// (`0x477a19`); none of those is ported yet.
-pub const PORTED: [usize; 7] = [SERVO_KINETIC, DISPERSION, RAPID_FIRE, VALKYRIE, DEAD_ON, CRUISE, VIPER];
+/// The MIRV and the guided MIRV, which break up a second into their flight.
+pub const MIRV: usize = 26;
+pub const GUIDED_MIRV: usize = 27;
+
+/// The weapons this port can fire. The cluster missile's spread
+/// (`0x47cec0`), the mine (`0x47d82a`) and the super weapon, which burns
+/// what it passes (`0x477a19`), are not ported yet.
+pub const PORTED: [usize; 9] =
+    [SERVO_KINETIC, DISPERSION, RAPID_FIRE, VALKYRIE, DEAD_ON, CRUISE, VIPER, MIRV, GUIDED_MIRV];
 
 /// The weapon keys, as `HELLBEND.INI` binds them and the trigger routine
 /// reads them (`0x47dcc4` on): the backquote for the Valkyrie
 /// (`keyVulcanCannon`), 1 the dispersion cannon, 2 the servo-kinetic laser,
 /// 3 the rapid-fire laser, 4 Dead-On, 5 cruise, 6 Viper missiles.
-pub const KEYS: [(char, usize); 7] = [
+pub const KEYS: [(char, usize); 9] = [
     ('`', VALKYRIE),
     ('1', DISPERSION),
     ('2', SERVO_KINETIC),
@@ -103,6 +107,8 @@ pub const KEYS: [(char, usize); 7] = [
     ('4', DEAD_ON),
     ('5', CRUISE),
     ('6', VIPER),
+    ('8', MIRV),
+    ('9', GUIDED_MIRV),
 ];
 
 pub const WEAPON_ENERGY_LOW: Voice =
@@ -374,8 +380,8 @@ impl Guns {
         match w {
             SERVO_KINETIC | RAPID_FIRE | VALKYRIE => shots = self.guns(w, pose, speed, damage, dt, stores, voices),
             DISPERSION => shots = self.dispersion(pose, speed, damage, stores, rng, voices),
-            DEAD_ON => missiles.push(self.missile(w, pose, None)),
-            VIPER | CRUISE => missiles.push(self.missile(w, pose, self.lock)),
+            DEAD_ON | MIRV => missiles.push(self.missile(w, pose, None)),
+            VIPER | CRUISE | GUIDED_MIRV => missiles.push(self.missile(w, pose, self.lock)),
             _ => return None,
         }
         let stock = &mut stores.ammo[w];

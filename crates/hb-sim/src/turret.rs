@@ -245,6 +245,20 @@ pub struct Missile {
     pub life: f32,
 }
 
+/// The two missiles that break up in flight: the MIRV, whose ten go out
+/// unguided (`0x477b90`), and the guided MIRV, whose ten are Vipers, each
+/// sent at a target of its own (`0x477d10`).
+pub const MIRV: i32 = 26;
+pub const GUIDED_MIRV: i32 = 27;
+/// They break up a second in, the same clock the steering's gain runs on
+/// (`0x477b9d`).
+pub const SPLIT_AT: f32 = 1.0;
+/// Into ten (`0x477bc6`).
+pub const SPLIT_INTO: usize = 10;
+/// And leave a blast of 32 units and half a hit (`0x477c4a`).
+pub const SPLIT_REACH: f32 = 32.0;
+pub const SPLIT_DAMAGE: f32 = 0.5;
+
 /// What ended a missile's flight.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Struck {
@@ -284,6 +298,37 @@ impl Missile {
 
     pub fn alive(&self) -> bool {
         self.age <= self.life
+    }
+
+    /// Whether it is a MIRV that has flown its second and is about to break
+    /// up.
+    pub fn splitting(&self) -> bool {
+        (self.kind == MIRV || self.kind == GUIDED_MIRV) && self.age > SPLIT_AT
+    }
+
+    /// The ten it becomes: from where it is, at half its speed, pitched and
+    /// headed at random. A MIRV's are Dead-Ons with nothing to home on; a
+    /// guided MIRV's are Vipers, one for each target offered.
+    pub fn split(&self, rng: &mut Rng, targets: &[usize]) -> Vec<Missile> {
+        let guided = self.kind == GUIDED_MIRV;
+        (0..SPLIT_INTO)
+            .map(|i| {
+                let pitch = (rng.next() & 0x7fff) as f32 - 16384.0;
+                let heading = (rng.next() & 0xffff) as f32;
+                Missile {
+                    position: self.position,
+                    heading,
+                    pitch,
+                    speed: self.speed / 2.0,
+                    age: 0.0,
+                    damage: self.damage,
+                    kind: if guided { 19 } else { 18 },
+                    side: self.side,
+                    target: guided.then(|| targets.get(i % targets.len().max(1)).copied()).flatten(),
+                    life: Missile::LIFE,
+                }
+            })
+            .collect()
     }
 
     /// One frame of an enemy's missile. `Some(true)` if it reached the

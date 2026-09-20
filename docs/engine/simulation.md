@@ -317,11 +317,22 @@ flying (2, 4, 7, 8, 16-18, 25, 26, 28, 29, 32, 35, 38-40, 43, 44, 46, 48-60,
 63, 64), the cruise missile the rest (`0x40dc00`), the cluster missile and
 super weapon anything.
 
-The cluster missile (`0x47cec0`), the MIRV and guided MIRV, which split into
-Dead-Ons a second out (`0x477b90`, `0x477d10`), the floating mine
-(`0x47d82a`) and the super weapon, which scorches everything within 16 units
-of its path (`0x477a19`, `0x47d3b0`), are not ported yet. Nor is the cruise
-missile's own steering (`0x4780b0`): the port steers it as the others.
+**The two that break up.** A MIRV (26) or a guided MIRV (27) checks its own
+clock every frame - the same one the steering's gain runs on - and a second in
+it bursts (`0x477b90`, `0x477d10`): ten missiles from where it is, at half its
+speed, pitched and headed at random, and a blast of 32 units and half a hit
+through `0x47d3b0`. A MIRV's ten are Dead-Ons with nothing to home on; a
+guided MIRV's are Vipers, and the routine walks the actors to give each one a
+target of its own.
+
+`0x47d3b0` is the blast the game uses for splash: every actor the loop ran
+this frame whose position is within the reach on **all three axes** - a cube,
+not a ball - takes the damage through the same entry a shot does.
+
+The cluster missile (`0x47cec0`), the floating mine (`0x47d82a`) and the super
+weapon, which scorches everything within 16 units of its path (`0x477a19`),
+are not ported yet. Nor is the cruise missile's own steering (`0x4780b0`): the
+port steers it as the others.
 
 ## The guided missile
 

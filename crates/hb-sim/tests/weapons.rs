@@ -292,3 +292,49 @@ fn missiles_leave_from_under_either_wing_and_home_on_the_lock() {
     guns.select(weapons::CRUISE, &stores);
     assert_eq!(fire(&mut guns, &mut stores, &mut rng).missiles[0].life, 10.0);
 }
+
+#[test]
+fn a_mirv_breaks_into_ten_a_second_in() {
+    let (mut guns, mut stores, mut rng) = (Guns::default(), Stores::default(), Rng::new(5));
+    stores.ammo[weapons::MIRV] = 3;
+    guns.select(weapons::MIRV, &stores);
+    let mut m = guns.step(true, false, 1.0 / 60.0, &level(), &mut stores, &mut rng).0.remove(0).missiles[0];
+    assert_eq!(m.target, None, "a MIRV is launched unguided");
+    assert!(!m.splitting());
+    // Fly it a second.
+    for _ in 0..61 {
+        m.step_at(1.0 / 60.0, |_| None, |_| None, |_| false);
+    }
+    assert!(m.splitting(), "{}", m.age);
+    let children = m.split(&mut rng, &[]);
+    assert_eq!(children.len(), hb_sim::turret::SPLIT_INTO);
+    for c in &children {
+        assert_eq!(c.kind, weapons::DEAD_ON as i32);
+        assert_eq!(c.target, None);
+        assert_eq!(c.position, m.position);
+        assert!((c.speed - m.speed / 2.0).abs() < 1e-3);
+        assert!((-16384.0..16384.0).contains(&c.pitch), "{}", c.pitch);
+    }
+    // They do not all go the same way.
+    let spread = children.windows(2).filter(|w| w[0].heading != w[1].heading).count();
+    assert!(spread >= children.len() - 2, "{spread}");
+}
+
+#[test]
+fn a_guided_mirv_gives_each_of_its_ten_a_target() {
+    let (mut guns, mut stores, mut rng) = (Guns::default(), Stores::default(), Rng::new(5));
+    stores.ammo[weapons::GUIDED_MIRV] = 1;
+    guns.select(weapons::GUIDED_MIRV, &stores);
+    guns.lock = Some(4);
+    let m = guns.step(true, false, 1.0 / 60.0, &level(), &mut stores, &mut rng).0.remove(0).missiles[0];
+    assert_eq!(m.target, Some(4), "it is launched at the lock");
+    let children = m.split(&mut rng, &[7, 8, 9]);
+    assert_eq!(children.len(), hb_sim::turret::SPLIT_INTO);
+    for c in &children {
+        assert_eq!(c.kind, weapons::VIPER as i32);
+        assert!([7, 8, 9].contains(&c.target.unwrap()), "{:?}", c.target);
+    }
+    // With nothing to go at, they fly on unguided.
+    let children = m.split(&mut rng, &[]);
+    assert!(children.iter().all(|c| c.target.is_none()));
+}

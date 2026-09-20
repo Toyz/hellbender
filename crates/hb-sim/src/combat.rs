@@ -365,6 +365,31 @@ pub fn step_shot(
     None
 }
 
+/// Every live placement within `reach` of a point on all three axes: the
+/// blast of a MIRV or a mine (`0x47d3b0`, which tests a cube, not a ball,
+/// and only the placements the actor loop ran this frame).
+pub fn splash(
+    at: [f32; 3],
+    reach: f32,
+    placements: &[Placement],
+    alive: impl Fn(usize) -> bool,
+) -> Vec<usize> {
+    placements
+        .iter()
+        .enumerate()
+        .filter(|&(i, p)| {
+            if !alive(i) {
+                return false;
+            }
+            let o = position_of(p);
+            wrapped(at[0] - o[0]).abs() <= reach
+                && (at[1] - o[1]).abs() <= reach
+                && wrapped(at[2] - o[2]).abs() <= reach
+        })
+        .map(|(i, _)| i)
+        .collect()
+}
+
 /// Which live placement, if any, a point is inside: one of its type's hit
 /// spheres or its turned bounding box (`0x40d750`, `0x40ce70`).
 pub fn object_at(
