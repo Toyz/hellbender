@@ -52,3 +52,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 39 | [Shots are models](worklog/0039-shots-are-models.md) | 2026-09-20 | decomp,render,port |
 | 40 | [Explosions](worklog/0040-explosions.md) | 2026-09-20 | decomp,engine,render,port |
 | 41 | [The ship stops at walls](worklog/0041-the-ship-stops-at-walls.md) | 2026-09-20 | decomp,engine,port |
+| 42 | [Being shot down](worklog/0042-being-shot-down.md) | 2026-09-20 | decomp,engine,port |

@@ -322,6 +322,8 @@ fn main() -> Result<(), String> {
     // Seconds since the mission ended, before the next level (or this one
     // again) begins.
     let mut ended = 0.0f32;
+    // The ship's last few seconds, while it is being one.
+    let mut dying: Option<hb_sim::death::Wreck> = None;
     // The ship's velocity, from how far the eye moved last frame; turrets
     // lead with it and the laser adds its magnitude.
     let mut last_eye = eye_of(&flight.camera);
@@ -368,6 +370,7 @@ fn main() -> Result<(), String> {
             (flight, mission, followers, live, battle, colours) = begin(&level);
             last_eye = eye_of(&flight.camera);
             ended = 0.0;
+            dying = None;
             flash = None;
             println!(
                 "sim: {} of {} objects follow a course, {} turrets, {} flyers",
@@ -564,13 +567,44 @@ fn main() -> Result<(), String> {
                 music.effect(&s, volume);
             }
         }
-        if !battle.pilot.alive() {
-            // The port's own: start again where the level starts, whole. The
-            // engine's death - an explosion, a wreck, the mission's end - has
-            // not been read.
-            flight = Flight::new(start_camera(&level, &mission));
-            battle.pilot = hb_sim::combat::Pilot::default();
+        // Dying: the ship tumbles on, blows up near the ground, and the
+        // level is over five seconds later (`hb_sim::death`).
+        if !battle.pilot.alive() && demo.is_none() {
+            let [pitch, roll, heading] = flight.ship.angles();
+            let wreck = dying.get_or_insert_with(|| hb_sim::death::Wreck::new(pitch, roll, heading));
+            let grid = hb_world::Grid::new(&level.terrain);
+            let under = |p: [f32; 3]| {
+                grid.ceiling_of_solid((p[0] * 65536.0) as i32, (p[2] * 65536.0) as i32) as f32 / 65536.0
+            };
+            let mut at = flight.ship.position;
+            let ground = under(at);
+            let wants = wreck.step(&mut at, dt, ground);
+            flight.ship.position = at;
+            flight.camera.x = (at[0] * 65536.0) as i32;
+            flight.camera.y = (at[1] * 65536.0) as i32;
+            flight.camera.z = (at[2] * 65536.0) as i32;
+            flight.camera.pitch = Angle(wreck.pitch as i32 as u16);
+            flight.camera.roll = Angle(wreck.roll as i32 as u16);
             last_eye = eye_of(&flight.camera);
+            match wants {
+                Some(hb_sim::death::Wants::Explode) => {
+                    battle.blow_up(at);
+                    if let (Some(music), Some(s)) = (music.as_ref(), sound("blast7.wav")) {
+                        music.effect(&s, 1.0);
+                    }
+                    flash = Some(("SHOT DOWN".to_string(), 5.0));
+                }
+                // The engine ends the level here and the mission is failed;
+                // this starts it again, which is the port's own choice.
+                Some(hb_sim::death::Wants::Over) => {
+                    println!("shot down ({} so far) - starting again", battle.deaths);
+                    (flight, mission, followers, live, battle, colours) = begin(&level);
+                    last_eye = eye_of(&flight.camera);
+                    dying = None;
+                    ended = 0.0;
+                }
+                None => {}
+            }
         }
 
         // The mission.

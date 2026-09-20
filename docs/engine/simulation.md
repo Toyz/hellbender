@@ -411,7 +411,7 @@ missiles and the player's health and shield. What is its own:
 | choice | why |
 | --- | --- |
 | Enemy shots do not hit other actors | The engine's do. A muzzle can sit inside its own turret's box, and the engine's exclusion, if any, is not read. |
-| A dead player starts again at the level's start, whole | The engine explodes the ship and puts the loadout back (worklog 40); what it then does - the wreck flies on and blows up two units over the ground (`0x464920`), and the mission fails - is not ported. |
+| The level starts again five seconds after the ship blows up | The engine ends the level there; what it shows between missions is not read. |
 | No view shake | The shake's amounts are not read. |
 | Shots and missiles are points | The engine draws models by kind (`0x4769cf`). |
 | A group model is its first child | Only the SAM site uses one. The engine's frame advance is not read. |
@@ -509,6 +509,19 @@ and the manual choice of point (`keyNavChoose`), which hb-fly's Tab already
 uses for changing level. hb-fly's floor for the loader's height check is the
 top of the solid, so a point below y = 0 is left where it is rather than put
 on the tunnel floor.
+
+## Being shot down
+
+With the hull at zero the player's update stops flying and runs `0x464870`.
+The velocity is dropped; the nose pitches down and the ship rolls, both a
+quarter of a turn a second, the pitch stopping at `0x1fff` - forty-five
+degrees; and the ship drifts forward at `0x7a120`, seven and a half units a
+second. Within two units of the ground it explodes - the eleven puffs at two
+units - and the loadout goes back to what it started with. From then
+`0x512618` gathers the frame time, and the game loop ends the level once it
+passes five seconds (`0x4822a4`). `hb_sim::death` is that; what the port does
+at the end of it - start the level again - is its own choice, since what the
+engine does with a failed mission is not read.
 
 ## The ship against the world
 

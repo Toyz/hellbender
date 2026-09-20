@@ -284,12 +284,6 @@ impl Battle {
             noises.push(Noise::PlayerHit(self.rng.below(5)));
             if self.pilot.take(player_damage) {
                 self.deaths += 1;
-                // The engine's own death: an explosion two units across at
-                // the ship, and the loadout back to what it started with
-                // (`0x465560`).
-                self.blasts.burst(player, 2.0, &mut self.rng);
-                self.stores = Stores::default();
-                self.guns = Guns::default();
                 noises.push(Noise::Died);
             }
         }
@@ -309,6 +303,14 @@ impl Battle {
             self.missiles.extend(v.missiles.iter().copied());
         }
         (volleys, voices)
+    }
+
+    /// The wreck hitting the ground: the engine's explosion two units
+    /// across, and the loadout back to what it started with (`0x464998`).
+    pub fn blow_up(&mut self, at: [f32; 3]) {
+        self.blasts.burst(at, 2.0, &mut self.rng);
+        self.stores = Stores::default();
+        self.guns = Guns::default();
     }
 
     /// Energy and hull creeping back, and the afterburner's tank refilling.
