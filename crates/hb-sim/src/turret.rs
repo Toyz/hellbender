@@ -259,6 +259,12 @@ pub const SPLIT_INTO: usize = 10;
 pub const SPLIT_REACH: f32 = 32.0;
 pub const SPLIT_DAMAGE: f32 = 0.5;
 
+/// The Bion super weapon, the eight pieces' reward. It scorches as it goes:
+/// every sub-step it damages everything within 16 units of where it is, a
+/// quarter of its damage at a time (`0x477a19`).
+pub const SUPER: i32 = 30;
+pub const SUPER_REACH: f32 = 16.0;
+
 /// What ended a missile's flight.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Struck {

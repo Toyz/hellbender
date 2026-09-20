@@ -88,12 +88,14 @@ pub const CRUISE: usize = 24;
 /// The MIRV and the guided MIRV, which break up a second into their flight.
 pub const MIRV: usize = 26;
 pub const GUIDED_MIRV: usize = 27;
+/// The Bion super weapon: the eight pieces make it and select it.
+pub const SUPER: usize = 30;
 
 /// The weapons this port can fire. The cluster missile's spread
 /// (`0x47cec0`), the mine (`0x47d82a`) and the super weapon, which burns
 /// what it passes (`0x477a19`), are not ported yet.
-pub const PORTED: [usize; 9] =
-    [SERVO_KINETIC, DISPERSION, RAPID_FIRE, VALKYRIE, DEAD_ON, CRUISE, VIPER, MIRV, GUIDED_MIRV];
+pub const PORTED: [usize; 10] =
+    [SERVO_KINETIC, DISPERSION, RAPID_FIRE, VALKYRIE, DEAD_ON, CRUISE, VIPER, MIRV, GUIDED_MIRV, SUPER];
 
 /// The weapon keys, as `HELLBEND.INI` binds them and the trigger routine
 /// reads them (`0x47dcc4` on): the backquote for the Valkyrie
@@ -381,7 +383,7 @@ impl Guns {
             SERVO_KINETIC | RAPID_FIRE | VALKYRIE => shots = self.guns(w, pose, speed, damage, dt, stores, voices),
             DISPERSION => shots = self.dispersion(pose, speed, damage, stores, rng, voices),
             DEAD_ON | MIRV => missiles.push(self.missile(w, pose, None)),
-            VIPER | CRUISE | GUIDED_MIRV => missiles.push(self.missile(w, pose, self.lock)),
+            VIPER | CRUISE | GUIDED_MIRV | SUPER => missiles.push(self.missile(w, pose, self.lock)),
             _ => return None,
         }
         let stock = &mut stores.ammo[w];

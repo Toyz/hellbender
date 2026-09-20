@@ -226,6 +226,7 @@ impl Battle {
         let health = &self.health;
         let volumes = &self.volumes;
         let mut children: Vec<(Missile, Vec<usize>)> = Vec::new();
+        let mut scorched: Vec<([f32; 3], f32, i32)> = Vec::new();
         for m in &mut self.missiles {
             match m.side {
                 Side::Enemy => match m.step(dt, target, solid) {
@@ -249,6 +250,19 @@ impl Battle {
                     children.push((*m, targets));
                     m.age = f32::MAX;
                 }
+                // The super weapon scorches what it passes: everything
+                // within 16 units takes its damage as it goes (`0x477a19`
+                // does a quarter of it each of the four sub-steps).
+                Side::Player if m.kind == hb_sim::turret::SUPER => {
+                    scorched.push((m.position, m.damage, m.kind));
+                    let aim = |i: usize| {
+                        let p = live.get(i)?;
+                        (!health.get(i)?.destroyed).then(|| combat::position_of(p))
+                    };
+                    if m.step_at(dt, aim, |_| None, solid).is_some() {
+                        m.age = f32::MAX;
+                    }
+                }
                 // The player's: home on the target while it stands, strike
                 // whatever they fly into.
                 Side::Player => {
@@ -266,6 +280,11 @@ impl Battle {
                         None => {}
                     }
                 }
+            }
+        }
+        for (at, damage, kind) in scorched {
+            for i in combat::splash(at, hb_sim::turret::SUPER_REACH, live, |i| !self.health[i].destroyed) {
+                hits.push((i, damage, kind));
             }
         }
         for (parent, targets) in children {

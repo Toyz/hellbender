@@ -329,10 +329,14 @@ target of its own.
 this frame whose position is within the reach on **all three axes** - a cube,
 not a ball - takes the damage through the same entry a shot does.
 
-The cluster missile (`0x47cec0`), the floating mine (`0x47d82a`) and the super
-weapon, which scorches everything within 16 units of its path (`0x477a19`),
-are not ported yet. Nor is the cruise missile's own steering (`0x4780b0`): the
-port steers it as the others.
+**The super weapon** (30), which the eight Bion pieces make and select, is a
+missile that scorches as it flies: every sub-step `0x477a19` puts a quarter of
+its damage into everything within 16 units of where it is. It does not need to
+hit anything.
+
+The cluster missile (`0x47cec0`) and the floating mine (`0x47d82a`, into a
+hundred-slot pool at `0x61bde0`) are not ported. Nor is the cruise missile's
+own steering (`0x4780b0`): the port steers it as the others.
 
 ## The guided missile
 

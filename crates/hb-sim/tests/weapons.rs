@@ -338,3 +338,29 @@ fn a_guided_mirv_gives_each_of_its_ten_a_target() {
     let children = m.split(&mut rng, &[]);
     assert!(children.iter().all(|c| c.target.is_none()));
 }
+
+#[test]
+fn the_super_weapon_is_what_the_eight_pieces_make() {
+    let (mut guns, mut stores, mut rng) = (Guns::default(), Stores::default(), Rng::new(2));
+    // Not there until the pieces are.
+    assert_eq!(guns.select(weapons::SUPER, &stores), None);
+    assert_eq!(guns.selected, weapons::VALKYRIE);
+    let mut pilot = hb_sim::combat::Pilot::default();
+    let mut said = Vec::new();
+    for kind in 23..=30 {
+        hb_sim::powerup::collect(kind, &mut pilot, &mut stores, &mut said);
+    }
+    assert_eq!(stores.weapon, weapons::SUPER);
+    assert_eq!(stores.ammo[weapons::SUPER], -1, "unlimited");
+    assert_eq!(guns.select(weapons::SUPER, &stores), None);
+    assert_eq!(guns.selected, weapons::SUPER);
+    guns.lock = Some(2);
+    let v = guns.step(true, false, 1.0 / 60.0, &level(), &mut stores, &mut rng).0.remove(0);
+    let m = v.missiles[0];
+    assert_eq!(m.kind, hb_sim::turret::SUPER);
+    assert_eq!(m.target, Some(2), "it goes at the lock");
+    assert_eq!(m.damage, 1.0);
+    // Its reach is sixteen units, half the MIRV's blast.
+    assert_eq!(hb_sim::turret::SUPER_REACH, 16.0);
+    assert!(hb_sim::turret::SUPER_REACH < hb_sim::turret::SPLIT_REACH);
+}

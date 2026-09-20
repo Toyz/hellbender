@@ -707,6 +707,11 @@ fn main() -> Result<(), String> {
             let (said, taken) = battle.pick_up(eye);
             for i in taken {
                 let kind = battle.field.items[i].kind;
+                // The eighth Bion piece makes the super weapon and selects
+                // it (`0x426c39`).
+                if (23..=30).contains(&kind) && battle.stores.weapon == hb_sim::weapons::SUPER {
+                    battle.guns.select(hb_sim::weapons::SUPER, &battle.stores);
+                }
                 println!("picked up {}", hb_sim::powerup::KINDS[kind].0);
                 if kind == hb_sim::powerup::MESSAGE_POD {
                     mission.pod_taken(i);
