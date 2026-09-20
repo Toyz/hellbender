@@ -76,6 +76,7 @@ same visibility test, `radius << 8 / distance >= 16`, into the actor's `+0x20`.
 class   types   routine    what
     0     874   -          scenery: visibility only
     9     454   -          bunkers and domes: visibility only
+    1       ?   0x4077c0   turret that pitches too, see below
    10     118   0x408c30   turret
    47      97   0x421240   course follower (phase 0 read, see above)
    26       ?   0x40ab80   hovers: bobs and turns on the spot, see below
@@ -87,6 +88,23 @@ The other classes' routines are listed by the table and not yet read.
 Counted over placements rather than types, the classes that matter are 0 with
 1,874, 9 with 1,436, 10 with 1,378, 7 with 597, 26 with 523, 53 with 511 and
 47 with 285. The flyers - 7, 53, 56, 59, 60 - come to 1,673 between them.
+
+## Class 1 is a turret that aims
+
+`0x4077c0` and the class 10 turret at `0x408c30` start with the same fifteen
+instructions and end with the same three calls - ease the angles, then fire
+through `0x406dc0` or `0x4074e0`. Only the aim differs, and it differs in two
+ways: the lead is computed in all three axes rather than two, and the wanted
+pitch is `atan2(lead_y, sqrt(lead_x^2 + lead_z^2))` scaled by **minus**
+65536/2pi rather than 0. So a class 1 gun tracks the player up and down.
+
+Past vertical it wraps the pair rather than clamping: with the wanted pitch
+over a quarter turn it becomes `0x8000` less itself and the heading turns
+about, and under minus a quarter turn the engine adds half a turn to both -
+which is not the mirror of the first case, and is what the port does too.
+
+109 placements across the levels are class 1: the bottom gun turrets, the
+floating guns. `hb_sim::turret::Turret::aiming` is this.
 
 ## Class 26 hovers
 
@@ -674,9 +692,8 @@ weapons to spend them on yet.
 Everything past phase 0 of the course follower: speeds, curve fitting, what
 happens at the end of a course, how the seven logic routines differ.
 
-The behaviour classes still unread, by how many placements they drive: 1 with
-109 - the bottom gun turrets and floating guns, which aim at the player, so
-another shooter - 14 with 96, 17 with 54, 55 with 49, 58 with 34, 18 with 29,
+The behaviour classes still unread, by how many placements they drive: 14 with
+96, 17 with 54, 55 with 49, 58 with 34, 18 with 29,
 3 with 15, 35 with 12, and the handful of scripted ones: 50 to 52 for the
 shuttle and its escort, 62 to 64 for Nyx. Classes 56, 59 and 60 borrow the
 class-53 flyer in this port; their own routines are not read.

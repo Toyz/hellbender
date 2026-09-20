@@ -79,6 +79,9 @@ pub struct Turret {
     pub waited: f32,
     /// The barrel the next shot leaves from (actor offset 0xac).
     pub barrel: usize,
+    /// Class 1 rather than class 10: it leads in all three axes and pitches
+    /// as well as turns (`0x4077c0`).
+    pub aims: bool,
 }
 
 /// What a turret put into the world this frame.
@@ -90,10 +93,17 @@ pub enum Launch {
 
 impl Turret {
     pub fn new(p: &Placement) -> Turret {
-        Turret { heading: p.heading as f32, pitch: p.pitch as f32, waited: 0.0, barrel: 0 }
+        Turret { heading: p.heading as f32, pitch: p.pitch as f32, waited: 0.0, barrel: 0, aims: false }
     }
 
-    /// One frame of `0x408c30` for the actor standing at `p`.
+    /// The class 1 gun: the same state, aiming in three dimensions.
+    pub fn aiming(p: &Placement) -> Turret {
+        Turret { aims: true, ..Turret::new(p) }
+    }
+
+    /// One frame for the actor standing at `p`: `0x408c30` for a class 10
+    /// turret, and `0x4077c0` for a class 1 gun, which differ only in the
+    /// aim.
     #[allow(clippy::too_many_arguments)]
     pub fn step(
         &mut self,
@@ -113,11 +123,30 @@ impl Turret {
         let flight = if speed > 0.0 { distance / speed } else { 0.0 };
         let lead_x = d[0] + player_velocity[0] * flight;
         let lead_z = d[2] + player_velocity[2] * flight;
-        let wanted = lead_x.atan2(lead_z) * 65536.0 / std::f32::consts::TAU;
+        let mut wanted = lead_x.atan2(lead_z) * 65536.0 / std::f32::consts::TAU;
+
+        // Class 10 asks for pitch 0. Class 1 leads in y as well and aims up
+        // and down, wrapping the pair past vertical the way `0x4078c8` does:
+        // past a quarter turn the pitch reflects and the heading turns
+        // about, and below minus a quarter the engine adds half a turn to
+        // both, which is not the mirror of the first and is left as it is.
+        let mut wanted_pitch = 0.0;
+        if self.aims {
+            let lead_y = d[1] + player_velocity[1] * flight;
+            let flat = (lead_x * lead_x + lead_z * lead_z).sqrt();
+            wanted_pitch = -lead_y.atan2(flat) * 65536.0 / std::f32::consts::TAU;
+            if wanted_pitch > 16384.0 {
+                wanted_pitch = 32768.0 - wanted_pitch;
+                wanted += 32768.0;
+            } else if wanted_pitch < -16384.0 {
+                wanted_pitch += 32768.0;
+                wanted += 32768.0;
+            }
+        }
 
         let ease = def.turn_rate as f32 / 65536.0 * dt;
         self.heading = (self.heading + angle_error(wanted, self.heading) * ease).rem_euclid(65536.0);
-        self.pitch += (0.0 - self.pitch) * ease;
+        self.pitch += angle_error(wanted_pitch, self.pitch) * ease;
 
         self.trigger(def, mesh, at, player, dt, def.shot_speed() as f32 / 65536.0, rng)
     }

@@ -240,3 +240,35 @@ fn a_float_sam_site_needs_no_aim() {
     assert!(!pilot.alive() || pilot.health < 0.5, "{pilot:?}");
 }
 
+
+/// Class 1, the guns that aim: the lead is in all three axes and the gun
+/// pitches at the player (`0x4077c0`, worklog 55).
+#[test]
+fn a_class_one_gun_pitches_at_a_target_above_it() {
+    // A quick turn, so one frame is enough to see the sign.
+    let def = gun(65536, 100 << 16, 20 << 16, 2);
+    let placed = at_origin();
+    let mut aimer = Turret::aiming(&placed);
+    assert!(aimer.aims);
+
+    // Straight up and ahead: positive pitch is nose down, so aiming up is
+    // negative.
+    aimer.step(&def, None, &placed, [0.0, 20.0, 20.0], [0.0; 3], 1.0, &mut Rng::new(1));
+    assert!(aimer.pitch < -4000.0, "pitch {} should be well up", aimer.pitch);
+    assert!(aimer.heading < 100.0 || aimer.heading > 65436.0, "heading {}", aimer.heading);
+
+    // And below it, the other way.
+    let mut aimer = Turret::aiming(&placed);
+    aimer.step(&def, None, &placed, [0.0, -20.0, 20.0], [0.0; 3], 1.0, &mut Rng::new(1));
+    assert!(aimer.pitch > 4000.0, "pitch {} should be down", aimer.pitch);
+}
+
+/// The class 10 turret still asks for pitch 0, whatever the player does.
+#[test]
+fn a_class_ten_turret_does_not_pitch() {
+    let def = gun(65536, 100 << 16, 20 << 16, 2);
+    let placed = at_origin();
+    let mut turret = Turret::new(&placed);
+    turret.step(&def, None, &placed, [0.0, 40.0, 20.0], [0.0; 3], 1.0, &mut Rng::new(1));
+    assert_eq!(turret.pitch, 0.0);
+}

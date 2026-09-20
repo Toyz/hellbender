@@ -83,8 +83,13 @@ impl Battle {
             .placements
             .iter()
             .enumerate()
-            .filter(|(_, p)| level.kinds.get(p.kind).is_some_and(|k| k.class() == 10))
-            .map(|(i, p)| (i, Turret::new(p)))
+            .filter(|(_, p)| {
+                level.kinds.get(p.kind).is_some_and(|k| k.class() == 10 || k.class() == 1)
+            })
+            .map(|(i, p)| {
+                let class = level.kinds[p.kind].class();
+                (i, if class == 1 { Turret::aiming(p) } else { Turret::new(p) })
+            })
             .collect();
         let flyers = level
             .placements
@@ -158,8 +163,12 @@ impl Battle {
                 Some(Launch::Missile(m)) => self.missiles.push(m),
                 None => {}
             }
-            // The turret's heading is what the renderer shows.
+            // The turret's heading is what the renderer shows, and a class
+            // 1 gun's pitch with it.
             live[*i].heading = turret.heading as u16;
+            if turret.aims {
+                live[*i].pitch = turret.pitch as i32;
+            }
         }
 
         // The flyers, within the same 80 units.
