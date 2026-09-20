@@ -539,11 +539,20 @@ over - pushed back along the normal. Position only: the flight model's
 velocity is not touched, so the ship slides along what it hits rather than
 stopping dead.
 
+Below zero the surfaces are the chamber's. A chamber is two heightfields of
+its own - a floor and a ceiling, both signed and both under the ground - and
+where they meet there is rock: `0x4290f0` reads each at the cell's four
+corners and counts the corners where they are equal. `HOTH` has 5,414 chamber
+cells, about a hundred units down.
+
 The port keeps the ground with its height query and does the boxes as solids:
 `hb_sim::collide` pushes the ship, a sphere of the engine's one unit, out of
-the face it is least far through, with the same fraction over. What it does
-not have is the engine's swept test between the old and new positions, so a
-fast enough ship can still pass through a thin box in one frame.
+the face it is least far through, with the same fraction over. Underground it
+holds the ship between the chamber's floor and ceiling, sampled across the
+ship's own unit, and backs it out the way it came when those two meet - the
+crude form of the engine's wall. What it does not have is the engine's swept
+test between the old and new positions, so a fast enough ship can still pass
+through a thin box in one frame.
 
 ## Explosions
 

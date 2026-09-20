@@ -59,6 +59,8 @@ struct Flight {
     collide: bool,
     /// Set on the frame the ship was pushed up out of the ground.
     grounded: bool,
+    /// Where it was before this frame, for backing out of rock.
+    was: [f32; 3],
 }
 
 impl Flight {
@@ -67,7 +69,8 @@ impl Flight {
         let mut ship = hb_sim::flight::Ship::new([at(camera.x), at(camera.y), at(camera.z)], camera.yaw.0 as f32);
         // Start under way at half throttle rather than parked in the air.
         ship.throttle = 0.5;
-        let mut flight = Flight { ship, camera, collide: true, grounded: false };
+        let was = ship.position;
+        let mut flight = Flight { ship, camera, collide: true, grounded: false, was };
         flight.sync_camera();
         flight
     }
@@ -89,6 +92,7 @@ impl Flight {
             throttle_down: down(&[Key::Z, Key::S]),
             afterburner: fuel && down(&[Key::LeftShift, Key::RightShift]),
         };
+        self.was = self.ship.position;
         self.ship.step(&controls, dt);
         // The engine keeps every position in the signed world.
         let wrap = |v: f32| (v + 512.0).rem_euclid(1024.0) - 512.0;
@@ -132,13 +136,60 @@ impl Flight {
         if push == Some(hb_sim::collide::Push::Up) {
             self.grounded = true;
         }
-        // The ground underneath, which the boxes sit on.
+        // The ground underneath. The engine's query box covers the ship's
+        // own unit, so the ground is sampled across that box and not only
+        // under its middle - a slope rising under one side would otherwise
+        // come through the view.
         let fixed = |v: f32| (v * 65536.0) as i32;
-        let ground = grid
-            .height_at(hb_formats::terrain::Layer::Ground, fixed(moved[0]), fixed(moved[2]))
+        let unit = hb_sim::collide::SHIP;
+        let ground = [(0.0, 0.0), (-unit, -unit), (unit, -unit), (-unit, unit), (unit, unit)]
+            .into_iter()
+            .filter_map(|(dx, dz)| {
+                grid.height_at(
+                    hb_formats::terrain::Layer::Ground,
+                    fixed(moved[0] + dx),
+                    fixed(moved[2] + dz),
+                )
+            })
+            .max()
             .unwrap_or(0);
         let floor = ground as f32 / 65536.0 + hb_sim::collide::SHIP;
-        if self.ship.position[1] < floor {
+        // Underground the ground is not what holds the ship: the chamber is,
+        // and it is two heightfields, a floor and a ceiling, with rock where
+        // they meet (`0x4290f0` reads both at the cell's four corners). The
+        // engine collides with their triangles; this keeps the ship between
+        // them and backs it out of rock.
+        let cell = hb_world::Cell::containing(fixed(self.ship.position[0]), fixed(self.ship.position[2]));
+        let inside = self.ship.position[1] < 0.0 && grid.has_chamber(cell);
+        if inside {
+            let sample = |layer, dx: f32, dz: f32| {
+                grid.height_at(layer, fixed(self.ship.position[0] + dx), fixed(self.ship.position[2] + dz))
+                    .map(|h| h as f32 / 65536.0)
+            };
+            let corners = [(0.0, 0.0), (-unit, -unit), (unit, -unit), (-unit, unit), (unit, unit)];
+            let roof = corners
+                .into_iter()
+                .filter_map(|(dx, dz)| sample(hb_formats::terrain::Layer::ChamberCeiling, dx, dz))
+                .fold(f32::MAX, f32::min);
+            let bed = corners
+                .into_iter()
+                .filter_map(|(dx, dz)| sample(hb_formats::terrain::Layer::ChamberFloor, dx, dz))
+                .fold(f32::MIN, f32::max);
+            if roof - bed < unit * 2.0 {
+                // Rock: back out the way it came, keeping the height.
+                self.ship.position[0] = self.was[0];
+                self.ship.position[2] = self.was[2];
+                self.grounded = true;
+            } else {
+                if self.ship.position[1] < bed + unit {
+                    self.ship.position[1] = bed + unit;
+                    self.grounded = true;
+                }
+                if self.ship.position[1] > roof - unit {
+                    self.ship.position[1] = roof - unit;
+                }
+            }
+        } else if self.ship.position[1] < floor {
             self.ship.position[1] = floor;
             self.grounded = true;
         }
