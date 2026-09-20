@@ -1263,3 +1263,50 @@ fn flat_polygons_take_the_first_band_and_their_normal_light() {
     assert_eq!(mrgl::shade_colour(0, 0xffff), 30);
     assert_eq!(mrgl::shade_colour(-200, 0x8000), 200);
 }
+
+/// Every `.QKE` parses to its last line, and the two lists say what they are:
+/// ground quakes move a rectangle of cells, box quakes move one cell's box,
+/// and the ones with two sounds are doors.
+#[test]
+fn every_quake_file_parses_and_its_entries_name_cells() {
+    let pod = archive!("GAME.POD");
+    let (mut files, mut ground, mut boxes, mut doors, mut live) = (0, 0, 0, 0, 0);
+    for e in pod.entries().iter().filter(|e| e.ext() == "lvl") {
+        let level = lvl::Level::parse(pod.bytes(e)).unwrap();
+        let stem = level.stem().to_string();
+        let Ok(bytes) = pod.read("data", &format!("{stem}.qke")) else { continue };
+        let quake = hb_formats::quake::parse(bytes).unwrap_or_else(|why| panic!("{stem}: {why}"));
+        files += 1;
+        ground += quake.ground.len();
+        boxes += quake.boxes.len();
+        for entry in &quake.ground {
+            // Two corners of a rectangle of cells, in range.
+            assert_eq!(entry.where_.len(), 5, "{stem}");
+            for c in &entry.where_[..4] {
+                assert!((0..128).contains(c), "{stem}: cell {c}");
+            }
+            assert!(entry.switch.is_none(), "{stem}: ground entries have no switch");
+        }
+        for entry in &quake.boxes {
+            assert_eq!(entry.where_.len(), 3, "{stem}");
+            assert!((0..128).contains(&entry.where_[0]) && (0..128).contains(&entry.where_[1]), "{stem}");
+            // The third is which box set it moves, A or B.
+            assert!((1..=2).contains(&entry.where_[2]), "{stem}: set {}", entry.where_[2]);
+            assert!(entry.switch.is_some(), "{stem}: box entries carry switch info");
+            live += usize::from(entry.live());
+            let sounds = entry.named_sounds();
+            if sounds.len() >= 2 {
+                doors += 1;
+                assert!(
+                    sounds.iter().all(|s| s.to_ascii_lowercase().ends_with(".wav")),
+                    "{stem}: {sounds:?}"
+                );
+            }
+        }
+    }
+    assert_eq!(files, 26);
+    assert!(ground > 100, "{ground} ground quakes");
+    assert!(boxes > 500, "{boxes} box quakes");
+    assert!(doors > 100, "{doors} of them are doors");
+    assert!(live > 0, "{live} live");
+}

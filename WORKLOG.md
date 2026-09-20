@@ -57,3 +57,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 44 | [The missiles that break up](worklog/0044-the-missiles-that-break-up.md) | 2026-09-20 | decomp,engine,port |
 | 45 | [The super weapon](worklog/0045-the-super-weapon.md) | 2026-09-20 | decomp,engine,port |
 | 46 | [Sweeping the step](worklog/0046-sweeping-the-step.md) | 2026-09-20 | port |
+| 47 | [The doors are in the .QKE](worklog/0047-the-doors-are-in-the-qke.md) | 2026-09-20 | decomp,format |

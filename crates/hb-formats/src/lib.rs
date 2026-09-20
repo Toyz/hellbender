@@ -14,6 +14,7 @@ pub mod lvl;
 pub mod mrgl;
 pub mod nav;
 pub mod png;
+pub mod quake;
 pub mod raw;
 pub mod terrain;
 pub mod text;
