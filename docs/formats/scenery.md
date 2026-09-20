@@ -87,8 +87,10 @@ An entry is the same shape in both lists:
 -16256,-18816                         two heights, terrain scale
 56,98,56,98,2                         ground: two cell corners and a mode
                                       box:   one cell and which box set
--1,-1,0,0                             the actor it watches, -1 for none
-1,65536,0,65536,0                     motion: the middle three are 16.16
+-1,-1,0,0                             what it watches: an id, or a cell
+1,65536,0,65536,0                     motion: which altitude, the seconds
+                                      out, the pause, the seconds back, the
+                                      pause
 0,0,0,4                               flags: four here, five in a box entry
 NULL                                  five sound slots, 12 characters each
 NULL
@@ -112,16 +114,72 @@ What the game does with them:
 
 - **Ground quakes**, 767 of them, name a rectangle of cells by two corners,
   both inside the 128 x 128 grid, and move that patch of the ground's
-  heightfield.
+  heightfield. `0x4121d0` walks the rectangle with `& 0x7f` at each step, so
+  a patch may wrap around the world's edge.
 - **Box quakes**, 1,193 of them, name one cell and which of the two box sets
   it moves - 747 move set B and 446 set A. 813 of them name at least two
   sounds, and those sounds are `1-0UDOOR.WAV` and `1-0DDOOR.WAV` and their
   like: a door going up and a door going down. The rest move silently.
-- The **motion** line's middle three are 16.16 and the same few values over
-  and over: 2.0, 0, 2.0 in 479 entries, 3.0, 0, 3.0 in 324, 1.0, 0, 1.0 in
-  165. A distance and a rate, on the evidence, with the middle a pause.
-- The **watch** line's first value is an actor to watch, `-1` where there is
-  none. That is what "no match for watchBox found" is about.
+
+### The box quake state machine
+
+`0x4122a0` runs once a frame over both lists, skipping any record whose kind
+byte is 0, and hands each live box entry to `processBoxQuake` (`0x410ec0`).
+That routine finds the record's cell - `(row << 7) + column` into box set A at
+`0x675fa0` or set B at `0x6edfc0`, eighteen bytes a cell - and dispatches on a
+state byte through a six-way jump table at `0x411474`:
+
+```
+0  resting     if it is a switch, look for the box that watches it
+5  about to     wait out the watch line's fourth number, then play the first
+               sound and start moving
+1  moving out   step the cell's two altitudes, until the first height is
+               reached
+2  holding      wait out the motion line's third number
+3  moving back  the same the other way, playing the second sound
+4  holding      wait out the motion line's fifth number
+```
+
+Both of the cell's altitude words move by the same step, so the box keeps its
+thickness and translates; the record remembers where it is at `+0x44` and
+`+0x48`. The step comes from `0x410e40`: the distance left to travel divided
+by the number of frames the move is allowed, which is the motion line's
+second number (going out) or fourth (coming back) divided by the frame time.
+**So those two numbers are durations in seconds, not rates** - a door takes
+2.0 or 3.0 seconds whatever its height - and the third and fifth are the
+pauses at each end. The first selects which of the box's two altitudes is
+compared against which height.
+
+### Switches and the boxes that watch them
+
+A box quake with a `@--Box quake switch info--` number of 1 - 319 of the
+1,193 - is a **switch**. Its switch block also names a texture, which the
+engine uppercases and resolves to a texture index at load; when the switch is
+thrown it writes that index into the cell's texture word (`0x412ab6`), so the
+switch lights up.
+
+The switch then has to find the door it opens. `0x410d00` walks the box
+quakes for one that is resting and whose flag field says what it watches:
+
+- flags line's fifth number 4: it watches an **id**, and the watch line's
+  first number is that id, matched against the number after
+  `!--Additional quake info--` on the switch. The ids in the shipped files
+  run to about 30, with `-1` for none.
+- flags line's fifth number 3: it watches a **cell**, and the watch line's
+  first three numbers are that cell's row, column and box set. No shipped
+  entry uses this - the 1,192 live box entries hold 4 in 643 of them and 0,
+  1 or 2 in the rest, and those three match nothing here.
+
+The index it finds is cached in the record, and when it finds nothing the
+engine prints `processBoxQuake: no match for watchBox found`. That is what
+the message means: a switch with no door - and 56 of the 319 switches are
+in exactly that state, since only 263 of them name an id that some entry
+watches.
+
+The flags line's other numbers become bits: the second, third and fourth
+become one bit each where the value is 1, and the fifth is the four-bit
+field above, shifted up three. The first number becomes a mode byte, which
+the resting state tests against 1.
 
 `hb_formats::quake` parses all 26 files to their last line.
 
@@ -141,11 +199,10 @@ What the eight numbers of a `.GLT` record set, and what puts a light out:
 the unlit and broken textures are loaded and indexed and the load-time scan
 finds the faces wearing them, but the code that swaps one texture for
 another has not been read, nor has what the list at `0x5cafe0` is for. In
-`.QKE`: what the motion line's five numbers mean exactly - a distance and a
-rate fits the values but has not been read out of the engine - what the
-flags line counts, and what the number after `!--Additional quake info--`
-and the switch block's number select. The record shape of `.TTY`, which no
-shipped level uses.
+`.QKE`: what throws a switch in the first place - the state machine and the
+link from switch to door are read, but not what puts a switch out of its
+resting state - and what the ground quake's kinds 1 and 3 do differently.
+The record shape of `.TTY`, which no shipped level uses.
 
 A ground quake and a box quake turn out to share their whole record shape;
 only the third line differs, a rectangle of cells against one cell and a box

@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-50 entries: audio 2, build 1, content 4, decomp 28, engine 17, format 27, port 40, render 21, test 3, tooling 3, ui 1, world 10.
+51 entries: audio 2, build 1, content 4, decomp 29, engine 18, format 27, port 40, render 21, test 3, tooling 3, ui 1, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -61,3 +61,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 48 | [The last three numbers in the .LVL](worklog/0048-the-last-three-numbers-in-the-lvl.md) | 2026-09-20 | decomp,format |
 | 49 | [The sky is not always at 128](worklog/0049-the-sky-is-not-always-at-128.md) | 2026-09-20 | decomp,engine,port |
 | 50 | [KREASH.MIX is the end of a table](worklog/0050-kreash-mix-is-the-end-of-a-table.md) | 2026-09-20 | decomp,format |
+| 51 | [What opens a door](worklog/0051-what-opens-a-door.md) | 2026-09-20 | decomp,engine |

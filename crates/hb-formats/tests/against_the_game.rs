@@ -1349,3 +1349,46 @@ fn every_ground_light_table_parses_and_names_three_textures() {
     assert_eq!(files.len(), 10, "ten tables for 26 levels: {files:?}");
     assert_eq!(records, 90);
 }
+
+/// The box quakes the engine would actually drive: a switch finds the entry
+/// that watches it, by id or by cell, and a door's two durations are the
+/// seconds it takes to move (worklog 51).
+#[test]
+fn every_switch_finds_the_box_that_watches_it() {
+    use hb_formats::quake::Watches;
+    let pod = archive!("GAME.POD");
+    let (mut switches, mut matched, mut by_id, mut by_cell) = (0, 0, 0, 0);
+    for e in pod.entries().iter().filter(|e| e.ext() == "lvl") {
+        let level = lvl::Level::parse(pod.bytes(e)).unwrap();
+        let stem = level.stem().to_string();
+        let Ok(bytes) = pod.read("data", &format!("{stem}.qke")) else { continue };
+        let quake = hb_formats::quake::parse(bytes).unwrap();
+        let live: Vec<_> = quake.boxes.iter().filter(|e| e.live()).collect();
+        for entry in live.iter().filter(|e| e.is_switch()) {
+            switches += 1;
+            let found = live.iter().any(|other| match other.watches() {
+                Some(Watches::Link(id)) => id == entry.extra,
+                Some(Watches::Cell { row, column, set }) => {
+                    [row, column, set] == [entry.where_[0], entry.where_[1], entry.where_[2]]
+                }
+                None => false,
+            });
+            matched += usize::from(found);
+        }
+        for entry in &live {
+            match entry.watches() {
+                Some(Watches::Link(_)) => by_id += 1,
+                Some(Watches::Cell { .. }) => by_cell += 1,
+                None => {}
+            }
+            // Every duration is a whole or half second, at most twelve:
+            // they are times, not distances.
+            for t in entry.timing() {
+                assert!((0.0..=12.0).contains(&t) && (t * 2.0).fract() == 0.0, "{stem}: {t}");
+            }
+        }
+    }
+    assert_eq!((switches, matched), (319, 263), "switches, and the ones that find a door");
+    // Watching by id is the only kind the shipped levels use.
+    assert_eq!((by_id, by_cell), (643, 0));
+}

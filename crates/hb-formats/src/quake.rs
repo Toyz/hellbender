@@ -26,18 +26,24 @@ pub struct Entry {
     /// A ground quake's rectangle of cells - two corners and a mode - or a
     /// box quake's single cell and its box set.
     pub where_: Vec<i64>,
-    /// Four more, `-1` in the first where a ground quake is not watching an
-    /// actor.
+    /// What this entry watches, and how long it waits once triggered. See
+    /// [`Entry::watches`] for the first three and [`Entry::delay`] for the
+    /// fourth.
     pub watch: [i64; 4],
-    /// Five, of which the middle three are 16.16: the distances and rates the
-    /// piece moves at.
+    /// Which altitude moves, then the seconds out, the pause at the far end,
+    /// the seconds back and the pause at rest. The two durations are 16.16
+    /// seconds: the engine divides the distance left by them, so a piece
+    /// takes as long to move whatever its height (`0x410e40`).
     pub motion: [i64; 5],
-    /// Four for a ground quake, five for a box quake: the flags and counts
-    /// that are not read yet.
+    /// Four for a ground quake, five for a box quake. The loader turns the
+    /// first into a mode byte, the next three into single bits, and the
+    /// fifth into a four-bit field that says what the entry watches
+    /// (`0x410034`).
     pub flags: Vec<i64>,
     /// Up to five sounds. A door names two, going up and going down.
     pub sounds: Vec<Option<String>>,
-    /// The number after `!--Additional quake info--`.
+    /// The number after `!--Additional quake info--`: the entry's id, which
+    /// is what a watching entry names. See [`Entry::watches`].
     pub extra: i64,
     /// Box entries only: the number and two names after
     /// `@--Box quake switch info--`.
@@ -136,10 +142,52 @@ pub fn parse(data: &[u8]) -> Result<Quake> {
     Ok(Quake { ground, boxes })
 }
 
+/// What a box quake waits for before it moves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Watches {
+    /// The entry whose [`Entry::extra`] is this id.
+    Link(i64),
+    /// Whatever moves this cell - row, column, and which box set.
+    Cell { row: i64, column: i64, set: i64 },
+}
+
 impl Entry {
     /// Whether the entry does anything.
     pub fn live(&self) -> bool {
         self.kind != 0
+    }
+
+    /// A box quake whose switch block says 1 is a switch: it looks for the
+    /// entry watching it and throws that one (`0x410d00`).
+    pub fn is_switch(&self) -> bool {
+        matches!(self.switch, Some((1, _)))
+    }
+
+    /// What this entry is waiting for, from the flags line's fifth number:
+    /// 3 watches a cell, 4 watches an id (`0x410d33`, `0x410d66`).
+    pub fn watches(&self) -> Option<Watches> {
+        match self.flags.get(4)? {
+            3 => Some(Watches::Cell {
+                row: self.watch[0],
+                column: self.watch[1],
+                set: self.watch[2],
+            }),
+            4 if self.watch[0] >= 0 => Some(Watches::Link(self.watch[0])),
+            _ => None,
+        }
+    }
+
+    /// Seconds it waits after being thrown, before it starts to move
+    /// (`0x411337`). 0 in every shipped entry.
+    pub fn delay(&self) -> f32 {
+        self.watch[3] as f32 / 65536.0
+    }
+
+    /// Seconds the move out and the move back take, and the pause at each
+    /// end: (out, hold, back, rest).
+    pub fn timing(&self) -> [f32; 4] {
+        let s = |v: i64| v as f32 / 65536.0;
+        [s(self.motion[1]), s(self.motion[2]), s(self.motion[3]), s(self.motion[4])]
     }
 
     /// The two heights as world units: the terrain stores a height as a
