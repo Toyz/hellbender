@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-77 entries: audio 4, build 2, content 4, decomp 47, engine 26, flight 4, format 30, port 64, render 23, test 3, tooling 4, ui 7, world 10.
+78 entries: audio 4, build 2, content 4, decomp 48, engine 26, flight 5, format 30, port 65, render 23, test 3, tooling 4, ui 7, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -88,3 +88,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 75 | [The keys are in the INI, and so is everything else](worklog/0075-the-keys-are-in-the-ini-and-so-is-everything-else.md) | 2026-09-20 | decomp, port, flight |
 | 76 | [The sounds hurt](worklog/0076-the-sounds-hurt.md) | 2026-09-20 | port, audio, decomp |
 | 77 | [The mine layer lays its own kind of mine](worklog/0077-the-mine-layer-lays-its-own-kind-of-mine.md) | 2026-09-21 | decomp, port, flight |
+| 78 | [The hover craft has a post](worklog/0078-the-hover-craft-has-a-post.md) | 2026-09-21 | decomp, port, flight |

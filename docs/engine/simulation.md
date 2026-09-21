@@ -285,6 +285,40 @@ So the two mines are opposites. The player's arms on proximity, spins, and
 splashes 32 units into everything nearby; the enemy's sits still, tests only
 the player, and bites hardest at its middle.
 
+## The hover craft, class 58
+
+`0x4976d0` is the third of these routines and the least like the other two.
+Three types use it, all `mtwship.bin`, in the three MORBOS levels: *The SPINE
+17 hover craft are one tough mother.*
+
+It has a **post**. The frame it first runs, phase 0 writes its position into
+the actor at `+0xb4`, `+0xb8` and `+0xbc` and goes to phase 2006. Every frame
+after that the preamble measures how far it has come from that post, flat,
+and compares it with the type's attack range. Outside it, the speed handed to
+the steering is zero (`0x4977da`) - it simply stops - and the only thing it
+still asks is where the player is relative to *his* own nose (`0x492750`): if
+it is behind him it goes to 201 and leaves.
+
+Inside the tether:
+
+| Phase | What it does | Leaves for |
+| --- | --- | --- |
+| 2006 | speed 0, steering mode 3, facing the player - on station | 200, when the player is inside the attack range |
+| 200 | chases, mode 0 | 2000 when it could not turn in time; 2002 inside the retreat range |
+| 2000 | flies away, mode 1 | 201 when more than 8 units off |
+| 2002 | stays on the player; inside the retreat range, mode 2 at no more than the player's own speed (`0x50cc50`) | 201 if dragged off the tether |
+| 201 | flies home, mode 0, **at the distance it has to cover** (`0x49794e` passes that distance as the speed) | 2006 within 8 units of the post |
+
+The turn-in-time test in phase 200 is the fighters': `sqrt((R + r + 2)^2 -
+r^2)` with `r` the turning radius. After it has moved it asks `0x492940`
+whether the player is in its own sights and fires through the same gun the
+turrets use.
+
+Steering modes 0 and 1 are the ones [the flyers](#the-flyers) use, toward and
+away. Modes 2 and 3 appear only here and what `0x4944c0` does differently
+with them has not been read; this port flies mode 2 as a capped approach and
+mode 3 as standing still.
+
 ## Time
 
 Frame time is `0x59d14c`, 16.16 seconds. `0x46f160` reads `timeGetTime` and

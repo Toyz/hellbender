@@ -144,3 +144,68 @@ fn a_fighter_lays_nothing() {
         }
     }
 }
+
+/// MORBOS's `mtwship.bin`, the SPINE 17 hover craft: class 58.
+fn spine() -> EnemyDef {
+    EnemyDef { fields: [58, 0, 5 << 16, 0, 0, 0], ..hornet() }
+}
+
+/// It sits on its post until the player is within the attack range, and it
+/// does not chase him past that range from home.
+#[test]
+fn a_hover_craft_holds_its_post_and_comes_back_to_it() {
+    use hb_sim::flyer::Hover;
+    let def = spine();
+    let place = Placement { kind: 0, hit_points: 65536, x: 0, y: 0, z: 0, heading: 0, pitch: 0, roll: 0 };
+    let mut hover = Hover::new(&place);
+    let mut rng = Rng::new(3);
+    let ground = |_: f32, _: f32| -100.0;
+    let post = hover.body.position;
+
+    // Well outside the attack range of 42: it stays put.
+    let far = player_at([0.0, 0.0, 200.0]);
+    for _ in 0..90 {
+        hover.step(&def, None, &far, 1.0 / 30.0, ground, &mut rng);
+    }
+    assert_eq!(hover.phase, 2006, "still on station");
+    let moved = (hover.body.position[2] - post[2]).abs();
+    assert!(moved < 0.01, "it moved {moved} off its post");
+
+    // Inside it, it comes for him.
+    let near = player_at([0.0, 0.0, 30.0]);
+    for _ in 0..30 {
+        hover.step(&def, None, &near, 1.0 / 30.0, ground, &mut rng);
+    }
+    assert_ne!(hover.phase, 2006, "it should have left the post");
+
+    // Lead it far enough away and it gives up and goes home.
+    let bait = player_at([0.0, 0.0, 400.0]);
+    for _ in 0..3_000 {
+        hover.step(&def, None, &bait, 1.0 / 30.0, ground, &mut rng);
+        if hover.phase == 2006 {
+            break;
+        }
+    }
+    assert_eq!(hover.phase, 2006, "it should be back on station");
+    let back = (hover.body.position[2] - post[2]).abs();
+    assert!(back < hb_sim::flyer::HOME, "it stopped {back} from its post");
+}
+
+/// Off its tether it stops fighting: with the player behind it, it turns for
+/// home whatever it was doing.
+#[test]
+fn a_hover_craft_off_its_tether_turns_for_home() {
+    use hb_sim::flyer::Hover;
+    let def = spine();
+    let place = Placement { kind: 0, hit_points: 65536, x: 0, y: 0, z: 0, heading: 0, pitch: 0, roll: 0 };
+    let mut hover = Hover::new(&place);
+    // Put it a long way from its post, chasing.
+    hover.body.position = [0.0, 0.0, 300.0];
+    hover.phase = 200;
+    // The player behind it: his nose points away from it.
+    let mut player = player_at([0.0, 0.0, 340.0]);
+    player.forward = [0.0, 0.0, 1.0];
+    let mut rng = Rng::new(3);
+    hover.step(&def, None, &player, 1.0 / 30.0, |_, _| -100.0, &mut rng);
+    assert_eq!(hover.phase, 201, "it should be heading home");
+}

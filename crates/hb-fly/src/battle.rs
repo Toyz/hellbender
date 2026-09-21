@@ -5,7 +5,7 @@
 use hb_formats::text::Placement;
 use hb_render::Level;
 use hb_sim::combat::{self, Health, HitVolume, Pilot, Shot, Side, Stop};
-use hb_sim::flyer::{Flyer, Target};
+use hb_sim::flyer::{Flyer, Hover, Target};
 use hb_sim::explosion::Blasts;
 use hb_sim::powerup::{self, Field, Stores};
 use hb_sim::weapons::{Guns, Pose, Volley};
@@ -16,6 +16,9 @@ use hb_sim::turret::{Aim, Launch, Missile, Rng, Struck, Turret};
 /// `0x497be0`, `0x4999a0`) that start the same way and are not read yet, so
 /// they borrow it.
 pub const FLYING: [i64; 6] = [7, 53, 55, 56, 59, 60];
+
+/// The hover craft, which is its own routine (`0x4976d0`).
+pub const HOVERING: i64 = 58;
 
 /// What a shot leaves where it hits the world, in units: `0x476e14` passes
 /// 60,000 in 16.16 to the explosion.
@@ -61,6 +64,7 @@ pub struct Battle {
     volumes: Vec<HitVolume>,
     turrets: Vec<(usize, Turret)>,
     flyers: Vec<(usize, Flyer)>,
+    hovers: Vec<(usize, Hover)>,
     pub shots: Vec<Flying>,
     pub missiles: Vec<Missile>,
     pub pilot: Pilot,
@@ -130,8 +134,16 @@ impl Battle {
                 (i, flyer)
             })
             .collect();
+        let hovers = level
+            .placements
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| level.kinds.get(p.kind).is_some_and(|k| k.class() == HOVERING))
+            .map(|(i, p)| (i, Hover::new(p)))
+            .collect();
         Battle {
             health: level.placements.iter().map(Health::for_placement).collect(),
+            hovers,
             volumes,
             turrets,
             flyers,
@@ -160,7 +172,7 @@ impl Battle {
     }
 
     pub fn flyer_count(&self) -> usize {
-        self.flyers.len()
+        self.flyers.len() + self.hovers.len()
     }
 
     /// One frame. `live` is what the renderer draws; a destroyed placement's
@@ -265,6 +277,30 @@ impl Battle {
                 placed.heading = flyer.heading as u16;
                 placed.pitch = flyer.pitch as i32;
                 placed.roll = flyer.roll as i32;
+            }
+            // And the hover craft, which sit on their posts until he comes.
+            for (i, hover) in &mut self.hovers {
+                if self.health[*i].destroyed || !combat::in_range(player, hover.body.position) {
+                    continue;
+                }
+                let def = &level.kinds[level.placements[*i].kind];
+                let mesh = level.meshes.get(level.placements[*i].kind).and_then(Option::as_ref);
+                match hover.step(def, mesh, &seen, dt, ground, &mut self.rng) {
+                    Some(Launch::Shot(s)) => self.shots.push(Flying::new(s)),
+                    Some(Launch::Missile(m)) => self.missiles.push(m),
+                    Some(Launch::Mine { at, radius, damage }) => {
+                        self.laid.lay(at, radius, damage);
+                    }
+                    None => {}
+                }
+                let fixed = |v: f32| (v * 65536.0) as i32;
+                let placed = &mut live[*i];
+                placed.x = fixed(hover.body.position[0]);
+                placed.y = fixed(hover.body.position[1]);
+                placed.z = fixed(hover.body.position[2]);
+                placed.heading = hover.body.heading as u16;
+                placed.pitch = hover.body.pitch as i32;
+                placed.roll = hover.body.roll as i32;
             }
         }
 

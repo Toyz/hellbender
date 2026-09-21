@@ -345,7 +345,9 @@ impl Flyer {
         None
     }
 
-    fn fly(
+    /// Steer toward a point and move along the nose. Public so the hover
+    /// craft ([`Hover`]) can use the same flying as the fighters.
+    pub fn fly(
         &mut self,
         def: &EnemyDef,
         target: [f32; 3],
@@ -407,4 +409,174 @@ impl Flyer {
 /// (type offsets 0x1f8 and 0x1fc, compared shifted up by 16).
 fn def_range(def: &EnemyDef, which: usize) -> f32 {
     def.attack_retreat[which] as f32
+}
+
+/// The hover craft, class 58 (`0x4976d0`) - the SPINE 17 in the three MORBOS
+/// levels, three types.
+///
+/// It is not a fighter. It has a post - the position it was placed at, kept
+/// at the actor's `+0xb4`, `+0xb8` and `+0xbc` - and it will not chase the
+/// player further from that post than the type's attack range. The
+/// difference shows in every phase:
+///
+/// - **2006** is where it starts and where it returns. Speed zero, steering
+///   mode 3, target the player: it sits on its post and watches. Inside the
+///   attack range it goes to 200.
+/// - **200** chases (mode 0). Closer than the type's attack range it could
+///   not turn in time, so it goes to 2000 - the same
+///   `sqrt((R + r + 2)^2 - r^2)` test the fighters do. Inside the retreat
+///   range it goes to 2002.
+/// - **2000** flies away (mode 1) until it is more than eight units off, then
+///   201.
+/// - **2002** stays on the player, and inside the retreat range switches to
+///   steering mode 2 at no more than the player's own speed (`0x50cc50`).
+/// - **201** flies home (mode 0). Within eight units of the post it goes back
+///   to 2006.
+///
+/// Dragged off its post - further from home than the attack range - it stops
+/// choosing any of that: whatever the phase, if the player is behind it
+/// (`0x492750` answers -2) it turns for home.
+///
+/// It fires after it has moved, whenever the player is in its sights, the
+/// same test and the same gun as the fighters.
+#[derive(Debug, Clone)]
+pub struct Hover {
+    /// The flying, shared with the fighters.
+    pub body: Flyer,
+    /// Where it was placed, which it will not stray far from.
+    pub post: [f32; 3],
+    pub phase: u32,
+    /// The phase last frame, so the engine's "just arrived" test can be made
+    /// (`0x497844`): a phase does nothing on the frame it is entered.
+    was: u32,
+}
+
+/// Within this of its post, a hover craft is home (`0x4ef5a8`, 8.0).
+pub const HOME: f32 = 8.0;
+
+/// And this far from the player, phase 2000 has flown far enough
+/// (`0x49797d`).
+pub const OFF: f32 = 8.0;
+
+impl Hover {
+    pub fn new(p: &Placement) -> Hover {
+        let body = Flyer::new(p);
+        Hover { post: body.position, body, phase: 2006, was: 2006 }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn step(
+        &mut self,
+        def: &EnemyDef,
+        mesh: Option<&Model>,
+        player: &Target,
+        dt: f32,
+        ground: impl Fn(f32, f32) -> f32,
+        rng: &mut Rng,
+    ) -> Option<Launch> {
+        let d = [
+            wrapped(player.position[0] - self.body.position[0]),
+            player.position[1] - self.body.position[1],
+            wrapped(player.position[2] - self.body.position[2]),
+        ];
+        let distance = dot(d, d).sqrt();
+        let attack = def_range(def, 0);
+        let retreat = def_range(def, 1);
+        let mut speed = def.move_rate as f32 / 65536.0;
+        let turn = def.turn_rate as f32 / 65536.0 * std::f32::consts::TAU;
+        let radius = def.radius() as f32 / 65536.0;
+
+        // How far it has been drawn off its post, flat (`0x49778c`).
+        let home = [wrapped(self.post[0] - self.body.position[0]), wrapped(self.post[2] - self.body.position[2])];
+        // Beyond that, the engine hands the steering a speed of zero
+        // (`0x4977da`) - it stops chasing where it stands. Only phase 201,
+        // which is the way home, puts a speed back.
+        let tethered = attack >= (home[0] * home[0] + home[1] * home[1]).sqrt();
+        if !tethered {
+            speed = 0.0;
+        }
+
+        // Entered this frame? A phase does nothing on its first frame.
+        let arrived = self.phase != self.was;
+        self.was = self.phase;
+
+        // The turn-in-time test, only while on the tether and in 200.
+        if self.phase == 200 && tethered && turn > 0.0 {
+            let r = speed / turn;
+            let reach = ((radius + r + 2.0).powi(2) - r * r).sqrt();
+            if reach >= distance {
+                self.phase = 2000;
+            }
+        }
+
+        // Where it is in the player's frame, which is the only thing it asks
+        // once it is off its tether.
+        let behind = || {
+            let [pr, pu, pf] = [player.right, player.up, player.forward];
+            cone([dot(d, pr) * -1.0, dot(d, pu) * -1.0, dot(d, pf) * -1.0]) < 0
+        };
+
+        let mut target = player.position;
+        let mut away = false;
+        match self.phase {
+            200 | 2002 if !tethered => {
+                if behind() {
+                    self.phase = 201;
+                }
+            }
+            200 => {
+                if !arrived && retreat > distance {
+                    self.phase = 2002;
+                }
+            }
+            2002 => {
+                if !arrived && retreat > distance {
+                    // Steering mode 2, at no more than the player's own
+                    // speed. What mode 2 does differently is not read.
+                    speed = speed.min(player.speed.max(0.0));
+                }
+            }
+            2000 => {
+                away = true;
+                if !arrived && distance > OFF {
+                    self.phase = 201;
+                }
+            }
+            201 => {
+                target = self.post;
+                let back = (home[0] * home[0] + home[1] * home[1]).sqrt();
+                // It goes home at the distance it has to cover (`0x49794e`
+                // hands the steering the distance itself as the speed), so
+                // it rushes back and eases in.
+                speed = back;
+                if back < HOME {
+                    self.phase = 2006;
+                }
+            }
+            // On station: still, facing him, until he is close enough.
+            _ => {
+                speed = 0.0;
+                if !arrived && distance < attack {
+                    self.phase = 200;
+                }
+            }
+        }
+
+        self.body.fly(def, target, away, speed, turn, dt, &ground);
+
+        // And then it shoots, if he is in front of it (`0x497a7b`).
+        let [mr, mu, mf] = axes(self.body.heading, self.body.pitch, self.body.roll);
+        if cone([dot(d, mr), dot(d, mu), dot(d, mf)]) == 1 {
+            return self.body.gun.trigger(
+                def,
+                mesh,
+                self.body.position,
+                player.position,
+                dt,
+                2.0 * speed.max(def.move_rate as f32 / 65536.0),
+                rng,
+            );
+        }
+        None
+    }
 }
