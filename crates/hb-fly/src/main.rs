@@ -14,6 +14,7 @@ mod sound;
 mod keys;
 mod stick;
 
+use hb_formats::act;
 use hb_formats::raw::Image;
 use hb_pod::Pod;
 use hb_render::{Camera, Level, Target};
@@ -48,7 +49,8 @@ hb-fly - fly around a Hellbender level
   h  hud on/off     k  cockpit on/off    y  music on/off
   g  collision      p  cycle the level
 
-  The level's mission runs from its .NAV file: the HUD shows the current
+  A chapter opens with its briefing screen; any key flies on. The level's
+  mission runs from its .NAV file: the HUD shows the current
   objective's code, how far it is, and an arrow on the radar points at it.
   Flying into the jump zone, or finishing every objective, moves on to the
   next level; failing starts the level again.
@@ -356,6 +358,17 @@ fn main() -> Result<(), String> {
         }
     );
 
+    // The briefing screen: the frame every chapter's briefing is drawn on,
+    // in its own palette, and the small font the prose goes in.
+    let briefing_screen: Option<(Image, act::Palette)> = startup
+        .read("art", hb_formats::brief::BACKDROP)
+        .ok()
+        .and_then(|b| Image::parse_guessed(b).ok().flatten())
+        .zip(startup.read("art", "brief.act").ok().and_then(|b| act::Palette::parse(b).ok()));
+    // What is on screen now, if a briefing is. Cleared by any key, and set
+    // whenever a level that starts a chapter is loaded.
+    let mut briefing: Option<Vec<u32>>;
+
     // The twelve weapon pictures, which the icon box shows one of.
     let icons: Vec<Option<Image>> = hb_render::hud::ICONS
         .iter()
@@ -497,6 +510,8 @@ fn main() -> Result<(), String> {
             })
             .clone()
     };
+    briefing = briefing_for(&game, briefing_screen.as_ref(), hud_font.as_ref(), &level.stem, w, h);
+
     // A line the mission flashes on the HUD, and for how much longer.
     let mut flash: Option<(String, f32)> = None;
     // Seconds since the mission ended, before the next level (or this one
@@ -519,8 +534,18 @@ fn main() -> Result<(), String> {
     let quit = binds.end_game.unwrap_or(Key::Escape);
     while window.is_open() && !window.is_key_down(quit) {
         let now = Instant::now();
-        let dt = (now - last).as_secs_f32().min(0.1);
+        let mut dt = (now - last).as_secs_f32().min(0.1);
         last = now;
+
+        // A briefing holds everything until a key is pressed, the way a
+        // briefing screen does. Nothing moves behind it.
+        if briefing.is_some() {
+            dt = 0.0;
+            if window.get_keys_pressed(minifb::KeyRepeat::No).iter().any(|k| *k != quit) {
+                briefing = None;
+                last = Instant::now();
+            }
+        }
 
         // The doors, before anything borrows the terrain to read it: a moved
         // box is written straight back into the grid, so the renderer and the
@@ -592,6 +617,8 @@ fn main() -> Result<(), String> {
                 index = (index + 1) % hb_formats::campaign::CAMPAIGN.len();
             }
             level = Level::load(&game, Some(&startup), hb_formats::campaign::CAMPAIGN[index].stem)?;
+            briefing =
+                briefing_for(&game, briefing_screen.as_ref(), hud_font.as_ref(), &level.stem, w, h);
             describe(&level);
             play_music(&level);
             (flight, mission, followers, live, battle, colours) = begin(&level);
@@ -1307,10 +1334,16 @@ fn main() -> Result<(), String> {
             }
         }
 
-        // The framebuffer is palette indices; minifb wants 0x00RRGGBB.
-        for (slot, &index) in buffer.iter_mut().zip(&target.colour) {
-            let [r, g, b] = level.palette.rgb(index);
-            *slot = ((r as u32) << 16) | ((g as u32) << 8) | b as u32;
+        // The framebuffer is palette indices; minifb wants 0x00RRGGBB. A
+        // briefing is already in that form and stands in front of it.
+        match &briefing {
+            Some(screen) => buffer.copy_from_slice(screen),
+            None => {
+                for (slot, &index) in buffer.iter_mut().zip(&target.colour) {
+                    let [r, g, b] = level.palette.rgb(index);
+                    *slot = ((r as u32) << 16) | ((g as u32) << 8) | b as u32;
+                }
+            }
         }
         window.update_with_buffer(&buffer, w, h).map_err(|e| e.to_string())?;
 
@@ -1533,6 +1566,51 @@ fn draw_brackets(pixels: &mut [u8], w: usize, h: usize, x: f32, y: f32, colour: 
     }
 }
 
+
+/// The briefing for a level, as a window-sized buffer of 0x00RRGGBB - or
+/// nothing when the level has none, which is every level that is not the
+/// first of its chapter.
+fn briefing_for(
+    game: &Pod,
+    screen: Option<&(Image, act::Palette)>,
+    font: Option<&hb_formats::hud_font::HudFont>,
+    stem: &str,
+    w: usize,
+    h: usize,
+) -> Option<Vec<u32>> {
+    use hb_formats::hud_font::LINE;
+    let (image, palette) = screen?;
+    let font = font?;
+    let brief =
+        hb_formats::brief::Brief::parse(game.read("data", &format!("{stem}.txt")).ok()?).ok()?;
+    if brief.lines.is_empty() {
+        return None;
+    }
+    let mut pixels = image.pixels.clone();
+    let (iw, ih) = (image.shape.width, image.shape.height);
+    let ink = (0..=255u8)
+        .max_by_key(|&i| palette.rgb(i).iter().map(|&c| c as u32).sum::<u32>())
+        .unwrap_or(255);
+    let top = ih.saturating_sub(brief.lines.len() * LINE) / 2;
+    for (i, line) in brief.lines.iter().enumerate() {
+        let y = top + i * LINE;
+        if y + LINE >= ih {
+            break;
+        }
+        font.draw(&mut pixels, iw, ih, 40, y as isize, line, ink);
+    }
+    // The screen is 320x200 and the view may not be; scale it in.
+    let mut out = vec![0u32; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let sx = (x * iw / w).min(iw - 1);
+            let sy = (y * ih / h).min(ih - 1);
+            let [r, g, b] = palette.rgb(pixels[sy * iw + sx]);
+            out[y * w + x] = ((r as u32) << 16) | ((g as u32) << 8) | b as u32;
+        }
+    }
+    Some(out)
+}
 
 /// Start in the middle of the map, above whatever is there.
 fn start_of(level: &Level) -> Camera {
