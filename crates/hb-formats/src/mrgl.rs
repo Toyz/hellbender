@@ -72,6 +72,12 @@ pub const SHADE_COLOUR: u32 = 0x0A;
 /// An indexed polygon ([`INDEXED_POLYGON`]'s layout) filled flat with the
 /// current [`SHADE_COLOUR`] at its light (`0x458a00`).
 pub const FLAT_POLYGON: u32 = 0x19;
+/// The same again (`0x456810`), which the dispatch table at `0x50c448` gives
+/// node 5: the same back-face test, the same band lookup on
+/// [`SHADE_COLOUR`], and a fill colour replicated into all four bytes of a
+/// word - a solid fill written a word at a time. 41 nodes in the archives
+/// and one of them is the reticle.
+pub const SOLID_POLYGON: u32 = 0x05;
 
 /// The palette bands a [`SHADE_COLOUR`] of 0 to 15 picks: the darkest and
 /// brightest index of each (`0x50c4e8`, `0x50c528`). A polygon's light,
@@ -356,14 +362,23 @@ impl Model {
                     model.unit = Some(i32_at(data, at + 4));
                 }
                 VERTEX_LIST => {
+                    // `+4` is where the list starts in the vertex numbering
+                    // that the polygons index, the same way the texel list
+                    // works. It is zero in every shipped model but
+                    // `target.bin`, the reticle, whose nine vertices are
+                    // numbered from 100.
+                    let first = i32_at(data, at + 4).max(0) as usize;
                     let count = i32_at(data, at + 8).max(0) as usize;
+                    if model.vertices.len() < first + count {
+                        model.vertices.resize(first + count, Vertex::default());
+                    }
                     for i in 0..count {
                         let v = at + 12 + i * 12;
-                        model.vertices.push(Vertex {
+                        model.vertices[first + i] = Vertex {
                             x: i32_at(data, v),
                             y: i32_at(data, v + 4),
                             z: i32_at(data, v + 8),
-                        });
+                        };
                     }
                 }
                 MATERIAL => {
@@ -399,7 +414,7 @@ impl Model {
                         model.materials.push(first.clone());
                     }
                 }
-                INDEXED_POLYGON | FLAT_POLYGON => {
+                INDEXED_POLYGON | FLAT_POLYGON | SOLID_POLYGON => {
                     let count = i32_at(data, at + 4).max(0) as usize;
                     let corners = (0..count)
                         .map(|i| {

@@ -14,8 +14,10 @@
 //! which name every element on the screen and are toggled by the key bound
 //! to `keyCockpitLabel`.
 
-use crate::raster::Target;
+use crate::camera::Camera;
+use crate::raster::{Shade, Target, Vertex};
 use hb_formats::hud_font::{HudFont, LINE};
+use hb_formats::mrgl::Model;
 
 /// The twelve boxes, in 640x480. 3 and 5 are dead.
 pub const BOXES: [[isize; 4]; 12] = [
@@ -256,6 +258,54 @@ pub fn radar(target: &mut Target, blips: &[(f32, f32)], colour: u8) {
             continue;
         }
         fill(&mut target.colour, w, h, x, y, 2, 2, colour);
+    }
+}
+
+/// The reticle, which is a model rather than anything drawn by hand:
+/// `target.bin` in `STARTUP.POD`, nine vertices fifty units ahead and two
+/// across, four triangles from the middle out to the up, left, down and
+/// right of a small octagon. `0x4652bd` draws it with the camera at the
+/// origin and no rotation, so it lands in the middle of the view.
+///
+/// Its colour walks between 32 and 63 and back, a step a frame
+/// (`0x465223`), which is the green band of the palette - the shade global
+/// takes it negated, and a negative shade is a palette index outright.
+pub fn reticle(target: &mut Target, model: &Model, colour: u8) {
+    let (w, h) = (target.width, target.height);
+    let ([sx, sy], [cx, cy]) = Camera::screen(w, h);
+    let shade = Shade {
+        light: None,
+        fog: None,
+        fog_start: 0.0,
+        fog_range: 1.0,
+        index_zero_is_clear: false,
+    };
+    let point = |v: &hb_formats::mrgl::Vertex| {
+        let z = v.z as f32 / 65536.0;
+        if z <= 0.0 {
+            return None;
+        }
+        Some(Vertex {
+            x: cx + (v.x as f32 / 65536.0) / z * sx,
+            y: cy - (v.y as f32 / 65536.0) / z * sy,
+            depth: z,
+            u: 0.0,
+            v: 0.0,
+            light: 255.0,
+        })
+    };
+    for polygon in &model.polygons {
+        let Some(first) = polygon.corners.first() else { continue };
+        let Some(a) = model.vertices.get(first.vertex as usize).and_then(point) else { continue };
+        for pair in polygon.corners[1..].windows(2) {
+            let (Some(b), Some(c)) = (
+                model.vertices.get(pair[0].vertex as usize).and_then(point),
+                model.vertices.get(pair[1].vertex as usize).and_then(point),
+            ) else {
+                continue;
+            };
+            target.flat_triangle([a, b, c], colour, &shade);
+        }
     }
 }
 

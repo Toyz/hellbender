@@ -129,6 +129,23 @@ string resources.
 Everything is skipped while `0x512744` is clear, which is the flag the
 "Radar destroyed." message goes with.
 
+## The reticle
+
+The crosshair in the middle of the view is a model. `target.bin` in
+`STARTUP.POD` is nine vertices fifty units ahead and two across - a centre
+and an octagon - and four triangles from the centre out to the up, left,
+down and right pairs of the ring, which makes a four-armed cross.
+`0x4652bd` draws it with the camera at the origin and no rotation, so it
+lands in the middle of whatever the view is.
+
+Its colour is a palette index walked between 32 and 63 and back, a step a
+frame (`0x465223` moves it, `0x50cc74` is the direction), negated into the
+shade global at `0x5b3888` - and a negative shade is a palette index
+outright rather than a band. 32 to 63 is the green the rest of the HUD is
+drawn in.
+
+The key bound to `keyCrosshair` turns it off and on (`0x512584`).
+
 ## Drawing a string
 
 Two routines put text on the screen and they are not the same. `0x484ad0`
@@ -145,19 +162,17 @@ so the last row is always clear.
 ## What the port has
 
 `crates/hb-render/src/hud.rs` is all of the above except the leader lines for
-the five labels that do not name a gauge. `hb fly <level> <out.png>` draws
-the HUD over its frame, and `--labels` turns the cockpit labels on, which is
-how the layout is checked without a window.
+the five labels that do not name a gauge, and what a blip says. `hb fly
+<level> <out.png>` draws the HUD over its frame, and `--labels` turns the
+cockpit labels on, which is how the layout is checked without a window.
+`hb-fly` binds L to the labels and G to the reticle.
 
 ## Not read yet
 
 What a blip says - the string table indexed from 0x1393 that `0x448298`
-reads - so the port draws a mark instead. And the reticle in the middle of
-the view, which is in none of these routines and may be drawn in the 3D pass:
-`keyCrosshair` toggles `0x512584`, which gates an index oscillating between
-32 and 63 into `0x5b3888`, and the rasteriser reads that everywhere.
+reads - so the port draws a mark instead.
 
-The objective arrow is close by and half read. `0x475290` takes the heading
+The objective arrow is half read. `0x475290` takes the heading
 to the objective and draws a model - `0x6210c0` - into the same rect the
 radar uses, with the whole view as the rect instead when `0x474af0` set it.
 When the objective is behind, between 0x7800 and 0x8800, it plots a handful

@@ -303,6 +303,15 @@ fn main() -> Result<(), String> {
         .ok()
         .and_then(|b| Image::parse_guessed(b).ok().flatten());
     let mut show_cockpit = cockpit.is_some();
+    // The reticle, which is a model rather than art (`target.bin`), and the
+    // palette index it pulses through, 32 to 63 and back a step a frame.
+    let reticle = startup
+        .read("models", "target.bin")
+        .ok()
+        .and_then(|b| hb_formats::mrgl::Model::parse(&b).ok());
+    let mut show_reticle = reticle.is_some();
+    let mut pulse: i32 = 32;
+    let mut pulse_step: i32 = 1;
     println!(
         "cockpit: {}",
         if show_cockpit { "ckpt art loaded" } else { "not found" }
@@ -522,6 +531,9 @@ fn main() -> Result<(), String> {
         }
         if window.is_key_pressed(Key::L, minifb::KeyRepeat::No) {
             show_labels = !show_labels;
+        }
+        if window.is_key_pressed(Key::G, minifb::KeyRepeat::No) {
+            show_reticle = !show_reticle && reticle.is_some();
         }
         if window.is_key_pressed(Key::B, minifb::KeyRepeat::No) && demo.is_none() {
             for event in mission.drop_beacon(eye_of(&flight.camera)) {
@@ -1100,6 +1112,15 @@ fn main() -> Result<(), String> {
         if show_cockpit {
             if let Some(art) = &cockpit {
                 target.overlay(art);
+            }
+        }
+        if show_reticle {
+            if let Some(model) = &reticle {
+                pulse += pulse_step;
+                if pulse >= 63 || pulse <= 32 {
+                    pulse_step = -pulse_step;
+                }
+                hb_render::hud::reticle(&mut target, model, pulse as u8);
             }
         }
         if show_hud {

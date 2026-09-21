@@ -29,7 +29,9 @@ fn pod(name: &str) -> Option<Pod> {
 /// The indexed polygons - [`mrgl::INDEXED_POLYGON`] and
 /// [`mrgl::FLAT_POLYGON`] - have tests of their own.
 fn indexed(p: &mrgl::Polygon) -> bool {
-    p.kind == mrgl::INDEXED_POLYGON || p.kind == mrgl::FLAT_POLYGON
+    p.kind == mrgl::INDEXED_POLYGON
+        || p.kind == mrgl::FLAT_POLYGON
+        || p.kind == mrgl::SOLID_POLYGON
 }
 
 macro_rules! archive {
@@ -239,6 +241,36 @@ fn an_untextured_polygon_carries_a_flat_colour_instead() {
             ("shell.bin".to_string(), 32),
         ]
     );
+}
+
+/// The reticle is the only model whose vertex list does not start at zero,
+/// and one of the few built from node 5 - the solid-filled indexed polygon.
+#[test]
+fn the_reticle_is_four_solid_polygons_numbered_from_a_hundred() {
+    let pod = archive!("STARTUP.POD");
+    let entry = pod
+        .entries()
+        .into_iter()
+        .find(|e| e.dir() == "models" && e.file_name() == "target.bin")
+        .expect("target.bin");
+    let model = mrgl::Model::parse(pod.bytes(&entry)).unwrap();
+    assert_eq!(model.materials.len(), 0, "the reticle carries no texture");
+    assert_eq!(model.polygons.len(), 4);
+    // Nine vertices numbered 100 to 108, so the list is padded to 109.
+    assert_eq!(model.vertices.len(), 109);
+    assert!(model.vertices[..100].iter().all(|v| *v == mrgl::Vertex::default()));
+    // Every one sits fifty units ahead, and none is more than two across.
+    for v in &model.vertices[100..] {
+        assert_eq!(v.z, 50 << 16, "the reticle is fifty units ahead");
+        assert!(v.x.abs() <= 2 << 16 && v.y.abs() <= 2 << 16, "and two across");
+    }
+    // Four triangles, each from the middle vertex out to a pair of the ring.
+    for poly in &model.polygons {
+        assert_eq!(poly.kind, mrgl::SOLID_POLYGON);
+        assert_eq!(poly.corners.len(), 3);
+        assert_eq!(poly.corners[0].vertex, 100);
+        assert!(poly.corners[1..].iter().all(|c| (101..=108).contains(&c.vertex)));
+    }
 }
 
 #[test]

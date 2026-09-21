@@ -647,6 +647,11 @@ fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
                     blips: &blips,
                 };
                 hb_render::hud::draw(&mut target, &font, &readout);
+                if let Some(model) =
+                    startup.read("models", "target.bin").ok().and_then(|b| hb_formats::mrgl::Model::parse(&b).ok())
+                {
+                    hb_render::hud::reticle(&mut target, &model, 0x30);
+                }
             }
         }
     }

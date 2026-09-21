@@ -100,6 +100,9 @@ when the normal is zero; they differ in how they fill.
   (`0x4a5b1a`) that does not write texel 0 - the powerups and the other
   sprite-like models are a picture with holes on one quad. 52 polygons in 45
   models, all with a normal.
+- **0x05** (`0x456810`) is the same fill as 0x19 - the same light, the same
+  ramp tables - written a word at a time from a colour replicated into all
+  four bytes. 41 polygons, among them the four of the reticle.
 - **0x19** is flat: the normal's light (`0x48a6a0`) picks a shade in the
   colour set by the last 0x0a record - a ramp index into the tables at
   `0x50c4e8` (low) and `0x50c528` (high), or a palette index when negative
@@ -141,10 +144,15 @@ models a guess that is probably wrong.
 
 ```
 +0x00  u32  type = 0x02
-+0x04  i32  ?
++0x04  i32  first vertex number
 +0x08  i32  count
 +0x0c  i32[3] * count      x, y, z per vertex
 ```
+
+`+4` is where the list starts in the numbering the polygons index, the same
+field the texel list at 0x04 has. It is zero in every shipped model but one:
+`TARGET.BIN`, the reticle, numbers its nine vertices from 100. Every model
+has exactly one vertex list, so nothing else depends on it.
 
 **Model space is normalised.** 235 of the 238 `.BIN` models in GAME.POD have a
 maximum absolute vertex component of exactly 16,383 or 16,384, and none exceeds
@@ -353,8 +361,8 @@ What colour the 118 polygons in `FANBODY`, `JAW1`, `JAW2` and `SHELL` are, since
 the stream does not say.
 
 Record types that appear in the data with no semantics yet: 0x0c, 0x12 and
-0x1f, and the fill modes of indexed polygons 0x05 and 0x06; and the `i32` at
-+4 of the vertex list and material records.
+0x1f, and the fill mode of indexed polygon 0x06; and the `i32` at +4 of the
+material record.
 
 Whether the 256-unit texture space is a repeat or a scale, given the textures
 are 64 x 64. This port scales - see
