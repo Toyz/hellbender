@@ -12,7 +12,6 @@ use hb_formats::Angle;
 mod battle;
 mod sound;
 
-use hb_formats::font::Font;
 use hb_formats::raw::Image;
 use hb_pod::Pod;
 use hb_render::{Camera, Level, Target};
@@ -344,12 +343,16 @@ fn main() -> Result<(), String> {
     };
     play_music(&level);
 
-    // The front end's typeface, for the readout.
-    let hud_font = (|| {
-        let index = startup.read("startup", "font.ndx").ok()?;
-        let bitmap = startup.read("startup", "font.bin").ok()?;
-        Font::parse(index, bitmap).ok()
-    })();
+    // The HUD's own font, which lives in the executable rather than in an
+    // archive: five pixels tall, which is what every line the game draws
+    // over the cockpit is written in. The front end's `FONT.BIN` is the
+    // 23-pixel one and is not this.
+    let hud_font = std::fs::read(game_dir().join("HELLBEND.EXE"))
+        .ok()
+        .and_then(|exe| hb_formats::hud_font::HudFont::read(&exe).ok());
+    if hud_font.is_none() {
+        println!("hud: HELLBEND.EXE is not beside the archives, so no HUD font");
+    }
     let mut show_hud = hud_font.is_some();
 
     let mut target = Target::new(w, h);
@@ -1115,10 +1118,7 @@ fn main() -> Result<(), String> {
                     battle.stores.weapon_energy * 100.0,
                     battle.stores.energy * 100.0,
                 );
-                // The font is drawn at its authored size, which is 23 pixels
-                // tall - more than a tenth of a 200-line screen, so it sits in
-                // the top corner and is meant to be read, not admired.
-                font.draw(&mut target.colour, w, h, 4, 3, &readout, Some(255));
+                font.draw(&mut target.colour, w, h, 4, 3, &readout, 255);
 
                 // The objective, how far, and the clock if there is one.
                 if demo.is_none() {
@@ -1133,15 +1133,27 @@ fn main() -> Result<(), String> {
                             line
                         }
                     };
-                    let line = hb_formats::font::HEIGHT + 4;
-                    font.draw(&mut target.colour, w, h, 4, (3 + line) as isize, &status, Some(255));
+                    let line = hb_formats::hud_font::LINE + 1;
+                    font.draw(&mut target.colour, w, h, 4, (3 + line) as isize, &status, 255);
                     if mission.outcome.is_none() {
                         draw_arrow(&mut target.colour, w, h, (w / 2, 3 + line * 3 / 2), mission.arrow, mission.near);
                     }
                 }
+                // A message goes where the engine puts it: centred, three
+                // eighths of the way down, on a box (`0x4810a2`).
                 if let Some((text, _)) = &flash {
-                    let y = h.saturating_sub(hb_formats::font::HEIGHT + 4);
-                    font.draw(&mut target.colour, w, h, 4, y as isize, text, Some(255));
+                    let width = font.width(text).min(240);
+                    let x = (w as isize - width as isize) / 2;
+                    let y = (h * 3 / 8) as isize;
+                    let lines = 1;
+                    for py in (y - 2)..=(y + lines * hb_formats::hud_font::LINE as isize + 1) {
+                        for px in (x - 3)..=(x + width as isize + 1) {
+                            if (0..w as isize).contains(&px) && (0..h as isize).contains(&py) {
+                                target.colour[py as usize * w + px as usize] = 0;
+                            }
+                        }
+                    }
+                    font.draw(&mut target.colour, w, h, x, y, text, 255);
                 }
             }
         }

@@ -1476,3 +1476,48 @@ fn every_animated_model_stays_in_one_piece_through_its_animation() {
     }
     assert_eq!(models, 18);
 }
+
+/// The HUD font in the executable: 48 bytes a character at `0x50f530`, a
+/// width and then a six-row bitmap, and the letters come out as letters
+/// (worklog 67).
+#[test]
+fn the_hud_font_reads_as_letters() {
+    let path = game_dir().join("HELLBEND.EXE");
+    if !path.exists() {
+        eprintln!("skipping: {} is not there", path.display());
+        return;
+    }
+    let exe = std::fs::read(&path).unwrap();
+    let font = hb_formats::hud_font::HudFont::read(&exe).unwrap();
+
+    // A capital A is four wide, five tall, with a bar across the middle and
+    // a hole under the apex.
+    let a = font.glyph('A').expect("no A");
+    assert_eq!(a.width, 4);
+    let row = |n: usize| -> String {
+        (0..a.width).map(|c| if a.pixels[n * a.width + c] != 0 { '#' } else { '.' }).collect()
+    };
+    assert_eq!(row(0), ".##.");
+    assert_eq!(row(1), "#..#");
+    assert_eq!(row(2), "####");
+    assert_eq!(row(5), "....", "the last row is the descender's, and an A has none");
+
+    // A g does use it.
+    let g = font.glyph('g').expect("no g");
+    assert!(g.pixels[5 * g.width..].iter().any(|&p| p != 0), "a g should descend");
+
+    // Every printable character has a glyph, and none is wider than the
+    // record can hold.
+    let printable: Vec<char> = (0x20u8..0x7f).map(char::from).collect();
+    for c in printable {
+        let glyph = font.glyph(c).unwrap_or_else(|| panic!("no glyph for {c:?}"));
+        assert!(glyph.width * 6 <= 47, "{c:?} is {} wide", glyph.width);
+        assert_eq!(glyph.pixels.len(), glyph.width * 6);
+        assert!(glyph.pixels.iter().all(|&p| p <= 1), "{c:?} has a pixel that is not 0 or 1");
+    }
+
+    // The width routine adds a pixel between letters.
+    assert_eq!(font.width("AA"), (a.width + 1) * 2);
+    // And a message fits the engine's 240-pixel wrap.
+    assert!(font.width("Go Faster to Deploy Mine") < 240);
+}

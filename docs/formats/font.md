@@ -1,15 +1,20 @@
 ---
-title: The .BIN and .NDX font
+title: The two fonts
 status: solid
-covers: STARTUP\FONT.BIN, STARTUP\FONT.NDX
-worklog: 24
+covers: STARTUP\FONT.BIN, STARTUP\FONT.NDX, HELLBEND.EXE:0x50f530
+worklog: 24, 67
 ---
 
-# The font
+# The two fonts
 
-Two files under `STARTUP\`, and between them the front end's typeface: a bold
-italic with an outline, 95 glyphs, one for every printable ASCII character from
-space to `~`.
+The game has two, and they are nothing alike. The front end's is a pair of
+files under `STARTUP\`; the HUD's is a table inside the executable, and is
+what every line drawn over the cockpit is written in.
+
+## The front end's, from `FONT.BIN` and `FONT.NDX`
+
+A bold italic with an outline, 95 glyphs, one for every printable ASCII
+character from space to `~`.
 
 ## Layout
 
@@ -67,3 +72,38 @@ textures.
 The line height and letter spacing the engine uses - this port advances the pen
 by the glyph's width with no gap, which reads correctly but may not be what the
 front end does.
+
+## The HUD's, from the executable
+
+A table at virtual address `0x50f530`, 48 bytes a character for characters
+0x20 to 0xff. The first byte is the glyph's width; the rest is one byte a
+pixel, `width` across and six rows down, 1 where the pixel is set. Five of
+the six rows carry the letter and the sixth is the descender's, so a `g` and
+a `y` use it and an `A` does not.
+
+```
+A, width 4          g, width 4
+.##.                ....
+#..#                .###
+####                #..#
+#..#                .###
+#..#                ...#
+....                ###.
+```
+
+Widths run from 1 to 5 over the printable range, and the measure routine
+(`0x485a00`) adds a pixel between letters, which is how a string is sized
+before it is centred. A line takes seven pixels (`0x4810a2` multiplies the
+line count by 7).
+
+A message on the HUD is drawn by `0x481030`: the text is word-wrapped to at
+most 240 pixels (`0x484920`), centred in the view, three eighths of the way
+down it, on a filled box that runs from three pixels left and two above the
+text to one past its right and bottom. `0x480ee0` is what puts a message
+there, with a duration - 2.0 seconds for the mine's refusal and for a
+powerup's line - and only one message shows at a time.
+
+Reading the table means reading `HELLBEND.EXE`, which is on the disc beside
+the archives, so `hb_formats::hud_font` maps the virtual address through the
+PE section table and reads it from there. `hb hudfont <out.png>` draws a
+specimen.

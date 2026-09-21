@@ -21,7 +21,7 @@ The containers and record layouts.
 | [The colour tables - .MAP, .LTE, .FOG, .MIX](formats/colour-tables.md) | partial | FOG\*.MAP, FOG\*.LTE, FOG\*.FOG, FOG\*.MIX, DATA\*.LTE |
 | [The .CRS courses](formats/courses.md) | solid | DATA\*.CRS |
 | [The .DMO recorded flight](formats/demo.md) | solid | DEMO\DEMO1.DMO, DEMO\DEMO2.DMO, DEMO\DEMO3.DMO |
-| [The .BIN and .NDX font](formats/font.md) | solid | STARTUP\FONT.BIN, STARTUP\FONT.NDX |
+| [The two fonts](formats/font.md) | solid | STARTUP\FONT.BIN, STARTUP\FONT.NDX, HELLBEND.EXE:0x50f530 |
 | [The level text files - .DEF, .NAV, .TXT, .TEX, .ANI, .LVL family](formats/level-text.md) | partial | DATA\*.DEF, DATA\*.NAV, DATA\*.TXT, DATA\*.TEX, DATA\*.ANI, DEMO\*.DMO |
 | [The .LVL manifest](formats/lvl.md) | solid | LEVELS\*.LVL |
 | [The .BIN model and its MRGL nodes](formats/mrgl.md) | partial | MODELS\*.BIN |

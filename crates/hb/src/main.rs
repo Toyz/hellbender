@@ -37,6 +37,7 @@ hb - inspect Hellbender's data
                                     --at sets the clock for flipbook textures,
                                     --blast draws explosion frame N there
   hb font <out.png> [text]          a specimen of the front end's typeface
+  hb hudfont <out.png> [text]       a specimen of the HUD's font, from the EXE
   hb demo <n> <seconds> <out.png>   a frame of a recorded attract-mode flight
   hb check                          parse everything and report what fails
 
@@ -100,6 +101,7 @@ fn run(args: &[&str]) -> Result<(), String> {
         ["look", name, index, out, rest @ ..] => cmd_look(name, index, Path::new(out), rest),
         ["bench", name, rest @ ..] => cmd_bench(name, rest),
         ["font", out, rest @ ..] => cmd_font(Path::new(out), rest),
+        ["hudfont", out, rest @ ..] => cmd_hud_font(Path::new(out), rest),
         ["demo", n, at, out] => cmd_demo(n, at, Path::new(out)),
         ["check"] => cmd_check(),
         _ => Err(format!("unknown command\n\n{USAGE}")),
@@ -682,6 +684,66 @@ fn cmd_font(out: &Path, rest: &[&str]) -> Result<(), String> {
         HEIGHT,
         font.widths.iter().min().unwrap(),
         font.widths.iter().max().unwrap(),
+        out.display()
+    );
+    Ok(())
+}
+
+/// The HUD's own font, out of the executable.
+fn cmd_hud_font(out: &Path, rest: &[&str]) -> Result<(), String> {
+    use hb_formats::hud_font::{HudFont, LINE};
+    let exe = std::fs::read(game_dir().join("HELLBEND.EXE"))
+        .map_err(|e| format!("HELLBEND.EXE: {e}"))?;
+    let font = HudFont::read(&exe).map_err(|e| e.to_string())?;
+    let startup = open_pod("startup")?;
+    let palette =
+        act::Palette::parse(startup.read("art", "vga.act").map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+
+    let rows: Vec<String> = if rest.is_empty() {
+        [
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+            "abcdefghijklmnopqrstuvwxyz",
+            "0123456789 .,:;!?-+()[]/*",
+            "Go Faster to Deploy Mine",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+    } else {
+        vec![rest.join(" ")]
+    };
+
+    let width = rows.iter().map(|r| font.width(r)).max().unwrap_or(1) + 8;
+    let height = rows.len() * (LINE + 1) + 6;
+    let mut pixels = vec![0u8; width * height];
+    // The brightest entry of the front end's palette, so the specimen can be
+    // read; the HUD itself draws in whatever the caller asks for.
+    let ink = (0..=255u8)
+        .max_by_key(|&i| palette.rgb(i).iter().map(|&c| c as u32).sum::<u32>())
+        .unwrap_or(255);
+    for (i, row) in rows.iter().enumerate() {
+        font.draw(&mut pixels, width, height, 4, (3 + i * (LINE + 1)) as isize, row, ink);
+    }
+    // Four times up, so five-pixel letters can be looked at.
+    let scale = 4;
+    let (out_w, out_h) = (width * scale, height * scale);
+    let mut rgb = Vec::with_capacity(out_w * out_h * 3);
+    for y in 0..out_h {
+        for x in 0..out_w {
+            rgb.extend_from_slice(&palette.rgb(pixels[(y / scale) * width + x / scale]));
+        }
+    }
+    std::fs::write(out, png::rgb(out_w, out_h, &rgb)).map_err(|e| e.to_string())?;
+    let widths: Vec<usize> = (0x20..0x7f)
+        .filter_map(|c| font.glyph(char::from(c as u8)))
+        .map(|g| g.width)
+        .collect();
+    println!(
+        "{} glyphs, 5 tall in a {LINE}-pixel line, widths {}..{} -> {}",
+        widths.len(),
+        widths.iter().min().unwrap_or(&0),
+        widths.iter().max().unwrap_or(&0),
         out.display()
     );
     Ok(())

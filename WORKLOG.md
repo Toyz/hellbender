@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-66 entries: audio 3, build 2, content 4, decomp 38, engine 26, format 28, port 53, render 23, test 3, tooling 4, ui 1, world 10.
+67 entries: audio 3, build 2, content 4, decomp 39, engine 26, format 29, port 54, render 23, test 3, tooling 4, ui 2, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -77,3 +77,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 64 | [The mine is laid](worklog/0064-the-mine-is-laid.md) | 2026-09-20 | port |
 | 65 | [The cluster is a pair](worklog/0065-the-cluster-is-a-pair.md) | 2026-09-20 | decomp, port |
 | 66 | [Three sounds the port was missing](worklog/0066-three-sounds-the-port-was-missing.md) | 2026-09-20 | decomp, audio, port |
+| 67 | [The HUD has its own font, and it is in the executable](worklog/0067-the-hud-has-its-own-font-and-it-is-in-the-executable.md) | 2026-09-20 | decomp, format, ui, port |
