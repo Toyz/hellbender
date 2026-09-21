@@ -194,10 +194,12 @@ into the terrain.
 ### Switches and the boxes that watch them
 
 A box quake with a `@--Box quake switch info--` number of 1 - 319 of the
-1,193 - is a **switch**. Its switch block also names a texture, which the
-engine uppercases and resolves to a texture index at load; when the switch is
-thrown it writes that index into the cell's texture word (`0x412ab6`), so the
-switch lights up.
+1,193 - is a **switch**. Its switch block names two textures, lit and unlit.
+The engine uppercases both, resolves them to texture indices at load, and
+writes one into all four of the cell's side faces as the switch goes on and
+off (`0x412a50`, `0x412ab6`). What decides which is the position of the box
+the switch points at: while that box is away from where it rests, the switch
+is lit.
 
 The switch then has to find the door it opens. `0x410d00` walks the box
 quakes for one that is resting and whose flag field says what it watches:

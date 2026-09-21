@@ -87,6 +87,45 @@ fn it_rises_for_a_second_holds_for_four_and_comes_back() {
     assert!((door.top - door.bottom - thickness).abs() < 0.01);
 }
 
+/// A switch lights while the door it points at is away from rest, and goes
+/// dark when it settles (`0x412a50`).
+#[test]
+fn a_switch_wears_its_lit_texture_while_its_door_is_open() {
+    let mut switch = door();
+    switch.switch = Some((1, vec![Some("SWON.RAW".into()), Some("SWOFF.RAW".into())]));
+    switch.extra = 7;
+    let mut opened = door();
+    opened.flags = vec![0, 1, 0, 1, 4];
+    opened.watch = [7, 0, 0, 0];
+    opened.where_ = vec![48, 66, 1];
+    opened.switch = Some((0, vec![None, None]));
+
+    let mut quakes = quakes(vec![switch, opened], Vec::new());
+    assert!(quakes.doors[0].switch.is_some());
+    assert!(!quakes.doors[0].lit);
+
+    quakes.shot((65, 48), 400.0);
+    // The switch itself starts, the other follows, and the switch lights.
+    for _ in 0..4 {
+        quakes.step(1.0 / 30.0);
+    }
+    assert!(quakes.doors[0].lit, "the switch did not light");
+    let lit = quakes.swaps.first().expect("no swap").clone();
+    assert_eq!(lit.cell, (65, 48));
+    assert_eq!(lit.texture.as_deref(), Some("SWON.RAW"));
+
+    // It goes dark once the door has been through its whole cycle.
+    quakes.swaps.clear();
+    for _ in 0..(12 * 30) {
+        quakes.step(1.0 / 30.0);
+        if !quakes.doors[0].lit {
+            break;
+        }
+    }
+    assert!(!quakes.doors[0].lit, "the switch stayed lit");
+    assert_eq!(quakes.swaps.last().unwrap().texture.as_deref(), Some("SWOFF.RAW"));
+}
+
 #[test]
 fn a_door_that_watches_an_id_follows_the_one_that_carries_it() {
     let mut first = door();

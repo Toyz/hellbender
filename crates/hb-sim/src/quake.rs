@@ -109,6 +109,13 @@ pub struct Door {
     pub id: i64,
     /// The sounds going out and coming back, where it has them.
     pub sounds: [Option<String>; 2],
+    /// A switch's two textures, lit and unlit: the names in its `@` block.
+    /// The engine resolves both to texture indices at load and writes one
+    /// into the cell's four side faces as the switch goes on and off
+    /// (`0x412a50`).
+    pub switch: Option<[Option<String>; 2]>,
+    /// Whether the switch is showing its lit texture.
+    pub lit: bool,
     pub state: State,
     pub timer: f32,
     /// Where the box is now, in altitude words.
@@ -125,6 +132,16 @@ pub struct Moved {
     pub cell: (i32, i32),
     pub bottom: i16,
     pub top: i16,
+}
+
+/// A switch that has just gone on or off: the caller writes the texture into
+/// the cell's four side faces.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Swap {
+    pub cell: (i32, i32),
+    pub layer: Layer,
+    /// The texture it now wears, or `None` where the switch names none.
+    pub texture: Option<String>,
 }
 
 /// A sound the caller should play, and where.
@@ -196,6 +213,8 @@ pub struct Quakes {
     pub doors: Vec<Door>,
     pub patches: Vec<Patch>,
     pub sounds: Vec<Played>,
+    /// Switches that changed this frame.
+    pub swaps: Vec<Swap>,
 }
 
 impl Door {
@@ -254,6 +273,11 @@ impl Quakes {
                     },
                     id: e.extra,
                     sounds: [sound(0), sound(1)],
+                    switch: e.is_switch().then(|| {
+                        let names = &e.switch.as_ref().expect("a switch has its block").1;
+                        [names.first().cloned().flatten(), names.get(1).cloned().flatten()]
+                    }),
+                    lit: false,
                     state: State::Rest,
                     timer: 0.0,
                     bottom: bottom as f32,
@@ -306,7 +330,7 @@ impl Quakes {
             })
             .collect();
 
-        Quakes { doors, patches, sounds: Vec::new() }
+        Quakes { doors, patches, sounds: Vec::new(), swaps: Vec::new() }
     }
 
     /// A shot landed at this point - cell (x, z) and altitude in words.
@@ -355,6 +379,31 @@ impl Quakes {
         for i in woken {
             self.wake_watchers(i);
         }
+        // A switch shows its lit texture while the box it points at is away
+        // from rest (`0x410f2e` compares the watched box's cell with its
+        // heights, and `0x412a50` writes the texture).
+        for i in 0..self.doors.len() {
+            if self.doors[i].switch.is_none() {
+                continue;
+            }
+            let id = self.doors[i].id;
+            let on = self.doors.iter().any(|other| {
+                other.state != State::Rest
+                    && matches!(other.trigger, Trigger::Watching(Watches::Link(link)) if link == id)
+            });
+            if on == self.doors[i].lit {
+                continue;
+            }
+            self.doors[i].lit = on;
+            let door = &self.doors[i];
+            let names = door.switch.as_ref().expect("checked above");
+            self.swaps.push(Swap {
+                cell: door.cell,
+                layer: Layer::of_box(door.set),
+                texture: names[usize::from(!on)].clone(),
+            });
+        }
+
         for i in 0..self.patches.len() {
             if self.step_patch(i, dt) {
                 let patch = &self.patches[i];

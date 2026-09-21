@@ -427,6 +427,25 @@ fn main() -> Result<(), String> {
         for moved in doors.step(dt) {
             move_box(&mut level.terrain, &moved);
         }
+        // A switch that has just gone on or off wears a different texture on
+        // all four of its sides.
+        for swap in std::mem::take(&mut doors.swaps) {
+            let Some(name) = swap.texture else { continue };
+            let wanted = name.to_ascii_lowercase();
+            let Some(index) =
+                level.texture_names.iter().position(|n| n.to_ascii_lowercase() == wanted)
+            else {
+                continue;
+            };
+            let layer = match swap.layer {
+                hb_sim::quake::Layer::BoxA => &mut level.terrain.boxes_a,
+                _ => &mut level.terrain.boxes_b,
+            };
+            let at = (swap.cell.1 as usize & 127) * 128 + (swap.cell.0 as usize & 127);
+            for face in 0..4 {
+                layer.textures.values[at * layer.textures.per_cell + face] = index as u16;
+            }
+        }
         for played in std::mem::take(&mut doors.sounds) {
             if let (Some(music), Some(s)) = (music.as_ref(), sound(&played.name.to_ascii_lowercase())) {
                 music.effect(&s, 0.6);
