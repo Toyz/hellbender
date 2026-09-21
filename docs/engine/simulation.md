@@ -805,6 +805,29 @@ slot 18, 5 in 19, 2 in 24, slots 1 and 23 unlimited, weapon 23 selected.
 `hb_sim::powerup` is this. The port keeps the stocks and the energy but has no
 weapons to spend them on yet.
 
+## The sounds an event makes
+
+Most effects are one-shots through `0x41f0b0(name, kind, &position)`, where a
+position of `-1, -1, -1` means the sound has no place in the world. Two are
+**held**: the engine plays them and keeps the voice, stopping it when the
+condition ends.
+
+- **The missile warning.** `0x44ea21` asks `0x47f6d0` whether any slot of the
+  guided missile pool at `0x613700` names the local player, and while one
+  does it holds `m-lock7.wav`, remembering the voice at `0x505394` and
+  stopping it when nothing is chasing any more. So the warning is about a
+  missile chasing **you**, not about a lock you are holding.
+- **The afterburner.** `0x47d6a3` plays `blast7.wav` as the kick and then
+  `engine4.wav`, setting the loop flag in that voice's slot (`+0x1c` of the
+  32 voices at `0x655240`), and lets it go when the burn ends.
+
+A powerup plays `power-1.wav` beside its own line on the HUD - seven of the
+cases name the same file (`0x40e42f` among them) - and the line goes through
+`0x480ee0`, the same HUD message the mine's refusal uses.
+
+`hb-audio`'s voices can hold a sound and let it go, which is what the first
+two need.
+
 ## Unknown
 
 Everything past phase 0 of the course follower: speeds, curve fitting, what

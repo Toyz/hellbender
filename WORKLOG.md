@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-65 entries: audio 2, build 2, content 4, decomp 37, engine 26, format 28, port 52, render 23, test 3, tooling 4, ui 1, world 10.
+66 entries: audio 3, build 2, content 4, decomp 38, engine 26, format 28, port 53, render 23, test 3, tooling 4, ui 1, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -76,3 +76,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 63 | [The floating mine goes off on you](worklog/0063-the-floating-mine-goes-off-on-you.md) | 2026-09-20 | decomp, engine |
 | 64 | [The mine is laid](worklog/0064-the-mine-is-laid.md) | 2026-09-20 | port |
 | 65 | [The cluster is a pair](worklog/0065-the-cluster-is-a-pair.md) | 2026-09-20 | decomp, port |
+| 66 | [Three sounds the port was missing](worklog/0066-three-sounds-the-port-was-missing.md) | 2026-09-20 | decomp, audio, port |

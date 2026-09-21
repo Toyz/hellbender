@@ -17,16 +17,20 @@ struct Voice {
     position: f32,
     step: f32,
     volume: f32,
+    /// A held sound - the missile warning - starts again at its end and
+    /// plays until the caller stops it by this handle.
+    held: Option<u64>,
 }
 
 pub struct Voices {
     output_rate: u32,
     playing: Vec<Voice>,
+    next_handle: u64,
 }
 
 impl Voices {
     pub fn new(output_rate: u32) -> Voices {
-        Voices { output_rate, playing: Vec::with_capacity(VOICES) }
+        Voices { output_rate, playing: Vec::with_capacity(VOICES), next_handle: 1 }
     }
 
     pub fn play(&mut self, sound: Arc<Wav>, volume: f32) {
@@ -37,7 +41,31 @@ impl Voices {
             self.playing.remove(0);
         }
         let step = sound.rate as f32 / self.output_rate as f32;
-        self.playing.push(Voice { sound, position: 0.0, step, volume });
+        self.playing.push(Voice { sound, position: 0.0, step, volume, held: None });
+    }
+
+    /// Start a sound that loops until [`Voices::stop`] is called with the
+    /// handle this returns. The engine holds one this way - the missile
+    /// warning at `0x44ea5b` - and stops it when nothing is chasing the
+    /// player any more.
+    pub fn hold(&mut self, sound: Arc<Wav>, volume: f32) -> Option<u64> {
+        if sound.samples.is_empty() || sound.rate == 0 {
+            return None;
+        }
+        if self.playing.len() >= VOICES {
+            self.playing.remove(0);
+        }
+        let handle = self.next_handle;
+        self.next_handle += 1;
+        let step = sound.rate as f32 / self.output_rate as f32;
+        self.playing.push(Voice { sound, position: 0.0, step, volume, held: Some(handle) });
+        Some(handle)
+    }
+
+    /// Let a held sound go. Unknown handles are ignored, so a caller may stop
+    /// one twice.
+    pub fn stop(&mut self, handle: u64) {
+        self.playing.retain(|v| v.held != Some(handle));
     }
 
     pub fn active(&self) -> usize {
@@ -51,9 +79,14 @@ impl Voices {
             let channels = voice.sound.channels.max(1) as usize;
             let total = voice.sound.samples.len() / channels;
             for frame in 0..frames {
-                let at = voice.position as usize;
+                let mut at = voice.position as usize;
                 if at >= total {
-                    break;
+                    if voice.held.is_none() || total == 0 {
+                        break;
+                    }
+                    // Held: round again from the start.
+                    voice.position -= total as f32;
+                    at = voice.position as usize;
                 }
                 // Mono in the game's effects; a stereo file is averaged.
                 let mut sum = 0i32;
@@ -68,6 +101,9 @@ impl Voices {
                 voice.position += voice.step;
             }
         }
-        self.playing.retain(|v| (v.position as usize) < v.sound.samples.len() / v.sound.channels.max(1) as usize);
+        self.playing.retain(|v| {
+            v.held.is_some()
+                || (v.position as usize) < v.sound.samples.len() / v.sound.channels.max(1) as usize
+        });
     }
 }

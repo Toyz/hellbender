@@ -73,6 +73,9 @@ pub struct Battle {
     pub mines: hb_sim::mine::Field,
     /// How long the afterburner's tank has been empty.
     empty_for: f32,
+    /// Whether the afterburner is lit, which the engine gives a kick and a
+    /// held engine note (`0x47d6a3`).
+    pub burning: bool,
     /// The powerups the player was inside last frame.
     touching: Vec<usize>,
     /// Seconds since the level started, for the animated models' poses.
@@ -133,6 +136,7 @@ impl Battle {
             guns: Guns::default(),
             blasts: Blasts::default(),
             empty_for: 0.0,
+            burning: false,
             touching: Vec::new(),
             destroyed: 0,
             deaths: 0,
@@ -437,7 +441,8 @@ impl Battle {
     /// The trigger and the afterburner for one frame: the volleys fired
     /// join the shots in flight.
     pub fn trigger(&mut self, fire: bool, burn: bool, dt: f32, pose: &Pose) -> (Vec<Volley>, Vec<hb_sim::mission::Voice>) {
-        let (volleys, voices, _) = self.guns.step(fire, burn, dt, pose, &mut self.stores, &mut self.rng);
+        let (volleys, voices, lit) = self.guns.step(fire, burn, dt, pose, &mut self.stores, &mut self.rng);
+        self.burning = lit;
         for v in &volleys {
             for s in &v.shots {
                 self.shots.push(Flying::new(*s));

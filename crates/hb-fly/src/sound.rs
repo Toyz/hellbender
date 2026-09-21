@@ -85,6 +85,18 @@ impl Music {
         }
     }
 
+    /// Start a sound that holds until [`Music::let_go`]: the engine keeps
+    /// the missile warning this way (`0x44ea5b`).
+    pub fn hold(&self, sound: &Arc<Wav>, volume: f32) -> Option<u64> {
+        self.voices.lock().ok()?.hold(Arc::clone(sound), volume)
+    }
+
+    pub fn let_go(&self, handle: u64) {
+        if let Ok(mut voices) = self.voices.lock() {
+            voices.stop(handle);
+        }
+    }
+
     pub fn playing(&self) -> bool {
         self.mixer.lock().map(|g| g.is_some()).unwrap_or(false)
     }

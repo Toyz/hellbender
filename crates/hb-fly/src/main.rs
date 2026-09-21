@@ -379,6 +379,9 @@ fn main() -> Result<(), String> {
     // The scatter an asteroid starts with, and anything else the loop needs
     // a number for.
     let mut rng = hb_sim::turret::Rng::new(0x5eed);
+    // The missile warning and the afterburner's note, while they are held.
+    let mut warning: Option<u64> = None;
+    let (mut burner, mut burning) = (None, false);
     println!(
         "sim: {} of {} objects follow a course, {} doors, {} moving patches of ground",
         followers.len(),
@@ -672,6 +675,52 @@ fn main() -> Result<(), String> {
         } else {
             battle.step(&level, &mut live, [0.0, 1.0e6, 0.0], [0.0; 3], None, dt, &|_| false, &ground)
         };
+        // The afterburner: a kick and then a held engine note for as long as
+        // it burns (`0x47d6a3` plays `blast7.wav`, then `engine4.wav` with
+        // the voice's loop flag set).
+        if battle.burning != burning {
+            burning = battle.burning;
+            match (burning, burner.take()) {
+                (true, _) => {
+                    if let Some(music) = music.as_ref() {
+                        if let Some(s) = sound("blast7.wav") {
+                            music.effect(&s, 0.7);
+                        }
+                        burner = sound("engine4.wav").and_then(|s| music.hold(&s, 0.6));
+                    }
+                }
+                (false, Some(handle)) => {
+                    if let Some(music) = music.as_ref() {
+                        music.let_go(handle);
+                    }
+                }
+                (false, None) => {}
+            }
+        }
+
+        // The missile warning: the engine walks the missile pool for one
+        // that names the local player and holds `m-lock7.wav` while there is
+        // one, stopping it when there is not (`0x44ea21`, `0x47f6d0`).
+        let chased = battle
+            .missiles
+            .iter()
+            .any(|m| m.side == hb_sim::combat::Side::Enemy && m.alive())
+            && battle.pilot.alive();
+        match (chased, warning) {
+            (true, None) => {
+                if let (Some(music), Some(s)) = (music.as_ref(), sound("m-lock7.wav")) {
+                    warning = music.hold(&s, 0.5);
+                }
+            }
+            (false, Some(handle)) => {
+                if let Some(music) = music.as_ref() {
+                    music.let_go(handle);
+                }
+                warning = None;
+            }
+            _ => {}
+        }
+
         // A shot that hit the world opens any door it landed in
         // (`0x410b80`): the cell it hit, and its altitude in the terrain's
         // own words.
@@ -801,6 +850,11 @@ fn main() -> Result<(), String> {
             let (said, taken) = battle.pick_up(eye);
             for i in taken {
                 let kind = battle.field.items[i].kind;
+                // Every powerup case that takes one plays the same sound
+                // beside its own message (`0x40e42f` and six more).
+                if let (Some(music), Some(s)) = (music.as_ref(), sound("power-1.wav")) {
+                    music.effect(&s, 0.8);
+                }
                 // The eighth Bion piece makes the super weapon and selects
                 // it (`0x426c39`).
                 if (23..=30).contains(&kind) && battle.stores.weapon == hb_sim::weapons::SUPER {
