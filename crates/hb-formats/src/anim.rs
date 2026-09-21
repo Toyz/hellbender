@@ -221,30 +221,55 @@ impl Animated {
         self.parts.iter().map(|p| p.polygons.len()).sum()
     }
 
-    /// The model's rest pose as one mesh, in the same normalisation the binary
-    /// models use so that one draw path serves both.
+    /// The model's rest pose as one mesh, in the same normalisation the
+    /// binary models use so that one draw path serves both.
     ///
-    /// A part's vertices are **already** in model space: with no offsets
-    /// applied, every shipped model's extent comes to exactly
-    /// [`MODEL_ONE`], and `TREX`'s body, mid sections and tail chain along the
-    /// x axis where they should. Adding a part's pivot or its keyframe centre
-    /// pushes the extent past the normalisation bound and scatters the parts,
-    /// which is what this function did on its first attempt.
-    ///
-    /// So `pivot` is a rotation origin and `centerList` a per-frame offset, and
-    /// both are deltas from this pose rather than the pose itself. Playing the
-    /// animation means rotating each part about its pivot by its keyframe
-    /// angle, translating by its keyframe centre, and composing up the parent
-    /// chain - and the order the three angles compose in is not established,
-    /// so this function does not attempt it.
+    /// This is [`Animated::pose`] at time zero: the first keyframe, with no
+    /// interpolation.
     pub fn rest_pose(&self) -> (Vec<Vertex>, Vec<Polygon>) {
+        self.pose(0.0)
+    }
+
+    /// Where the model is `seconds` into its animation.
+    ///
+    /// The engine keeps a clock per actor, turns it into a frame index and a
+    /// fraction between 0 and 0xffff (`0x4684c0`), and interpolates each
+    /// part's angle and centre between that keyframe and the next - the
+    /// angles by the difference wrapped into sixteen bits, so they take the
+    /// short way round. The last frame interpolates back to the first.
+    ///
+    /// Each part is then drawn with a transform built from its own
+    /// interpolated angle and centre (`0x467980` hands both to `0x42aa30`).
+    /// **The `pivot` and `parent` fields take no part in it**: a part's
+    /// centre is where it goes in model space, not an offset from its
+    /// parent, which is why summing the chain put `TREX`'s head between its
+    /// shoulders. The load-time rescale (`0x4664e0`) scales the centres with
+    /// the vertices by the same factor, so the two are in one space.
+    pub fn pose(&self, seconds: f32) -> (Vec<Vertex>, Vec<Polygon>) {
         let mut vertices = Vec::with_capacity(self.vertex_count());
         let mut polygons = Vec::with_capacity(self.polygon_count());
+        let (frame, fraction) = self.frame_at(seconds);
+        let next = if frame + 1 < self.frames { frame + 1 } else { 0 };
+        // The model's own angle and centre sit under every part: the engine
+        // builds a matrix from the angle into the header at `+0x634`
+        // (`0x4681d0`) and the parts are drawn inside it.
+        let model = rotation(self.angle.map(|a| a as f32));
+        let offset = self.centre.map(|c| c as f32);
         for part in &self.parts {
             let base = vertices.len() as u32;
+            let angle = tween_angles(part.angles.get(frame), part.angles.get(next), fraction);
+            let centre = tween(part.centres.get(frame), part.centres.get(next), fraction);
+            let rotate = rotation(angle);
             for v in &part.vertices {
+                let p = [v.x as f32, v.y as f32, v.z as f32];
+                let turned: [f32; 3] =
+                    std::array::from_fn(|k| (0..3).map(|j| rotate[k][j] * p[j]).sum());
+                let placed: [f32; 3] = std::array::from_fn(|k| turned[k] + centre[k]);
+                let out: [f32; 3] = std::array::from_fn(|k| {
+                    (0..3).map(|j| model[k][j] * placed[j]).sum::<f32>() + offset[k]
+                });
                 // Halve, so the result is in the binary models' +/-16,384.
-                vertices.push(Vertex { x: v.x / 2, y: v.y / 2, z: v.z / 2 });
+                vertices.push(Vertex { x: out[0] as i32 / 2, y: out[1] as i32 / 2, z: out[2] as i32 / 2 });
             }
             for poly in &part.polygons {
                 let mut moved = poly.clone();
@@ -256,4 +281,53 @@ impl Animated {
         }
         (vertices, polygons)
     }
+
+    /// Which keyframe `seconds` lands on, and how far past it, 0.0 to 1.0.
+    /// The clock wraps at the last frame.
+    pub fn frame_at(&self, seconds: f32) -> (usize, f32) {
+        let per_frame = self.time_per_frame as f32 / 65536.0;
+        if self.frames == 0 || per_frame <= 0.0 {
+            return (0, 0.0);
+        }
+        let ticks = (seconds / per_frame).rem_euclid(self.frames as f32);
+        (ticks as usize % self.frames, ticks.fract())
+    }
+}
+
+/// Between two keyframe angles, the short way round: the engine takes the
+/// difference, sign-extends it from sixteen bits and scales it by the
+/// fraction (`0x468585`).
+fn tween_angles(a: Option<&[i32; 3]>, b: Option<&[i32; 3]>, t: f32) -> [f32; 3] {
+    let (a, b) = (a.copied().unwrap_or_default(), b.copied().unwrap_or(a.copied().unwrap_or_default()));
+    std::array::from_fn(|k| {
+        let d = (((b[k] - a[k]) << 16) >> 16) as f32;
+        a[k] as f32 + d * t
+    })
+}
+
+/// Between two keyframe centres, straight.
+fn tween(a: Option<&[i32; 3]>, b: Option<&[i32; 3]>, t: f32) -> [f32; 3] {
+    let (a, b) = (a.copied().unwrap_or_default(), b.copied().unwrap_or(a.copied().unwrap_or_default()));
+    std::array::from_fn(|k| a[k] as f32 + (b[k] - a[k]) as f32 * t)
+}
+
+/// The rotation a part's three angles make, in the engine's convention: the
+/// first is about x, the second about z and the third about y, which is the
+/// order the actor draw hands its pitch, roll and heading to `0x42aa30`.
+fn rotation(angle: [f32; 3]) -> [[f32; 3]; 3] {
+    let turn = |a: f32| a * std::f32::consts::TAU / 65536.0;
+    let (sp, cp) = turn(angle[0]).sin_cos();
+    let (sr, cr) = turn(angle[1]).sin_cos();
+    let (sh, ch) = turn(angle[2]).sin_cos();
+    // The same right, up and forward the renderer builds for a placement.
+    let forward = [sh * cp, -sp, ch * cp];
+    let up0 = [sh * sp, cp, ch * sp];
+    let right0 = [ch, 0.0, -sh];
+    let right: [f32; 3] = std::array::from_fn(|k| right0[k] * cr + up0[k] * sr);
+    let up: [f32; 3] = std::array::from_fn(|k| up0[k] * cr - right0[k] * sr);
+    [
+        [right[0], up[0], forward[0]],
+        [right[1], up[1], forward[1]],
+        [right[2], up[2], forward[2]],
+    ]
 }

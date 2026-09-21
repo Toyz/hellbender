@@ -22,7 +22,8 @@ hb - inspect Hellbender's data
   hb terrain <name>                 load a level's thirteen terrain grids
   hb model <name.bin>               walk a model's MRGL nodes
   hb png <pod> <entry> <out.png>    a .RAW plus its palette, as a PNG
-  hb view <name.bin> <out.png>      a model, flat shaded, as a PNG
+  hb view <name.bin> <out.png> [at] a model, flat shaded, as a PNG;
+                                    [at] poses a .TXT model at that time
   hb heightmap <level> <out.png>    a level's ground, lit, from above
   hb ground <level> <out.png> [--authored]
                                     a level's ground, textured, from above;
@@ -87,7 +88,10 @@ fn run(args: &[&str]) -> Result<(), String> {
         ["terrain", name] => cmd_terrain(name),
         ["model", name] => cmd_model(name),
         ["png", pod, entry, out] => cmd_png(pod, entry, Path::new(out)),
-        ["view", name, out] => cmd_view(name, Path::new(out)),
+        ["view", name, out] => cmd_view(name, Path::new(out), 0.0),
+        ["view", name, out, at] => {
+            cmd_view(name, Path::new(out), at.parse().map_err(|_| "bad time")?)
+        }
         ["heightmap", name, out] => cmd_heightmap(name, Path::new(out)),
         ["ground", name, out, rest @ ..] => {
             cmd_ground(name, Path::new(out), !rest.contains(&"--authored"))
@@ -343,7 +347,7 @@ fn cmd_png(spec: &str, entry: &str, out: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn cmd_view(name: &str, out: &Path) -> Result<(), String> {
+fn cmd_view(name: &str, out: &Path, at: f32) -> Result<(), String> {
     let startup = name.starts_with("startup:");
     let pod = open_pod(if startup { "startup" } else { "game" })?;
     let name = name.trim_start_matches("startup:");
@@ -358,7 +362,9 @@ fn cmd_view(name: &str, out: &Path) -> Result<(), String> {
             animated.time_per_frame as f32 / 65536.0,
             animated.materials.len()
         );
-        let (vertices, polygons) = animated.rest_pose();
+        let (frame, fraction) = animated.frame_at(at);
+        println!("{name}: {at}s is frame {frame} plus {fraction:.2}");
+        let (vertices, polygons) = animated.pose(at);
         mrgl::Model { vertices, polygons, materials: animated.materials, ..Default::default() }
     } else {
         mrgl::Model::parse(data).map_err(|e| e.to_string())?

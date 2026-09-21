@@ -825,6 +825,8 @@ fn main() -> Result<(), String> {
         }
 
         // Animated textures advance on the wall clock.
+        // The animated models, before the scene borrows the level.
+        level.animate(started.elapsed().as_secs_f32());
         let frames_now = level.texture_frames(started.elapsed().as_secs_f32());
         let mut scene = level.scene();
         scene.frames = Some(&frames_now);

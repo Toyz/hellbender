@@ -56,6 +56,9 @@ pub struct Level {
     /// when the kind's model is a `.TXT` animated model, which is a different
     /// format and is not parsed yet.
     pub meshes: Vec<Option<mrgl::Model>>,
+    /// The `.TXT` source of any mesh that has one, so the pose can be taken
+    /// again at a new time.
+    pub animated: Vec<Option<anim::Animated>>,
     /// Each mesh's materials resolved to images, in the order the mesh names
     /// them. A model's textures come from `ART\` by name, not from the level's
     /// `.TEX` list.
@@ -116,6 +119,21 @@ pub struct Level {
 }
 
 impl Level {
+    /// Pose every animated model at `seconds`. The engine keeps a clock per
+    /// actor; this port runs them all off the level's, which is the same
+    /// thing for the 18 models that have one animation each.
+    pub fn animate(&mut self, seconds: f32) {
+        for (i, source) in self.animated.iter().enumerate() {
+            let (Some(source), Some(mesh)) = (source.as_ref(), self.meshes.get_mut(i)) else {
+                continue;
+            };
+            let Some(mesh) = mesh.as_mut() else { continue };
+            let (vertices, polygons) = source.pose(seconds);
+            mesh.vertices = vertices;
+            mesh.polygons = polygons;
+        }
+    }
+
     /// How fast the sky drifts, texture units a second in u and v: the
     /// `.LVL`'s line 41, which the parser reads to `0x6670d0` and the sky
     /// routine adds to its scroll every frame (`0x44fd98`). 10.0 in eleven
@@ -225,9 +243,19 @@ impl Level {
             .ok_or_else(|| format!("no data\\{stem}.def"))?;
         let kinds = text::enemy_defs(&def).map_err(|e| e.to_string())?;
         let placements = text::placements(&def).map_err(|e| e.to_string())?;
-        // An animated `.TXT` model is flattened to its first frame so that it
-        // can be drawn by the same path as a static one. Playing the animation
-        // needs the rotation order, which is not established.
+        // An animated `.TXT` model is posed into the same mesh a static one
+        // uses, so one draw path serves both; [`Level::animate`] re-poses it
+        // as the clock runs.
+        let animated: Vec<Option<anim::Animated>> = kinds
+            .iter()
+            .map(|k| {
+                k.model
+                    .to_ascii_lowercase()
+                    .ends_with(".txt")
+                    .then(|| read("models", &k.model).and_then(|b| anim::parse(&b).ok()))
+                    .flatten()
+            })
+            .collect();
         let meshes: Vec<Option<mrgl::Model>> = kinds
             .iter()
             .map(|k| {
@@ -238,7 +266,7 @@ impl Level {
                     return Some(mrgl::Model {
                         vertices,
                         polygons,
-                        materials: animated.materials,
+                        materials: animated.materials.clone(),
                         ..mrgl::Model::default()
                     });
                 }
@@ -537,6 +565,7 @@ impl Level {
             powerup_size,
             powerups,
             quake,
+            animated,
             mips,
             wreck_mesh,
             destroy_sound,

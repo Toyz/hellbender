@@ -1392,3 +1392,87 @@ fn every_switch_finds_the_box_that_watches_it() {
     // Watching by id is the only kind the shipped levels use.
     assert_eq!((by_id, by_cell), (643, 0));
 }
+
+/// The pose puts a part where its keyframe centre says, rotated by its
+/// keyframe angle, under the model's own angle and centre - and the proof is
+/// that the animals come out anatomically right (worklog 56).
+#[test]
+fn a_posed_model_has_its_parts_where_an_animal_keeps_them() {
+    let pod = archive!("GAME.POD");
+    let centroids = |name: &str| -> Vec<(String, [i32; 3])> {
+        let model = hb_formats::anim::parse(&pod.read("models", name).unwrap()).unwrap();
+        let (vertices, _) = model.pose(0.0);
+        let mut at = 0;
+        model
+            .parts
+            .iter()
+            .map(|part| {
+                let mine = &vertices[at..at + part.vertices.len()];
+                at += part.vertices.len();
+                let n = mine.len().max(1) as i32;
+                let mid = [
+                    mine.iter().map(|v| v.x).sum::<i32>() / n,
+                    mine.iter().map(|v| v.y).sum::<i32>() / n,
+                    mine.iter().map(|v| v.z).sum::<i32>() / n,
+                ];
+                (part.name.clone(), mid)
+            })
+            .collect()
+    };
+    let find = |parts: &[(String, [i32; 3])], name: &str| -> [i32; 3] {
+        parts.iter().find(|(n, _)| n == name).unwrap_or_else(|| panic!("no part {name}")).1
+    };
+
+    let trex = centroids("trex.txt");
+    // The head is at the front and the tail at the back.
+    assert!(find(&trex, "head")[2] > find(&trex, "front")[2], "the head leads the body");
+    assert!(find(&trex, "tail")[2] < find(&trex, "front")[2], "the tail trails it");
+    assert!(find(&trex, "jaw")[1] < find(&trex, "head")[1], "the jaw hangs under the head");
+    // The legs are under the body, and the feet under the legs.
+    assert!(find(&trex, "leg")[1] < find(&trex, "front")[1]);
+    assert!(find(&trex, "ankl")[1] < find(&trex, "leg")[1]);
+    // And the pairs mirror: an arm each side, a leg each side.
+    for (left, right) in [("arm", "arm01"), ("leg", "leg01"), ("ankl", "ankl01")] {
+        let (l, r) = (find(&trex, left), find(&trex, right));
+        assert!((l[0] + r[0]).abs() < 200, "{left} at {l:?} and {right} at {r:?} do not mirror");
+        assert!(l[0].abs() > 1000, "{left} is not out to one side");
+    }
+
+    // The pterosaur's wings come off both sides in three segments, each
+    // further out than the last.
+    let ptl = centroids("pteryl.txt");
+    let mut out = 0;
+    for (left, right) in [("winseg1", "winseg01"), ("winseg2", "winseg02"), ("winseg3", "winseg03")] {
+        let (l, r) = (find(&ptl, left), find(&ptl, right));
+        assert!((l[0] + r[0]).abs() < 200, "{left} and {right} do not mirror");
+        assert!(l[0] > out, "{left} is not further out than the last segment");
+        out = l[0];
+    }
+    assert!(find(&ptl, "head")[2] > find(&ptl, "body")[2], "the head leads the body");
+}
+
+/// Every shipped `.TXT` poses without scattering. The bound is loose on
+/// purpose: a part's centre pushes it outside the normalisation the vertices
+/// were scaled to, and the engine does not renormalise afterwards, so
+/// `DRAG66` and `FX-4` really are several model-widths across. What this
+/// catches is a part thrown to the far side of the world.
+#[test]
+fn every_animated_model_stays_in_one_piece_through_its_animation() {
+    let pod = archive!("GAME.POD");
+    let mut models = 0;
+    for e in pod.entries().iter().filter(|e| e.ext() == "txt" && e.dir() == "models") {
+        let model = hb_formats::anim::parse(pod.bytes(e)).unwrap();
+        models += 1;
+        let seconds = model.time_per_frame as f32 / 65536.0;
+        for frame in 0..model.frames {
+            let (vertices, _) = model.pose(frame as f32 * seconds);
+            let extent = vertices
+                .iter()
+                .flat_map(|v| [v.x.abs(), v.y.abs(), v.z.abs()])
+                .max()
+                .unwrap_or(0);
+            assert!(extent < 8 * hb_formats::mrgl::MODEL_ONE, "{}: frame {frame} reaches {extent}", e.name);
+        }
+    }
+    assert_eq!(models, 18);
+}

@@ -16,7 +16,7 @@ The containers and record layouts.
 | Page | Status | Covers |
 | --- | --- | --- |
 | [The .ACT palette](formats/act.md) | solid | ART\*.ACT |
-| [The .TXT animated model](formats/anim.md) | partial | MODELS\*.TXT |
+| [The .TXT animated model](formats/anim.md) | solid | MODELS\*.TXT |
 | [Sound, music and cutscenes](formats/audio-video.md) | solid | SOUND\*.WAV, MUSIC\*.MOD, system/Story/*.SMK |
 | [The colour tables - .MAP, .LTE, .FOG, .MIX](formats/colour-tables.md) | partial | FOG\*.MAP, FOG\*.LTE, FOG\*.FOG, FOG\*.MIX, DATA\*.LTE |
 | [The .CRS courses](formats/courses.md) | solid | DATA\*.CRS |

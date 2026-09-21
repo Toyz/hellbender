@@ -1,8 +1,8 @@
 ---
 title: The .TXT animated model
-status: partial
+status: solid
 covers: MODELS\*.TXT
-worklog: 18, 19
+worklog: 18, 19, 56
 ---
 
 # The .TXT animated model
@@ -73,11 +73,16 @@ models' 16,384, so a `.TXT` mesh has to be halved before it can be drawn at a
 [placement's](level-text.md) scale.
 
 The engine does not treat 32,767 as a bound the data must respect. `0x4664e0`
-walks every part of a loaded model, finds the largest absolute vertex component
-across all of them, and rescales the whole model so that maximum becomes
-`0x7fff`. So a transform that pushes the model past the bound is renormalised
-afterwards, and "the extent is too large" is not evidence that a transform is
-wrong.
+walks every part of a loaded model, finds the largest absolute vertex
+component across all of them, and scales every vertex **and every keyframe
+centre** by `0x7fff` over that maximum - so the two are in one space, and
+since the shipped files already max at 32,767 the factor is one and nothing
+moves.
+
+It runs once, at load, before any pose. A part's centre then pushes it
+outside the bound and nothing pulls it back, which is why `FX-4` poses five
+model-widths across: "the extent is too large" is not evidence that a
+transform is wrong.
 
 ## The contents
 
@@ -95,28 +100,41 @@ FMDISH         41          7     12       120     52
 
 and ten more. 219 parts, 917 keyframes and 4,392 faces in total.
 
-## The part transform is not established
+## How a part is placed
 
-The raw vertices are already in model space for most parts. `TREX`'s body, two
-mid sections and tail span x as `-21296..5049`, `-4484..12153`, `8769..21695`
-and `19195..30618` - each starting where the previous ends, which is a
-Tyrannosaurus laid out along its own axis. And with no offsets applied every
-model's extent comes to exactly the normalisation bound, which it would not if
-parts still had to be moved into place.
+Each part is drawn with a transform built from its own interpolated angle and
+centre, and **nothing else**. `0x4684c0` turns the actor's clock into a frame
+index and a fraction, interpolates every part's angle and centre between that
+keyframe and the next into the part record at `+0x48` and `+0x54`, and
+`0x467980` hands the six values straight to `0x42aa30`, the routine that
+pushes a transform. Then it walks the part's vertices.
 
-But not every part. `TREX`'s head and jaw are centred on the origin
-(`-8505..8505` and `-7108..7107`) and clearly belong at the front of the body.
+So a part's `centerList` entry is **where it goes in model space**, not an
+offset from its parent. `pivot` and `parent` take no part in the draw at all -
+they are the authoring tool's, kept in the file and loaded but never read
+again. That is why summing the pivot chain put `TREX`'s head between its
+shoulders: there is no chain.
 
-Summing each part's `pivot` up its parent chain and then renormalising gives a
-plausible-looking body - `front` at -6235..-4181, `mid1` at -4924..-3627,
-`mid2` at 2382..3390, `tail` at 15645..16535, chaining along x in order - but
-puts the head at -213..1114, between the two mid sections rather than beyond
-the nose. Adding `centerList[0]` as well moves everything slightly and does not
-fix it.
+Under all of them sits the model's own `angle` and `center`: `0x4681d0` builds
+a matrix from the angle into the header at `+0x634`, and the parts are drawn
+inside it. `TREX`'s is `49664,0,0` - about -87 degrees about x, which is a
+z-up model being turned y-up, and every shipped model's is within a degree or
+two of the same.
 
-So the translation part of the transform is not enough on its own, and the
-per-frame angles almost certainly have to be applied about each part's pivot
-before the chain is composed. That is the open question.
+The interpolation is worth one detail: an angle's difference between
+keyframes is sign-extended from sixteen bits before it is scaled
+(`0x468585`), so an angle takes the short way round rather than unwinding
+through the long side. Centres interpolate straight. The last keyframe
+interpolates back to the first, so the animations loop.
+
+`hb_formats::anim::pose` is this, and it is checked the way a model is really
+checked: `TREX`'s head comes out in front of its body, its jaw under its head,
+its legs under it, and its arms and legs mirrored either side; `PTERYL`'s
+three wing segments come off each side, each further out than the last.
+
+The parts do push past the normalisation the vertices were scaled to, and the
+engine does not renormalise afterwards, so `FX-4` and `DRAG66` are several
+model-widths across when posed. That is the data, not an error.
 
 ## The in-memory model
 
@@ -144,16 +162,20 @@ A part:
 +0x20  pointer to the centre list
 +0x24  parent, partHP, legFlag
 +0x30  min x, y, z           +0x3c  max x, y, z
++0x48  this frame's angle     0x54  this frame's centre    (runtime)
 +0x84  vertexCount           +0x88  faceCount
 +0x8c  pointer to the vertices, 36 bytes each in memory
 ```
 
-`0x466680` interpolates between keyframes against `0x7fff`, so the animation is
-tweened rather than stepped.
+The two runtime fields are what `0x4684c0` writes each frame and `0x467980`
+draws with. They are also how the rest of the engine asks where a part is:
+class 14's aim takes a part's `+0x54` through the model matrix (`0x46edd0`)
+to find its gun.
 
 ## Unknown
 
-How a part is placed relative to its parent - the `pivot` chain alone puts
-`TREX`'s head in the wrong place. The order the three per-frame angles compose
-in. What `magPower`, the model-level `angle` and `center`, and `legFlag` do.
-What the 24 bytes beyond the coordinates of an in-memory vertex are.
+What `magPower` and `legFlag` do, and what `pivot` and `parent` were for in
+the tool that wrote them. What the 24 bytes beyond the coordinates of an
+in-memory vertex are. Where an actor's animation clock comes from - this port
+runs every model off the level's clock, which is right for the eighteen
+models that have one animation each.
