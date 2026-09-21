@@ -373,6 +373,9 @@ fn main() -> Result<(), String> {
     let (mut flight, mut mission, mut followers, mut live, mut battle, mut colours) = begin(&level);
     let mut doors = doors_of(&level);
     let mut hoverers = hoverers_for(&level);
+    // The scatter an asteroid starts with, and anything else the loop needs
+    // a number for.
+    let mut rng = hb_sim::turret::Rng::new(0x5eed);
     println!(
         "sim: {} of {} objects follow a course, {} doors, {} moving patches of ground",
         followers.len(),
@@ -795,16 +798,30 @@ fn main() -> Result<(), String> {
             }
         }
 
-        for (i, hover, radius) in &mut hoverers {
+        for (i, motion, radius) in &mut hoverers {
             if battle.health[*i].destroyed
                 || !hb_sim::combat::in_range(eye, hb_sim::combat::position_of(&live[*i]))
             {
                 continue;
             }
-            let (at, heading) = hover.step(dt, *radius);
+            let here = hb_sim::combat::position_of(&live[*i]);
+            let around = hb_sim::behaviour::Around {
+                radius: *radius,
+                sky: level.sky_height(),
+                ground: floor_of(&level)(here),
+            };
+            let moved = motion.step(dt, around, &mut rng);
             let placed = &mut live[*i];
-            [placed.x, placed.y, placed.z] = at.map(|v| (v * 65536.0) as i32);
-            placed.heading = heading as u16;
+            [placed.x, placed.y, placed.z] = moved.at.map(|v| (v * 65536.0) as i32);
+            placed.pitch = moved.angles[0] as i32;
+            placed.roll = moved.angles[1] as i32;
+            placed.heading = moved.angles[2] as u16;
+            if let Some(at) = moved.blast {
+                battle.burst(at, *radius);
+            }
+            if moved.gone {
+                battle.health[*i].destroyed = true;
+            }
         }
 
         for (i, follower) in &mut followers {
@@ -1070,21 +1087,19 @@ fn followers_for(level: &Level) -> Vec<(usize, hb_sim::Follower)> {
         .collect()
 }
 
-/// Class 26, the things that hover and turn: `0x40ab80` bobs them about
-/// where the level put them.
-fn hoverers_for(level: &Level) -> Vec<(usize, hb_sim::hover::Hover, f32)> {
+/// The classes that only move - 26 hovers, 17 leaves, 18 falls - with each
+/// one's radius, which is how far a hovering one bobs.
+fn hoverers_for(level: &Level) -> Vec<(usize, hb_sim::behaviour::Motion, f32)> {
     level
         .placements
         .iter()
         .enumerate()
         .filter_map(|(i, p)| {
             let kind = level.kinds.get(p.kind)?;
-            if kind.class() != 26 {
-                return None;
-            }
             let at = [p.x, p.y, p.z].map(|v| v as f32 / 65536.0);
-            let radius = kind.radius() as f32 / 65536.0;
-            Some((i, hb_sim::hover::Hover::new(at, p.heading as f32), radius))
+            let angles = [p.pitch as f32, p.roll as f32, p.heading as f32];
+            let motion = hb_sim::behaviour::Motion::of(kind.class(), at, angles)?;
+            Some((i, motion, kind.radius() as f32 / 65536.0))
         })
         .collect()
 }

@@ -77,7 +77,11 @@ class   types   routine    what
     0     874   -          scenery: visibility only
     9     454   -          bunkers and domes: visibility only
     1       ?   0x4077c0   turret that pitches too, see below
+    3       ?   0x4087e0   the same without the lead
    14       ?   0x409de0   the same, aiming from a model part
+   17       ?   0x40a230   rises, turning, and is gone
+   18       ?   0x40a2c0   falls, tumbling, explodes, again
+   35       ?   0x40c4a0   class 14, and the body turns
    10     118   0x408c30   turret
    47      97   0x421240   course follower (phase 0 read, see above)
    26       ?   0x40ab80   hovers: bobs and turns on the spot, see below
@@ -124,6 +128,41 @@ tower stands still and only its gun tracks.
 96 placements are class 14. The port aims and fires as the engine does and
 leaves the tower's model alone; what it does not do is turn the gun on the
 model, which would need the second pose the engine keeps.
+
+## The four guns
+
+Classes 1, 3, 14 and 35 are the class 10 turret with the aim changed and
+nothing else: the same ease toward the wanted angles, the same fire interval,
+the same muzzle list, the same two weapons.
+
+```
+class  aim
+   10  lead the player in x and z, pitch 0
+    1  lead in all three axes and pitch at the player
+    3  pitch at the player, no lead at all
+   14  as class 1, but measured from a part of the model
+   35  as class 14, and the body turns a circle every eight seconds
+```
+
+`hb_sim::turret::Aim` is that table.
+
+## Class 17 leaves and class 18 falls
+
+Two more short ones. `0x40a230` (54 placements, `Shipping out!` and
+`Frigate and Container`) lifts an actor at four units a second and turns it a
+sixteenth of a circle a second, and once it is above twice the
+[sky layer](../formats/lvl.md) - the same ceiling a dropped powerup is held
+under - clears the actor's `+0x1c` and it is gone.
+
+`0x40a2c0` (29 placements, every spelling of asteroid) drops one from half
+the sky layer above the ground, scattered up to sixteen units either way from
+where the level put it, tumbling a whole circle a second about one axis and a
+quarter about the other two, at 64 units a second. On the ground it explodes
+and starts again. The explosion is offset by three type fields at `+0x8c`,
+`+0x90` and `+0x94` which nothing in the executable ever writes, so it goes
+off where the rock landed.
+
+`hb_sim::behaviour` is both, with class 26.
 
 ## Class 26 hovers
 
@@ -711,10 +750,10 @@ weapons to spend them on yet.
 Everything past phase 0 of the course follower: speeds, curve fitting, what
 happens at the end of a course, how the seven logic routines differ.
 
-The behaviour classes still unread, by how many placements they drive: 17
-with 54, 55 with 49, 58 with 34, 18 with 29, 3 with 15, 35 with 12, and the
-handful of scripted ones: 50 to 52 for the shuttle and its escort, and 62 to
-64 for Nyx. Classes 56, 59 and 60 borrow the
+The behaviour classes still unread, by how many placements they drive: 55
+with 49 and 58 with 34, both of which live in the `0x49` range with the
+flyers, and the handful of scripted ones: 50 to 52 for the shuttle and its
+escort, and 62 to 64 for Nyx. Classes 56, 59 and 60 borrow the
 class-53 flyer in this port; their own routines are not read.
 
 What follows a won or lost mission. Line 2 of the type record and line 7's

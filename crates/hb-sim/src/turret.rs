@@ -79,13 +79,26 @@ pub struct Turret {
     pub waited: f32,
     /// The barrel the next shot leaves from (actor offset 0xac).
     pub barrel: usize,
-    /// Class 1 rather than class 10: it leads in all three axes and pitches
-    /// as well as turns (`0x4077c0`).
-    pub aims: bool,
+    /// How it aims, which is the only thing the gun classes differ in.
+    pub aim: Aim,
     /// Where it aims from, when that is not the actor's own origin. Class 14
     /// asks its model for the part its gun is on and measures from there
     /// (`0x406bf0`); the caller sets this because only it has the model.
     pub aim_from: Option<[f32; 3]>,
+}
+
+/// The three aims the gun classes use. They share everything else: the same
+/// ease toward the wanted angles, the same fire interval, the same muzzles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Aim {
+    /// Class 10: lead the player in x and z, and ask for pitch 0
+    /// (`0x408c30`).
+    Flat,
+    /// Classes 1, 14 and 35: lead in all three axes and pitch at the player
+    /// (`0x4077c0`).
+    Led,
+    /// Class 3: pitch at the player, with no lead at all (`0x4087e0`).
+    Direct,
 }
 
 /// What a turret put into the world this frame.
@@ -102,14 +115,14 @@ impl Turret {
             pitch: p.pitch as f32,
             waited: 0.0,
             barrel: 0,
-            aims: false,
+            aim: Aim::Flat,
             aim_from: None,
         }
     }
 
-    /// The class 1 gun: the same state, aiming in three dimensions.
-    pub fn aiming(p: &Placement) -> Turret {
-        Turret { aims: true, ..Turret::new(p) }
+    /// A gun that aims in three dimensions: class 1, 3, 14 or 35.
+    pub fn aiming(p: &Placement, aim: Aim) -> Turret {
+        Turret { aim, ..Turret::new(p) }
     }
 
     /// One frame for the actor standing at `p`: `0x408c30` for a class 10
@@ -144,8 +157,11 @@ impl Turret {
         // about, and below minus a quarter the engine adds half a turn to
         // both, which is not the mirror of the first and is left as it is.
         let mut wanted_pitch = 0.0;
-        if self.aims {
-            let lead_y = d[1] + player_velocity[1] * flight;
+        if self.aim != Aim::Flat {
+            // Class 3 takes no lead at all: it aims where the player is.
+            let (lead_x, lead_z) = if self.aim == Aim::Direct { (d[0], d[2]) } else { (lead_x, lead_z) };
+            wanted = lead_x.atan2(lead_z) * 65536.0 / std::f32::consts::TAU;
+            let lead_y = if self.aim == Aim::Direct { d[1] } else { d[1] + player_velocity[1] * flight };
             let flat = (lead_x * lead_x + lead_z * lead_z).sqrt();
             wanted_pitch = -lead_y.atan2(flat) * 65536.0 / std::f32::consts::TAU;
             if wanted_pitch > 16384.0 {

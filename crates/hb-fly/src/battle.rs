@@ -9,13 +9,17 @@ use hb_sim::flyer::{Flyer, Target};
 use hb_sim::explosion::Blasts;
 use hb_sim::powerup::{self, Field, Stores};
 use hb_sim::weapons::{Guns, Pose, Volley};
-use hb_sim::turret::{Launch, Missile, Rng, Struck, Turret};
+use hb_sim::turret::{Aim, Launch, Missile, Rng, Struck, Turret};
 
 /// The behaviour classes that fly. 7 and 53 run the dogfight routine
 /// `0x4967b0`; 56, 59 and 60 have routines of their own (`0x497050`,
 /// `0x497be0`, `0x4999a0`) that start the same way and are not read yet, so
 /// they borrow it.
 pub const FLYING: [i64; 5] = [7, 53, 56, 59, 60];
+
+/// The classes that aim and shoot: the turret and the four guns that differ
+/// from it only in the aim.
+pub const GUNS: [i64; 5] = [1, 3, 10, 14, 35];
 
 /// Something the frame wants played.
 pub enum Noise {
@@ -86,11 +90,15 @@ impl Battle {
             .iter()
             .enumerate()
             .filter(|(_, p)| {
-                level.kinds.get(p.kind).is_some_and(|k| [1, 10, 14].contains(&k.class()))
+                level.kinds.get(p.kind).is_some_and(|k| GUNS.contains(&k.class()))
             })
             .map(|(i, p)| {
-                let class = level.kinds[p.kind].class();
-                (i, if class == 10 { Turret::new(p) } else { Turret::aiming(p) })
+                let turret = match level.kinds[p.kind].class() {
+                    3 => Turret::aiming(p, Aim::Direct),
+                    10 => Turret::new(p),
+                    _ => Turret::aiming(p, Aim::Led),
+                };
+                (i, turret)
             })
             .collect();
         let flyers = level
@@ -165,7 +173,7 @@ impl Battle {
             // A class 14 tower aims from the part of its model its gun sits
             // on - the first of the type's muzzle entries, read as a part
             // rather than a vertex (`0x406ac0`).
-            turret.aim_from = (def.class() == 14)
+            turret.aim_from = [14, 35].contains(&def.class())
                 .then(|| {
                     let part = *def.muzzles.first()? as usize;
                     let at = combat::position_of(p);
@@ -186,11 +194,16 @@ impl Battle {
             // 1 gun's pitch with it. A class 14 tower keeps its own angles
             // for the gun alone (`0x408ee0` eases a second set), so its body
             // does not turn.
-            if def.class() != 14 {
+            if ![14, 35].contains(&def.class()) {
                 live[*i].heading = turret.heading as u16;
-                if turret.aims {
+                if turret.aim != Aim::Flat {
                     live[*i].pitch = turret.pitch as i32;
                 }
+            } else if def.class() == 35 {
+                // A class 35 tower turns on the spot while its gun aims
+                // (`0x40c4a0` before it runs class 14's routine).
+                let turn = hb_sim::behaviour::RATE * dt;
+                live[*i].heading = (live[*i].heading as f32 + turn) as u16;
             }
         }
 
@@ -395,6 +408,11 @@ impl Battle {
             self.missiles.extend(v.missiles.iter().copied());
         }
         (volleys, voices)
+    }
+
+    /// An explosion this wide, and nothing else.
+    pub fn burst(&mut self, at: [f32; 3], size: f32) {
+        self.blasts.burst(at, size, &mut self.rng);
     }
 
     /// The wreck hitting the ground: the engine's explosion two units

@@ -1,7 +1,7 @@
 //! The class-10 turret and the guided missile, synthetic.
 
 use hb_formats::text::{EnemyDef, Placement, SecondWeapon};
-use hb_sim::turret::{Launch, Missile, Rng, Turret, GUIDED};
+use hb_sim::turret::{Aim, Launch, Missile, Rng, Turret, GUIDED};
 
 fn gun(turn_rate: i32, fire_interval: i32, shot_speed: i32, weapon: i32) -> EnemyDef {
     EnemyDef {
@@ -248,8 +248,8 @@ fn a_class_one_gun_pitches_at_a_target_above_it() {
     // A quick turn, so one frame is enough to see the sign.
     let def = gun(65536, 100 << 16, 20 << 16, 2);
     let placed = at_origin();
-    let mut aimer = Turret::aiming(&placed);
-    assert!(aimer.aims);
+    let mut aimer = Turret::aiming(&placed, Aim::Led);
+    assert_eq!(aimer.aim, Aim::Led);
 
     // Straight up and ahead: positive pitch is nose down, so aiming up is
     // negative.
@@ -258,7 +258,7 @@ fn a_class_one_gun_pitches_at_a_target_above_it() {
     assert!(aimer.heading < 100.0 || aimer.heading > 65436.0, "heading {}", aimer.heading);
 
     // And below it, the other way.
-    let mut aimer = Turret::aiming(&placed);
+    let mut aimer = Turret::aiming(&placed, Aim::Led);
     aimer.step(&def, None, &placed, [0.0, -20.0, 20.0], [0.0; 3], 1.0, &mut Rng::new(1));
     assert!(aimer.pitch > 4000.0, "pitch {} should be down", aimer.pitch);
 }
@@ -282,14 +282,34 @@ fn aiming_from_a_gun_high_on_a_tower_changes_the_angle() {
     let placed = at_origin();
     let target = [0.0, 0.0, 40.0];
 
-    let mut from_base = Turret::aiming(&placed);
+    let mut from_base = Turret::aiming(&placed, Aim::Led);
     from_base.step(&def, None, &placed, target, [0.0; 3], 1.0, &mut Rng::new(1));
 
-    let mut from_gun = Turret::aiming(&placed);
+    let mut from_gun = Turret::aiming(&placed, Aim::Led);
     from_gun.aim_from = Some([0.0, 20.0, 0.0]);
     from_gun.step(&def, None, &placed, target, [0.0; 3], 1.0, &mut Rng::new(1));
 
     // Level with the target from the base, looking down from the gun.
     assert!(from_base.pitch.abs() < 100.0, "from the base {}", from_base.pitch);
     assert!(from_gun.pitch > 4000.0, "from the gun {}", from_gun.pitch);
+}
+
+/// Class 3 takes no lead: against a target running across its nose it aims
+/// where the target is, where a class 1 gun aims where it will be
+/// (`0x4087e0` has no velocity terms at all).
+#[test]
+fn a_class_three_gun_does_not_lead() {
+    let def = gun(65536, 100 << 16, 20 << 16, 2);
+    let placed = at_origin();
+    let target = [0.0, 0.0, 40.0];
+    let across = [20.0, 0.0, 0.0];
+
+    let mut led = Turret::aiming(&placed, Aim::Led);
+    led.step(&def, None, &placed, target, across, 1.0, &mut Rng::new(1));
+    let mut direct = Turret::aiming(&placed, Aim::Direct);
+    direct.step(&def, None, &placed, target, across, 1.0, &mut Rng::new(1));
+
+    // Straight ahead is heading 0; the one that leads swings toward +x.
+    assert!(direct.heading < 100.0 || direct.heading > 65436.0, "direct {}", direct.heading);
+    assert!((5000.0..20000.0).contains(&led.heading), "led {}", led.heading);
 }
