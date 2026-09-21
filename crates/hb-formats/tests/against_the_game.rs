@@ -1553,3 +1553,51 @@ fn the_hud_font_reads_as_letters() {
     // And a message fits the engine's 240-pixel wrap.
     assert!(font.width("Go Faster to Deploy Mine") < 240);
 }
+
+/// The `[Control]` defaults are scan codes, and they line up with what the
+/// rest of the reference already says the keys are.
+#[test]
+fn the_control_defaults_are_the_keys_the_manual_names() {
+    use hb_formats::ini;
+    let of = |name: &str| ini::default_binding(name).expect(name);
+    // 57 is the space bar, which the .DMO files record as the fire key.
+    assert_eq!(of("fireKey"), 57);
+    // The arrow cluster, in the order a set 1 keyboard sends it.
+    assert_eq!([of("upKey"), of("downKey"), of("leftKey"), of("rightKey")], [72, 80, 75, 77]);
+    assert_eq!([of("rollLeftKey"), of("rollRightKey")], [71, 73]);
+    // Z and X, which is what the port had guessed from the manual.
+    assert_eq!([of("throttleDownKey"), of("throttleUpKey")], [44, 45]);
+    // The weapons run ` 1 2 3 4 5 6 7 8 9 0, in table order.
+    let weapons = [
+        "keyVulcanCannon",
+        "keyDispersionCannon",
+        "keySKL",
+        "keyRFL20",
+        "keyDOM",
+        "keyCruiseMissile",
+        "keyViperMissile",
+        "keyClusterMissile",
+        "keyMIRVMissile",
+        "keyGuidedMIRV",
+        "keyMine",
+    ];
+    let codes: Vec<u8> = weapons.iter().map(|n| of(n)).collect();
+    assert_eq!(codes, vec![41, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    // Every default is a scan code a keyboard can send.
+    for (name, code) in ini::CONTROL_DEFAULTS {
+        if name.starts_with("key") || name.ends_with("Key") {
+            assert!(code > 0 && code < 89, "{name} is {code}");
+        }
+    }
+}
+
+/// A file overrides a default, and anything it does not say keeps one.
+#[test]
+fn the_ini_overrides_what_it_names_and_nothing_else() {
+    use hb_formats::ini::Ini;
+    let ini = Ini::parse("; a comment\n[Control]\nfireKey = 29\nnonsense = x\n[Graphics]\nfireKey=1\n");
+    assert_eq!(ini.binding("fireKey"), Some(29), "the file wins");
+    assert_eq!(ini.binding("upKey"), Some(72), "and silence keeps the default");
+    assert_eq!(ini.binding("nonsense"), None);
+    assert_eq!(ini.int("Graphics", "fireKey"), Some(1), "sections are kept apart");
+}

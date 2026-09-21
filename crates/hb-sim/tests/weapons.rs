@@ -388,3 +388,41 @@ fn the_cluster_fires_a_pair() {
     assert_eq!(left[1], right[1]);
     assert!(fired.iter().all(|m| m.kind == weapons::CLUSTER as i32));
 }
+
+/// The previous-weapon key walks a ring written out by hand, which is not
+/// the reverse of the search the next-weapon key does.
+#[test]
+fn the_previous_weapon_key_walks_the_ring() {
+    use hb_sim::weapons::{DISPERSION, RAPID_FIRE, SERVO_KINETIC, VALKYRIE};
+    let mut stores = Stores::default();
+    for slot in stores.ammo.iter_mut() {
+        *slot = -1;
+    }
+    let mut guns = Guns::default();
+    guns.selected = SERVO_KINETIC;
+    guns.previous(&stores);
+    assert_eq!(guns.selected, DISPERSION);
+    guns.previous(&stores);
+    assert_eq!(guns.selected, VALKYRIE);
+    // And round to the start again: the twelfth is the rapid-fire laser and
+    // the one before the servo-kinetic.
+    guns.selected = RAPID_FIRE;
+    guns.previous(&stores);
+    assert_eq!(guns.selected, SERVO_KINETIC);
+}
+
+/// A weapon with nothing in it is stepped over, the way an empty one is on
+/// the way forward.
+#[test]
+fn the_previous_weapon_key_steps_over_an_empty_one() {
+    use hb_sim::weapons::{DISPERSION, SERVO_KINETIC, VALKYRIE};
+    let mut stores = Stores::default();
+    for slot in stores.ammo.iter_mut() {
+        *slot = -1;
+    }
+    stores.ammo[DISPERSION] = 0;
+    let mut guns = Guns::default();
+    guns.selected = SERVO_KINETIC;
+    guns.previous(&stores);
+    assert_eq!(guns.selected, VALKYRIE, "the dispersion cannon is empty");
+}

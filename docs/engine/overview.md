@@ -108,9 +108,43 @@ invincibility, `swep` super weapon piece. The pairing is by table index and is
 an inference, not a measured link; entries 2, 6, 11 and 23 are the ones where
 name and model do not obviously agree.
 
-`HELLBEND.INI`'s `[Game]` section has a key binding per weapon, which gives the
-player-facing set: vulcan cannon, dispersion cannon, SKL, RFL20, DOM, cruise
-missile, viper missile, cluster missile, MIRV missile, guided MIRV, mine.
+`HELLBEND.INI`'s `[Control]` section has a key binding per weapon, which gives
+the player-facing set: vulcan cannon, dispersion cannon, SKL, RFL20, DOM,
+cruise missile, viper missile, cluster missile, MIRV missile, guided MIRV,
+mine - on `` ` `` and 1 to 0, in that order.
+
+### Controls
+
+`[Control]` is the whole of them, sixty four settings read with
+`GetPrivateProfileInt` from `.\system\hellbend.ini` (`0x42d274` on). Each is
+read with the setting's *current* value as the default, so the defaults are
+the globals' initial values at `0x512758` and up, and a machine with no `.INI`
+plays on exactly those. Every key is a set 1 scan code, the same numbers a
+[`.DMO`](../formats/demo.md) records.
+
+| Setting | Default | Setting | Default |
+| --- | --- | --- | --- |
+| `upKey` | up (72) | `keyCloak` | C (46) |
+| `downKey` | down (80) | `keyMissileLock` | V (47) |
+| `leftKey` | left (75) | `keyBeacon` | B (48) |
+| `rightKey` | right (77) | `keyHeadlight` | L (38) |
+| `rollLeftKey` | home (71) | `keyNaviComp` | N (49) |
+| `rollRightKey` | pgup (73) | `keyNavChoose` | tab (15) |
+| `throttleUpKey` | X (45) | `keyMap` | M (50) |
+| `throttleDownKey` | Z (44) | `keyMapZoomIn` | [ (26) |
+| `fireKey` | space (57) | `keyMapZoomOut` | ] (27) |
+| `weaponKey` | F (33) | `keyTransferWeapon` | , (51) |
+| `keySelectPrevWeapon` | - (12) | `keyTransferShields` | . (52) |
+| `keySelectNextWeapon` | = (13) | `keyCrosshair` | T (20) |
+| `keyChangeViews` | O (24) | `keyCockpitLabel` | / (53) |
+| `keyInstrument` | I (23) | `keyEndGame` | esc (1) |
+| `keyViewLeft` | ins (82) | `keyViewForward` | keypad - (74) |
+| `keyViewRight` | del (83) | `keyViewBack` | keypad + (78) |
+
+The weapons take `` ` `` (41) and 1 to 0 (2 to 11). `keyMultiTalk` and
+`keyMultiTaunt1` to `7` are F5 to F12 and are for network play. The joystick's
+buttons are `buttonFire`, `buttonWeapon`, `buttonThrottleUp`,
+`buttonThrottleDown` and `buttonFunction0` to `7`.
 
 ### Rendering
 

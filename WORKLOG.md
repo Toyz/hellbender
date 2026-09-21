@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-74 entries: audio 3, build 2, content 4, decomp 44, engine 26, flight 2, format 30, port 61, render 23, test 3, tooling 4, ui 7, world 10.
+75 entries: audio 3, build 2, content 4, decomp 45, engine 26, flight 3, format 30, port 62, render 23, test 3, tooling 4, ui 7, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -85,3 +85,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 72 | [The weapon has a picture](worklog/0072-the-weapon-has-a-picture.md) | 2026-09-20 | decomp, ui, port |
 | 73 | [A joystick, eight bytes at a time](worklog/0073-a-joystick-eight-bytes-at-a-time.md) | 2026-09-20 | port, flight |
 | 74 | [A touchscreen is not a joystick](worklog/0074-a-touchscreen-is-not-a-joystick.md) | 2026-09-20 | port, flight |
+| 75 | [The keys are in the INI, and so is everything else](worklog/0075-the-keys-are-in-the-ini-and-so-is-everything-else.md) | 2026-09-20 | decomp, port, flight |

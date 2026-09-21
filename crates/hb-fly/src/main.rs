@@ -11,6 +11,7 @@ use hb_formats::terrain::CELL_SIZE;
 use hb_formats::Angle;
 mod battle;
 mod sound;
+mod keys;
 mod stick;
 
 use hb_formats::raw::Image;
@@ -28,29 +29,29 @@ hb-fly - fly around a Hellbender level
   --scale  integer upscale of the window, default 3
   --demo   replay one of the game's recorded attract-mode flights
 
-  arrows        up dives, down climbs, left and right turn (and bank)
-  x / z  w / s  throttle up and down  a / d  home / pgup   roll
-  shift         afterburner           tab     cycle the level
-  c             collision on/off      k       cockpit on/off
-  m             music on/off          h       hud on/off
-  space         fire                  b       drop a beacon
-  ` 1 2 3       Valkyrie cannon, dispersion cannon, servo-kinetic and
-                rapid-fire lasers        =       next weapon
-  4 5 6 8 9     Dead-On, cruise, Viper, MIRV and guided MIRV missiles
-  v             lock the next target    l       label the cockpit
-  , .           main energy to the weapons, to the shield
-  g             reticle on/off          esc     quit
+  The keys are the game's own, from `[Control]` of system/hellbend.ini if
+  there is one and the engine's defaults if not:
 
-  A joystick on /dev/input/js0 flies it too: x and y steer, the twist axis
-  is the rudder, button 1 fires, 2 is the afterburner and 3 the next weapon.
-  HB_JOYSTICK names another device, HB_JOY_X, HB_JOY_Y, HB_JOY_RUDDER and
-  HB_JOY_THROTTLE move the axes - the throttle is off unless it is set - and
-  HB_JOY_INVERT_Y=0 stops the y axis being inverted.
+  arrows        up dives, down climbs, left and right turn (and bank)
+  home / pgup   roll left and right    x / z   throttle up and down
+  space         fire                   shift   afterburner
+  ` 1 2 3       Vulcan cannon, dispersion cannon, SKL, RFL20
+  4 5 6 7 8 9   Dead-On, cruise, Viper, cluster, MIRV, guided MIRV
+  0             mine                   - / =   previous / next weapon
+  v             lock the next target   b       drop a beacon
+  , .           main energy to the weapons, to the shield
+  t             crosshair on/off       /       label the cockpit
+  esc           quit
+
+  And the port's own switches, on keys the game does not bind:
+
+  h  hud on/off     k  cockpit on/off    y  music on/off
+  g  collision      p  cycle the level
 
   The level's mission runs from its .NAV file: the HUD shows the current
-  objective's code, how far it is, and an arrow on the radar points at it. Flying into the jump
-  zone, or finishing every objective, moves on to the next level; failing
-  starts the level again.
+  objective's code, how far it is, and an arrow on the radar points at it.
+  Flying into the jump zone, or finishing every objective, moves on to the
+  next level; failing starts the level again.
 ";
 
 fn game_dir() -> PathBuf {
@@ -86,20 +87,28 @@ impl Flight {
     /// `HELLBEND.INI` binds - arrows to steer, Z and X for the throttle, Home
     /// and PgUp to roll - and some friendlier ones alongside.
     /// `fuel` says whether the afterburner has anything to burn.
-    fn step(&mut self, window: &Window, joystick: Option<&stick::Stick>, dt: f32, fuel: bool) {
+    fn step(
+        &mut self,
+        window: &Window,
+        binds: &keys::Bindings,
+        joystick: Option<&stick::Stick>,
+        dt: f32,
+        fuel: bool,
+    ) {
+        let held = |key: Option<Key>| key.is_some_and(|k| window.is_key_down(k));
         let down = |keys: &[Key]| keys.iter().any(|&k| window.is_key_down(k));
         let deflection = joystick.map(|s| s.stick()).filter(|d| d.iter().any(|v| *v != 0.0));
         let lever = joystick.filter(|s| s.has_lever()).and_then(|s| s.lever());
         let controls = hb_sim::flight::Controls {
-            up: down(&[Key::Up]),
-            down: down(&[Key::Down]),
-            left: down(&[Key::Left]),
-            right: down(&[Key::Right]),
-            roll_left: down(&[Key::Home, Key::A]),
-            roll_right: down(&[Key::PageUp, Key::D]),
-            throttle_up: down(&[Key::X, Key::W])
+            up: held(binds.up),
+            down: held(binds.down),
+            left: held(binds.left),
+            right: held(binds.right),
+            roll_left: held(binds.roll_left),
+            roll_right: held(binds.roll_right),
+            throttle_up: held(binds.throttle_up)
                 || joystick.is_some_and(|s| s.button(stick::THROTTLE_UP)),
-            throttle_down: down(&[Key::Z, Key::S])
+            throttle_down: held(binds.throttle_down)
                 || joystick.is_some_and(|s| s.button(stick::THROTTLE_DOWN)),
             afterburner: fuel
                 && (down(&[Key::LeftShift, Key::RightShift])
@@ -318,6 +327,14 @@ fn main() -> Result<(), String> {
         .ok()
         .and_then(|b| Image::parse_guessed(b).ok().flatten());
     let mut show_cockpit = cockpit.is_some();
+    // The game's own key bindings. Without an .INI they are the engine's
+    // defaults, which is what a fresh install plays on.
+    let (binds, from_ini) = keys::Bindings::load(&game_dir());
+    println!(
+        "keys: {}",
+        if from_ini { "system/hellbend.ini" } else { "the engine's defaults" }
+    );
+
     // A joystick, if the kernel has one to give. Without it nothing changes.
     let mut joystick = stick::Stick::open();
     let mut stick_woke = false;
@@ -476,7 +493,8 @@ fn main() -> Result<(), String> {
     // HELLBEND.INI - so it is worth knowing where this sits.
     let (mut frames, mut since) = (0u32, Instant::now());
 
-    while window.is_open() && !window.is_key_down(Key::Escape) {
+    let quit = binds.end_game.unwrap_or(Key::Escape);
+    while window.is_open() && !window.is_key_down(quit) {
         let now = Instant::now();
         let dt = (now - last).as_secs_f32().min(0.1);
         last = now;
@@ -520,7 +538,7 @@ fn main() -> Result<(), String> {
                 println!("joystick: an axis moved - flying with it");
             }
         }
-        let tab = window.is_key_down(Key::Tab);
+        let tab = window.is_key_down(binds.next_level);
         // The port's own: after a mission ends, three seconds with the result
         // on the HUD, then the next level if it was won and this one again
         // if not. What the engine does next - the debriefing, the story - is
@@ -564,26 +582,29 @@ fn main() -> Result<(), String> {
         }
         tab_was_down = tab;
 
-        if window.is_key_pressed(Key::H, minifb::KeyRepeat::No) {
+        let pressed = |key: Option<Key>| {
+            key.is_some_and(|k| window.is_key_pressed(k, minifb::KeyRepeat::No))
+        };
+        if window.is_key_pressed(binds.hud, minifb::KeyRepeat::No) {
             show_hud = !show_hud && hud_font.is_some();
         }
-        if window.is_key_pressed(Key::M, minifb::KeyRepeat::No) {
+        if window.is_key_pressed(binds.music, minifb::KeyRepeat::No) {
             match music.as_ref() {
                 Some(m) if m.playing() => m.stop(),
                 Some(_) => play_music(&level),
                 None => {}
             }
         }
-        if window.is_key_pressed(Key::K, minifb::KeyRepeat::No) {
+        if window.is_key_pressed(binds.cockpit, minifb::KeyRepeat::No) {
             show_cockpit = !show_cockpit && cockpit.is_some();
         }
-        if window.is_key_pressed(Key::L, minifb::KeyRepeat::No) {
+        if pressed(binds.cockpit_label) {
             show_labels = !show_labels;
         }
-        if window.is_key_pressed(Key::G, minifb::KeyRepeat::No) {
+        if pressed(binds.crosshair) {
             show_reticle = !show_reticle && reticle.is_some();
         }
-        if window.is_key_pressed(Key::B, minifb::KeyRepeat::No) && demo.is_none() {
+        if pressed(binds.beacon) && demo.is_none() {
             for event in mission.drop_beacon(eye_of(&flight.camera)) {
                 if let hb_sim::mission::Event::Voice(v) = event {
                     flash = Some((v.text.replace('\n', " "), 3.0));
@@ -595,7 +616,7 @@ fn main() -> Result<(), String> {
                 }
             }
         }
-        if window.is_key_pressed(Key::C, minifb::KeyRepeat::No) {
+        if window.is_key_pressed(binds.collide, minifb::KeyRepeat::No) {
             flight.collide = !flight.collide;
             println!("collision {}", if flight.collide { "on" } else { "off" });
         }
@@ -616,7 +637,7 @@ fn main() -> Result<(), String> {
                 }
             }
             None => {
-                flight.step(&window, joystick.as_ref(), dt, battle.stores.fuel > 0.0);
+                flight.step(&window, &binds, joystick.as_ref(), dt, battle.stores.fuel > 0.0);
                 flight.settle(&hb_world::Grid::new(&level.terrain));
             }
         }
@@ -670,41 +691,30 @@ fn main() -> Result<(), String> {
                     }
                 })
                 .collect();
-            battle.guns.track(window.is_key_pressed(Key::V, minifb::KeyRepeat::No), candidates.len(), |i| {
+            battle.guns.track(pressed(binds.missile_lock), candidates.len(), |i| {
                 candidates[i].lockable(selected)
             });
             let burn = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
-            let firing = window.is_key_down(Key::Space)
+            let firing = binds.fire.is_some_and(|k| window.is_key_down(k))
                 || joystick.as_ref().is_some_and(|s| s.button(stick::FIRE));
             let (volleys, mut voices) = battle.trigger(firing, burn, dt, &pose);
-            for key in [
-                (Key::Backquote, '`'),
-                (Key::Key1, '1'),
-                (Key::Key2, '2'),
-                (Key::Key3, '3'),
-                (Key::Key4, '4'),
-                (Key::Key5, '5'),
-                (Key::Key6, '6'),
-                (Key::Key7, '7'),
-                (Key::Key8, '8'),
-                (Key::Key9, '9'),
-                (Key::Key0, '0'),
-            ] {
-                if window.is_key_pressed(key.0, minifb::KeyRepeat::No) {
-                    if let Some(&(_, w)) = hb_sim::weapons::KEYS.iter().find(|(c, _)| *c == key.1) {
-                        voices.extend(battle.guns.select(w, &battle.stores));
-                    }
+            for (key, weapon) in binds.weapons.iter().zip(keys::WEAPON_ROWS) {
+                if pressed(*key) {
+                    voices.extend(battle.guns.select(weapon, &battle.stores));
                 }
             }
-            if window.is_key_pressed(Key::Equal, minifb::KeyRepeat::No)
+            if pressed(binds.next_weapon)
                 || joystick.as_ref().is_some_and(|s| s.pressed(stick::WEAPON))
             {
                 battle.guns.next(&battle.stores);
             }
-            if window.is_key_pressed(Key::Comma, minifb::KeyRepeat::No) {
+            if pressed(binds.previous_weapon) {
+                battle.guns.previous(&battle.stores);
+            }
+            if pressed(binds.transfer_weapon) {
                 voices.extend(hb_sim::weapons::transfer_to_weapons(&mut battle.stores));
             }
-            if window.is_key_pressed(Key::Period, minifb::KeyRepeat::No) {
+            if pressed(binds.transfer_shields) {
                 voices.extend(hb_sim::weapons::transfer_to_shields(&mut battle.stores, &mut battle.pilot.shield));
             }
             voices.extend(battle.tick(dt));

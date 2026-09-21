@@ -328,6 +328,43 @@ impl Guns {
         }
     }
 
+    /// The ring the previous-weapon key walks (`0x47e254`), in the order it
+    /// walks it: each weapon's predecessor is the one after it here, and the
+    /// twelfth wraps to the first.
+    ///
+    /// It is a hand-written ring, not the mirror of [`Guns::next`], which
+    /// searches forward through the whole table of 32. That is why the two
+    /// keys are different code in the engine and different code here.
+    pub const RING: [usize; 12] = [
+        SERVO_KINETIC,
+        DISPERSION,
+        VALKYRIE,
+        SUPER,
+        MINE,
+        GUIDED_MIRV,
+        MIRV,
+        CLUSTER,
+        VIPER,
+        CRUISE,
+        DEAD_ON,
+        RAPID_FIRE,
+    ];
+
+    /// The previous-weapon key (`0x47e0f6`): round [`Guns::RING`], skipping
+    /// anything with no stock. A weapon that is not on the ring at all -
+    /// which is most of the table - leaves the selection where it is.
+    pub fn previous(&mut self, stores: &Stores) {
+        let Some(mut at) = Self::RING.iter().position(|&w| w == self.selected) else { return };
+        for _ in 0..Self::RING.len() {
+            at = (at + 1) % Self::RING.len();
+            let w = Self::RING[at];
+            if stores.ammo[w] != 0 && PORTED.contains(&w) {
+                self.selected = w;
+                return;
+            }
+        }
+    }
+
     /// The lock, each frame (`0x47b700`): the lock key moves it to the next
     /// placement the selected weapon can lock, round the list; with nothing
     /// locked the first that can be is taken; a lock that can no longer be
