@@ -4,6 +4,7 @@ title: Things are their real size, the world has no hole in it, and turrets shoo
 date: 2026-09-17
 area: decomp,engine,render,port,format
 files: crates/hb-formats/src/text.rs,crates/hb-sim/src/combat.rs,crates/hb-sim/src/turret.rs,crates/hb-render/src/scene.rs,crates/hb-render/src/level.rs,crates/hb-fly/src/battle.rs,crates/hb-fly/src/main.rs,crates/hb/src/main.rs
+slug: things-are-their-real-size-the-world-has-no-hole-in-it-and-t
 ---
 
 # 28. Things are their real size, the world has no hole in it, and turrets shoot back

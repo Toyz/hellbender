@@ -4,6 +4,7 @@ title: Animated textures, and frames that are not in the texture list
 date: 2026-09-17
 area: format, render, port
 files: crates/hb-formats/src/text.rs, crates/hb-render/src/level.rs, docs/formats/level-text.md
+slug: animated-textures-and-frames-that-are-not-in-the-texture-lis
 ---
 
 # 22. Animated textures, and frames that are not in the texture list

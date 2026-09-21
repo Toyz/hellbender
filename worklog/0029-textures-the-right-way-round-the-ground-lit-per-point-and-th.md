@@ -4,6 +4,7 @@ title: Textures the right way round, the ground lit per point, and the light in 
 date: 2026-09-17
 area: decomp,render,format,port
 files: crates/hb-formats/src/terrain.rs,crates/hb-formats/src/lvl.rs,crates/hb-render/src/raster.rs,crates/hb-render/src/scene.rs,crates/hb-render/tests/world.rs,crates/hb/src/view.rs,crates/hb/src/main.rs,Cargo.toml
+slug: textures-the-right-way-round-the-ground-lit-per-point-and-th
 ---
 
 # 29. Textures the right way round, the ground lit per point, and the light in the manifest

@@ -4,6 +4,7 @@ title: A texture word is twelve bits and four, and the map draws itself
 date: 2026-09-17
 area: format, world, render, port
 files: crates/hb-formats/src/terrain.rs, crates/hb/src/view.rs, docs/formats/terrain.md
+slug: a-texture-word-is-twelve-bits-and-four-and-the-map-draws-its
 ---
 
 # 12. A texture word is twelve bits and four, and the map draws itself

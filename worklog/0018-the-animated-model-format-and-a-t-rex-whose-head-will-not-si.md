@@ -4,6 +4,7 @@ title: The animated model format, and a T-Rex whose head will not sit down
 date: 2026-09-17
 area: format, render, port
 files: crates/hb-formats/src/anim.rs, docs/formats/anim.md
+slug: the-animated-model-format-and-a-t-rex-whose-head-will-not-si
 ---
 
 # 18. The animated model format, and a T-Rex whose head will not sit down

@@ -4,6 +4,7 @@ title: Materials bind to polygons by position, and four models say nothing at al
 date: 2026-09-17
 area: format, render, port
 files: crates/hb-formats/src/mrgl.rs, crates/hb-render/src/scene.rs, docs/formats/mrgl.md
+slug: materials-bind-to-polygons-by-position-and-four-models-say-n
 ---
 
 # 17. Materials bind to polygons by position, and four models say nothing at all

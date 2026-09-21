@@ -4,6 +4,7 @@ title: Height anywhere, collision, and the chambers turn out to be underneath
 date: 2026-09-17
 area: world, render, port
 files: crates/hb-world/src/grid.rs, crates/hb-render/src/scene.rs, crates/hb-fly/src/main.rs
+slug: height-anywhere-collision-and-the-chambers-turn-out-to-be-un
 ---
 
 # 20. Height anywhere, collision, and the chambers turn out to be underneath

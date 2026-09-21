@@ -4,6 +4,7 @@ title: Raw images have no header, and the filename carries the video mode
 date: 2026-09-17
 area: format, render
 files: docs/formats/raw.md, docs/formats/act.md
+slug: raw-images-have-no-header-and-the-filename-carries-the-video
 ---
 
 # 6. Raw images have no header, and the filename carries the video mode

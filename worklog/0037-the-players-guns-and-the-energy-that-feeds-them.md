@@ -4,6 +4,7 @@ title: The player's guns, and the energy that feeds them
 date: 2026-09-18
 area: decomp,engine,port
 files: crates/hb-sim/src/weapons.rs,crates/hb-sim/tests/weapons.rs,crates/hb-sim/src/powerup.rs,crates/hb-sim/src/combat.rs,crates/hb-fly/src/battle.rs,crates/hb-fly/src/main.rs,docs/engine/simulation.md
+slug: the-players-guns-and-the-energy-that-feeds-them
 ---
 
 # 37. The player's guns, and the energy that feeds them

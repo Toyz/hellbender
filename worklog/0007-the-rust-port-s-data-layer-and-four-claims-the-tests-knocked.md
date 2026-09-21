@@ -4,6 +4,7 @@ title: The Rust port's data layer, and four claims the tests knocked down
 date: 2026-09-17
 area: port, format, test
 files: crates/hb-pod, crates/hb-formats, crates/hb, crates/hb-formats/tests/against_the_game.rs
+slug: the-rust-port-s-data-layer-and-four-claims-the-tests-knocked
 ---
 
 # 7. The Rust port's data layer, and four claims the tests knocked down

@@ -4,6 +4,7 @@ title: A perspective frame, and two convention bugs the picture found
 date: 2026-09-17
 area: render, port, world
 files: crates/hb-render, docs/engine/rendering.md
+slug: a-perspective-frame-and-two-convention-bugs-the-picture-foun
 ---
 
 # 13. A perspective frame, and two convention bugs the picture found

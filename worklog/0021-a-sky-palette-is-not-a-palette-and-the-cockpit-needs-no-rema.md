@@ -4,6 +4,7 @@ title: A sky palette is not a palette, and the cockpit needs no remap
 date: 2026-09-17
 area: format, render, port
 files: crates/hb-render/src/level.rs, crates/hb-render/src/scene.rs, docs/formats/sky.md
+slug: a-sky-palette-is-not-a-palette-and-the-cockpit-needs-no-rema
 ---
 
 # 21. A sky palette is not a palette, and the cockpit needs no remap

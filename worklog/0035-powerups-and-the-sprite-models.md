@@ -4,6 +4,7 @@ title: Powerups, and the sprite models they are drawn with
 date: 2026-09-18
 area: decomp,format,engine,render,port
 files: crates/hb-sim/src/powerup.rs,crates/hb-sim/tests/powerup.rs,crates/hb-sim/src/mission.rs,crates/hb-formats/src/text.rs,crates/hb-formats/src/mrgl.rs,crates/hb-formats/tests/against_the_game.rs,crates/hb-render/src/level.rs,crates/hb-render/src/scene.rs,crates/hb-fly/src/battle.rs,crates/hb-fly/src/main.rs,crates/hb/src/main.rs,docs/engine/simulation.md,docs/formats/mrgl.md,docs/formats/level-text.md
+slug: powerups-and-the-sprite-models
 ---
 
 # 35. Powerups, and the sprite models they are drawn with
