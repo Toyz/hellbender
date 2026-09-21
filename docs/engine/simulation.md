@@ -77,6 +77,7 @@ class   types   routine    what
     0     874   -          scenery: visibility only
     9     454   -          bunkers and domes: visibility only
     1       ?   0x4077c0   turret that pitches too, see below
+   14       ?   0x409de0   the same, aiming from a model part
    10     118   0x408c30   turret
    47      97   0x421240   course follower (phase 0 read, see above)
    26       ?   0x40ab80   hovers: bobs and turns on the spot, see below
@@ -105,6 +106,24 @@ which is not the mirror of the first case, and is what the port does too.
 
 109 placements across the levels are class 1: the bottom gun turrets, the
 floating guns. `hb_sim::turret::Turret::aiming` is this.
+
+## Class 14 aims from its gun
+
+`0x409de0` is class 1 again with two differences. It aims from a point on its
+model rather than from the actor's origin: `0x406bf0` asks `0x406ac0` for the
+place, which for an animated model walks to the `0x26` node and takes the
+part's interpolated centre through the model's matrix (`0x46edd0`). Which
+part is `.DEF` line 3's first muzzle entry, read as a part index rather than
+a vertex index - the same field means both, depending on the model.
+
+And it turns its gun rather than itself. `0x408ee0` is the same exponential
+ease as `0x4068f0` but over a second set of actor fields, a position at
+`+0x4c` and angles at `+0x58`, which the body's own never see. So a watch
+tower stands still and only its gun tracks.
+
+96 placements are class 14. The port aims and fires as the engine does and
+leaves the tower's model alone; what it does not do is turn the gun on the
+model, which would need the second pose the engine keeps.
 
 ## Class 26 hovers
 
@@ -692,13 +711,8 @@ weapons to spend them on yet.
 Everything past phase 0 of the course follower: speeds, curve fitting, what
 happens at the end of a course, how the seven logic routines differ.
 
-The behaviour classes still unread, by how many placements they drive: 14
-with 96 - it aims exactly as class 1 does, but from a point it asks the
-model for rather than from the actor's origin (`0x406bf0` walks to a
-`0x26` animated-model node and `0x46edd0` returns a position from it), eases
-its angles through `0x408ee0` rather than `0x4068f0`, and turns something
-else after it fires; porting it waits on the animated models. Then 17 with
-54, 55 with 49, 58 with 34, 18 with 29, 3 with 15, 35 with 12, and the
+The behaviour classes still unread, by how many placements they drive: 17
+with 54, 55 with 49, 58 with 34, 18 with 29, 3 with 15, 35 with 12, and the
 handful of scripted ones: 50 to 52 for the shuttle and its escort, and 62 to
 64 for Nyx. Classes 56, 59 and 60 borrow the
 class-53 flyer in this port; their own routines are not read.

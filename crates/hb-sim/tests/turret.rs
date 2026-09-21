@@ -272,3 +272,24 @@ fn a_class_ten_turret_does_not_pitch() {
     turret.step(&def, None, &placed, [0.0, 40.0, 20.0], [0.0; 3], 1.0, &mut Rng::new(1));
     assert_eq!(turret.pitch, 0.0);
 }
+
+/// Class 14 aims from the part of its model the gun sits on, not from the
+/// actor's origin (`0x406bf0`): the same target read from a point twenty
+/// units up wants a different pitch.
+#[test]
+fn aiming_from_a_gun_high_on_a_tower_changes_the_angle() {
+    let def = gun(65536, 100 << 16, 20 << 16, 2);
+    let placed = at_origin();
+    let target = [0.0, 0.0, 40.0];
+
+    let mut from_base = Turret::aiming(&placed);
+    from_base.step(&def, None, &placed, target, [0.0; 3], 1.0, &mut Rng::new(1));
+
+    let mut from_gun = Turret::aiming(&placed);
+    from_gun.aim_from = Some([0.0, 20.0, 0.0]);
+    from_gun.step(&def, None, &placed, target, [0.0; 3], 1.0, &mut Rng::new(1));
+
+    // Level with the target from the base, looking down from the gun.
+    assert!(from_base.pitch.abs() < 100.0, "from the base {}", from_base.pitch);
+    assert!(from_gun.pitch > 4000.0, "from the gun {}", from_gun.pitch);
+}

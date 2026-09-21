@@ -282,6 +282,22 @@ impl Animated {
         (vertices, polygons)
     }
 
+    /// Where one part sits at `seconds`, in the same space [`Animated::pose`]
+    /// puts its vertices. This is what the engine asks for when a type names
+    /// a part rather than a vertex as its muzzle: `0x46edd0` takes the part's
+    /// interpolated centre through the model's matrix.
+    pub fn part_origin(&self, part: usize, seconds: f32) -> Option<[i32; 3]> {
+        let p = self.parts.get(part)?;
+        let (frame, fraction) = self.frame_at(seconds);
+        let next = if frame + 1 < self.frames { frame + 1 } else { 0 };
+        let centre = tween(p.centres.get(frame), p.centres.get(next), fraction);
+        let model = rotation(self.angle.map(|a| a as f32));
+        let offset = self.centre.map(|c| c as f32);
+        Some(std::array::from_fn(|k| {
+            ((0..3).map(|j| model[k][j] * centre[j]).sum::<f32>() + offset[k]) as i32 / 2
+        }))
+    }
+
     /// Which keyframe `seconds` lands on, and how far past it, 0.0 to 1.0.
     /// The clock wraps at the last frame.
     pub fn frame_at(&self, seconds: f32) -> (usize, f32) {

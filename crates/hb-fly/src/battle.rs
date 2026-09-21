@@ -62,6 +62,8 @@ pub struct Battle {
     empty_for: f32,
     /// The powerups the player was inside last frame.
     touching: Vec<usize>,
+    /// Seconds since the level started, for the animated models' poses.
+    clock: f32,
     /// Where the player's shots and missiles hit the world this frame. The
     /// engine hands each of these to the quake code, which is what opens a
     /// door (`0x410b80`).
@@ -84,11 +86,11 @@ impl Battle {
             .iter()
             .enumerate()
             .filter(|(_, p)| {
-                level.kinds.get(p.kind).is_some_and(|k| k.class() == 10 || k.class() == 1)
+                level.kinds.get(p.kind).is_some_and(|k| [1, 10, 14].contains(&k.class()))
             })
             .map(|(i, p)| {
                 let class = level.kinds[p.kind].class();
-                (i, if class == 1 { Turret::aiming(p) } else { Turret::new(p) })
+                (i, if class == 10 { Turret::new(p) } else { Turret::aiming(p) })
             })
             .collect();
         let flyers = level
@@ -107,6 +109,7 @@ impl Battle {
             missiles: Vec::new(),
             pilot: Pilot::default(),
             ground_hits: Vec::new(),
+            clock: 0.0,
             field: Field::default(),
             stores: Stores::default(),
             guns: Guns::default(),
@@ -142,6 +145,7 @@ impl Battle {
         ground: &impl Fn(f32, f32) -> f32,
     ) -> Vec<Noise> {
         let mut noises = Vec::new();
+        self.clock += dt;
         self.pilot.since_hit += dt;
         self.blasts.step(dt);
 
@@ -158,16 +162,35 @@ impl Battle {
             }
             let def = &level.kinds[p.kind];
             let mesh = level.meshes.get(p.kind).and_then(Option::as_ref);
+            // A class 14 tower aims from the part of its model its gun sits
+            // on - the first of the type's muzzle entries, read as a part
+            // rather than a vertex (`0x406ac0`).
+            turret.aim_from = (def.class() == 14)
+                .then(|| {
+                    let part = *def.muzzles.first()? as usize;
+                    let at = combat::position_of(p);
+                    let off = level.part_origin(p.kind, part, self.clock)?;
+                    Some([
+                        at[0] + off[0] as f32 / 65536.0,
+                        at[1] + off[1] as f32 / 65536.0,
+                        at[2] + off[2] as f32 / 65536.0,
+                    ])
+                })
+                .flatten();
             match turret.step(def, mesh, p, player, velocity, dt, &mut self.rng) {
                 Some(Launch::Shot(s)) => self.shots.push(Flying::new(s)),
                 Some(Launch::Missile(m)) => self.missiles.push(m),
                 None => {}
             }
             // The turret's heading is what the renderer shows, and a class
-            // 1 gun's pitch with it.
-            live[*i].heading = turret.heading as u16;
-            if turret.aims {
-                live[*i].pitch = turret.pitch as i32;
+            // 1 gun's pitch with it. A class 14 tower keeps its own angles
+            // for the gun alone (`0x408ee0` eases a second set), so its body
+            // does not turn.
+            if def.class() != 14 {
+                live[*i].heading = turret.heading as u16;
+                if turret.aims {
+                    live[*i].pitch = turret.pitch as i32;
+                }
             }
         }
 

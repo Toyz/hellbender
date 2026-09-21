@@ -82,6 +82,10 @@ pub struct Turret {
     /// Class 1 rather than class 10: it leads in all three axes and pitches
     /// as well as turns (`0x4077c0`).
     pub aims: bool,
+    /// Where it aims from, when that is not the actor's own origin. Class 14
+    /// asks its model for the part its gun is on and measures from there
+    /// (`0x406bf0`); the caller sets this because only it has the model.
+    pub aim_from: Option<[f32; 3]>,
 }
 
 /// What a turret put into the world this frame.
@@ -93,7 +97,14 @@ pub enum Launch {
 
 impl Turret {
     pub fn new(p: &Placement) -> Turret {
-        Turret { heading: p.heading as f32, pitch: p.pitch as f32, waited: 0.0, barrel: 0, aims: false }
+        Turret {
+            heading: p.heading as f32,
+            pitch: p.pitch as f32,
+            waited: 0.0,
+            barrel: 0,
+            aims: false,
+            aim_from: None,
+        }
     }
 
     /// The class 1 gun: the same state, aiming in three dimensions.
@@ -116,7 +127,9 @@ impl Turret {
         rng: &mut Rng,
     ) -> Option<Launch> {
         let at = position_of(p);
-        let d = [wrapped(player[0] - at[0]), player[1] - at[1], wrapped(player[2] - at[2])];
+        // The aim is measured from the gun where the type names one.
+        let eye = self.aim_from.unwrap_or(at);
+        let d = [wrapped(player[0] - eye[0]), player[1] - eye[1], wrapped(player[2] - eye[2])];
         let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
         let speed = def.shot_speed() as f32 / 65536.0;
         // Two turret types have no shot speed; the engine divides by it anyway.

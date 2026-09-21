@@ -134,6 +134,16 @@ impl Level {
         }
     }
 
+    /// Where a type's animated model keeps one of its parts, as a model
+    /// offset at the type's own radius. `None` for a type whose model is not
+    /// animated, or which has no such part.
+    pub fn part_origin(&self, kind: usize, part: usize, seconds: f32) -> Option<[i32; 3]> {
+        let model = self.animated.get(kind)?.as_ref()?;
+        let at = model.part_origin(part, seconds)?;
+        let radius = self.kinds.get(kind)?.radius();
+        Some(at.map(|c| ((c as i64 * radius as i64) / hb_formats::mrgl::MODEL_ONE as i64) as i32))
+    }
+
     /// How fast the sky drifts, texture units a second in u and v: the
     /// `.LVL`'s line 41, which the parser reads to `0x6670d0` and the sky
     /// routine adds to its scroll every frame (`0x44fd98`). 10.0 in eleven
