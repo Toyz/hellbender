@@ -433,9 +433,56 @@ missile that scorches as it flies: every sub-step `0x477a19` puts a quarter of
 its damage into everything within 16 units of where it is. It does not need to
 hit anything.
 
-The cluster missile (`0x47cec0`) and the floating mine (`0x47d82a`, into a
-hundred-slot pool at `0x61bde0`) are not ported. Nor is the cruise missile's
+The cluster missile (`0x47cec0`) is not ported, nor is the cruise missile's
 own steering (`0x4780b0`): the port steers it as the others.
+
+## The floating mine
+
+Weapon 28, `keyMine`, and the one weapon that is not fired but left behind.
+
+Dropping one (`0x47d82a`) first tests the ship's speed at `0x50cc50` against
+`0x61a80` - 6.1 units a second. Slower than that and the drop is refused with
+`Go Faster to Deploy Mine` on the HUD. Fast enough and the mine goes down at
+the ship's position **less the third row of its rotation** (`0x5b3854`,
+`0x5b3860`, `0x5b386c`), which is a unit behind it.
+
+The pool is a hundred slots of 48 bytes at `0x61bde0`, walked for the first
+whose first word is zero; with all hundred out, the drop does nothing. A
+slot:
+
+```
++0x00  live
++0x04  x, y, z
++0x10  two angles, which turn once it is armed
++0x18  trigger radius     1.0 << 20, so 16 units
++0x1c  from the drop
++0x20  damage
++0x24  blast radius       2.0 << 20, so 32 units
++0x28  unused by the drop
++0x2c  armed
+```
+
+`0x479670` runs the pool once a frame. Each live mine is drawn with the model
+loaded at startup into `0x61ad80` (`0x42f910`), and then:
+
+- **Not armed**: the ship's position is taken per axis against the trigger
+  radius, wrapped for the world's edge, and if it is inside on all three the
+  mine arms.
+- **Armed**: its two angles turn, one at a quarter of a circle a second and
+  the other at an eighth, so an armed mine visibly spins. The same test runs
+  again, and inside it the mine calls the splash (`0x47d3b0`) with 32 units
+  and its own damage, as weapon kind 26, and clears its slot.
+
+The test is against the **local ship** and nothing else. In a network game
+that is what makes a mine a weapon: a mine another player dropped, placed in
+the same pool by a packet (`0x4795f0`), goes off when you fly into it. In a
+single-player level a mine can only ever be set off by the player who laid
+it - the damage then falls on whatever else is inside the 32-unit blast, so
+it is a weapon by proxy, not a trap.
+
+There is a second, unreachable copy of the drop at `0x479500`. It is the same
+code down to the speed test and the message, and nothing in the image
+references it: not a call, not a table entry.
 
 ## The guided missile
 
