@@ -303,6 +303,18 @@ fn main() -> Result<(), String> {
         .ok()
         .and_then(|b| Image::parse_guessed(b).ok().flatten());
     let mut show_cockpit = cockpit.is_some();
+    // The twelve weapon pictures, which the icon box shows one of.
+    let icons: Vec<Option<Image>> = hb_render::hud::ICONS
+        .iter()
+        .map(|name| {
+            startup
+                .read("art", &format!("{name}.raw"))
+                .ok()
+                .and_then(|b| Image::parse_guessed(b).ok().flatten())
+        })
+        .collect();
+    println!("weapon icons: {} of 12 loaded", icons.iter().filter(|i| i.is_some()).count());
+
     // The reticle, which is a model rather than art (`target.bin`), and the
     // palette index it pulses through, 32 to 63 and back a step a frame.
     let reticle = startup
@@ -1185,6 +1197,14 @@ fn main() -> Result<(), String> {
                     blips: &blips,
                 };
                 hb_render::hud::draw(&mut target, font, &readout);
+                // The weapon's picture, which the message panel covers.
+                if flash.is_none() {
+                    if let Some(Some(art)) =
+                        hb_render::hud::WEAPON_ICONS.get(weapon).map(|&i| &icons[i])
+                    {
+                        hb_render::hud::icon(&mut target, art);
+                    }
+                }
                 if let Some((text, _)) = &flash {
                     hb_render::hud::message(&mut target, font, text);
                 }

@@ -92,6 +92,25 @@ not zero `0x44e9b8` writes it as a bare integer against the bottom right
 corner of the view - `x = width - text - 2`, `y = height - 9` - on a box
 filled with index 8 and framed in index 16.
 
+## The weapon's picture
+
+The left end of the top-left panel is a picture of the weapon you are
+holding, in a box at 14, 3, 63 by 56 in 640x480 (`0x41f8fa`). The message
+panel is 16, 3, 236 by 56 - the same strip - which is why a message hides
+the weapon lines and the picture together.
+
+`0x420e70` draws it. The selected weapon indexes a table at `0x501868` to
+get one of twelve pictures named at `0x501838`, each a 64x64 `.RAW` in the
+art: `valk`, `d4s`, `skl`, `f6rfl1`, `dom4s`, `c4s`, `vip4s`, `cls4s`,
+`m4s`, `mg4s`, `f6mine1`, `f6super`. The names follow the weapons - `dom4s`
+is the Dead On Missile, `cls4s` the Cluster, `mg4s` the Guided MIRV - and a
+weapon with no picture of its own gets the Valkyrie's.
+
+The engine does not blit it. It sets the viewport to the box, hangs the
+picture on a quad as a texture and draws it through the same pipeline the
+reticle and the objective arrow go through, which is how a 64x64 picture
+ends up filling a 63 by 56 box.
+
 ## The cockpit labels
 
 `0x44f000` names every element on the screen, and the key bound to

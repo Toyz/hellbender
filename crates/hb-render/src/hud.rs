@@ -16,6 +16,7 @@
 
 use crate::camera::Camera;
 use crate::raster::{Shade, Target, Vertex};
+use hb_formats::raw::Image;
 use hb_formats::hud_font::{HudFont, LINE};
 use hb_formats::mrgl::Model;
 
@@ -333,6 +334,56 @@ pub fn mark(target: &mut Target, x: isize, y: isize, colour: u8, below: bool) {
         dot(0, 2, 0);
         dot(0, -1, colour);
         dot(0, 1, colour);
+    }
+}
+
+/// Where the weapon's picture goes: 14, 3, 63 by 56 in the same 640x480
+/// (`0x41f8fa` builds it out of the view's size). That is the left end of
+/// the top-left panel, with the weapon and ammunition lines to its right -
+/// and the message panel, 16, 3, 236 by 56, covers it, which is why those
+/// lines step aside for a message too.
+pub const WEAPON_ICON: [isize; 4] = [14, 3, 63, 56];
+
+/// The twelve pictures (`0x501838`), each a 64x64 `.RAW` in the art.
+pub const ICONS: [&str; 12] = [
+    "valk", "d4s", "skl", "f6rfl1", "dom4s", "c4s", "vip4s", "cls4s", "m4s", "mg4s", "f6mine1",
+    "f6super",
+];
+
+/// Which picture each weapon row uses (`0x501868`, read with the row as the
+/// index). A row with none of its own gets the first, the Valkyrie's, and
+/// `0x420e8e` treats anything outside 0..12 as an error.
+pub const WEAPON_ICONS: [usize; 31] = [
+    0, 2, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 6, 0, 0, 0, 0, 5, 7, 8, 9, 10, 0, 11,
+];
+
+/// The weapon's picture, scaled into its box. The engine gets there the long
+/// way - it sets the viewport to the box, hangs the picture on a quad as a
+/// texture and draws it (`0x420e70`) - which comes to the same thing.
+pub fn icon(target: &mut Target, image: &Image) {
+    let (w, h) = (target.width, target.height);
+    let [ix, iy, iw, ih] = WEAPON_ICON;
+    let (x0, y0) = (ix * w as isize / 640, iy * h as isize / 480);
+    let (bw, bh) = (iw * w as isize / 640, ih * h as isize / 480);
+    // Cleared first, one pixel in and two short, as `0x420ecb` does.
+    fill(&mut target.colour, w, h, x0 + 1, y0 + 1, bw - 3, bh - 3, 0);
+    let (sw, sh) = (image.shape.width, image.shape.height);
+    if sw == 0 || sh == 0 || bw <= 0 || bh <= 0 {
+        return;
+    }
+    for y in 0..bh {
+        for x in 0..bw {
+            let (px, py) = (x0 + x, y0 + y);
+            if px < 0 || py < 0 || px >= w as isize || py >= h as isize {
+                continue;
+            }
+            let sx = (x as usize * sw / bw as usize).min(sw - 1);
+            let sy = (y as usize * sh / bh as usize).min(sh - 1);
+            let index = image.pixels[sy * sw + sx];
+            if index != 0 {
+                target.colour[py as usize * w + px as usize] = index;
+            }
+        }
     }
 }
 

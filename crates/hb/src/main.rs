@@ -661,6 +661,13 @@ fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
                     blips: &blips,
                 };
                 hb_render::hud::draw(&mut target, &font, &readout);
+                if let Some(art) = startup
+                    .read("art", &format!("{}.raw", hb_render::hud::ICONS[0]))
+                    .ok()
+                    .and_then(|b| raw::Image::parse_guessed(b).ok().flatten())
+                {
+                    hb_render::hud::icon(&mut target, &art);
+                }
                 hb_render::hud::arrow(&mut target, 0x2000);
                 if let Some(model) = startup
                     .read("models", "target.bin")
