@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-60 entries: audio 2, build 2, content 4, decomp 35, engine 24, format 28, port 48, render 22, test 3, tooling 4, ui 1, world 10.
+61 entries: audio 2, build 2, content 4, decomp 35, engine 24, format 28, port 49, render 23, test 3, tooling 4, ui 1, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -71,3 +71,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 58 | [Four more classes](worklog/0058-four-more-classes.md) | 2026-09-20 | decomp, engine, port |
 | 59 | [The switches light up](worklog/0059-the-switches-light-up.md) | 2026-09-20 | port, engine |
 | 60 | [The worklog moves to cairns](worklog/0060-the-worklog-moves-to-cairns.md) | 2026-09-20 | tooling, build |
+| 61 | [The floor vanished when the nose touched it](worklog/0061-the-floor-vanished-when-the-nose-touched-it.md) | 2026-09-20 | render, port |

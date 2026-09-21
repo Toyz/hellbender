@@ -303,10 +303,13 @@ fn draw_mesh(
     // Model space is 2.14 and spans -1.0 to +1.0, so `Vertex::world` turns a
     // vertex into a 16.16 world offset at the type's radius.
     let (width, height) = (target.width, target.height);
-    let place = |v: &hb_formats::mrgl::Vertex| -> Option<(f32, f32, f32)> {
+    // Where a model vertex is in view space. The projection and the near
+    // plane come later, after the polygon is clipped, so a model the camera
+    // is inside is cut rather than dropped.
+    let place = |v: &hb_formats::mrgl::Vertex| -> [f32; 3] {
         let [mx, my, mz] = v.world(scale).map(|c| c as f32);
         let world: [f32; 3] = std::array::from_fn(|k| right[k] * mx + up[k] * my + forward[k] * mz);
-        project_onto(camera, width, height, x + world[0] as i32, y + world[1] as i32, z + world[2] as i32)
+        camera.to_view(x + world[0] as i32, y + world[1] as i32, z + world[2] as i32)
     };
 
     // A polygon's light (`0x48a6a0`): the ambient, plus the rest of the way to
@@ -338,19 +341,20 @@ fn draw_mesh(
         // (`0x458a00`) and is then drawn unshaded.
         if poly.kind == FLAT_POLYGON {
             let index = hb_formats::mrgl::shade_colour(poly.shade.unwrap_or(0), (light * 65535.0) as i32);
-            let corners: Option<Vec<Vertex>> = poly
+            let corners: Option<Vec<Near>> = poly
                 .corners
                 .iter()
                 .map(|c| {
-                    let (sx, sy, depth) = place(mesh.vertices.get(c.vertex as usize)?)?;
-                    Some(Vertex { x: sx, y: sy, depth, u: 0.0, v: 0.0, light: 255.0 })
+                    let at = place(mesh.vertices.get(c.vertex as usize)?);
+                    Some(Near { at, u: 0.0, v: 0.0, light: 255.0 })
                 })
                 .collect();
             if let Some(corners) = corners {
+                let corners = clipped_face(width, height, &corners);
                 for i in 1..corners.len().saturating_sub(1) {
                     target.flat_triangle([corners[0], corners[i], corners[i + 1]], index, shade);
                 }
-                any = true;
+                any |= corners.len() >= 3;
             }
             continue;
         }
@@ -366,16 +370,13 @@ fn draw_mesh(
         if texture.is_none() && poly.colour.is_none() {
             continue;
         }
-        let corners: Option<Vec<Vertex>> = poly
+        let corners: Option<Vec<Near>> = poly
             .corners
             .iter()
             .map(|c| {
                 let v = mesh.vertices.get(c.vertex as usize)?;
-                let (sx, sy, depth) = place(v)?;
-                Some(Vertex {
-                    x: sx,
-                    y: sy,
-                    depth,
+                Some(Near {
+                    at: place(v),
                     u: (c.u >> 16) as f32,
                     v: (c.v >> 16) as f32,
                     light: light * 255.0,
@@ -383,6 +384,7 @@ fn draw_mesh(
             })
             .collect();
         let Some(corners) = corners else { continue };
+        let corners = clipped_face(width, height, &corners);
         for i in 1..corners.len().saturating_sub(1) {
             let tri = [corners[0], corners[i], corners[i + 1]];
             match texture {
@@ -414,10 +416,6 @@ fn corner_world(origin: (i32, i32), corner: Corner) -> (i32, i32) {
     (origin.0 + dx * CELL_SIZE, origin.1 + dz * CELL_SIZE)
 }
 
-fn project(camera: &Camera, target: &Target, x: i32, y: i32, z: i32) -> Option<(f32, f32, f32)> {
-    project_onto(camera, target.width, target.height, x, y, z)
-}
-
 fn project_onto(
     camera: &Camera,
     width: usize,
@@ -426,13 +424,78 @@ fn project_onto(
     y: i32,
     z: i32,
 ) -> Option<(f32, f32, f32)> {
-    let [vx, vy, vz] = camera.to_view(x, y, z);
-    // Near plane at a tenth of a cell.
-    if vz <= 0.8 {
+    let view = camera.to_view(x, y, z);
+    if view[2] <= NEAR {
         return None;
     }
+    Some(project_view(view, width, height))
+}
+
+/// The near plane, a tenth of a cell in front of the eye.
+pub const NEAR: f32 = 0.8;
+
+/// A corner before it is projected: where it is in view space, and what the
+/// rasteriser interpolates across the face.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Near {
+    pub at: [f32; 3],
+    pub u: f32,
+    pub v: f32,
+    pub light: f32,
+}
+
+impl Near {
+    /// Between two corners, where the edge between them crosses the near
+    /// plane.
+    fn lerp(self, other: Near, t: f32) -> Near {
+        let mix = |a: f32, b: f32| a + (b - a) * t;
+        Near {
+            at: std::array::from_fn(|k| mix(self.at[k], other.at[k])),
+            u: mix(self.u, other.u),
+            v: mix(self.v, other.v),
+            light: mix(self.light, other.light),
+        }
+    }
+}
+
+/// A point already in view space, projected. The caller has to have put it in
+/// front of the near plane.
+fn project_view(view: [f32; 3], width: usize, height: usize) -> (f32, f32, f32) {
     let ([sx, sy], [cx, cy]) = Camera::screen(width, height);
-    Some((cx + vx * sx / vz, cy - vy * sy / vz, vz))
+    let z = view[2].max(NEAR);
+    (cx + view[0] * sx / z, cy - view[1] * sy / z, z)
+}
+
+/// Clip a convex face against the near plane and project what is left.
+///
+/// Dropping a face because one corner is behind the eye is what made the
+/// ground vanish from under the ship: at the moment the nose touches it, the
+/// cell the camera is in has corners behind the near plane, and the whole
+/// cell went with them. The engine clips rather than drops - its own polygon
+/// clipper is `0x4141a0`, and `"Sky clip overflow!"` is that routine running
+/// out of room - so this clips too, and a face crossing the plane becomes the
+/// part of it in front.
+///
+/// Returns the projected corners, empty when the face is entirely behind.
+fn clipped_face(width: usize, height: usize, face: &[Near]) -> Vec<Vertex> {
+    let mut kept: Vec<Near> = Vec::with_capacity(face.len() + 1);
+    for (i, &here) in face.iter().enumerate() {
+        let there = face[(i + 1) % face.len()];
+        let (inside, next_inside) = (here.at[2] >= NEAR, there.at[2] >= NEAR);
+        if inside {
+            kept.push(here);
+        }
+        if inside != next_inside {
+            let t = (NEAR - here.at[2]) / (there.at[2] - here.at[2]);
+            kept.push(here.lerp(there, t));
+        }
+    }
+    kept.iter()
+        .map(|c| {
+            let (x, y, depth) = project_view(c.at, width, height);
+            Vertex { x, y, depth, u: c.u, v: c.v, light: c.light }
+        })
+        .collect()
 }
 
 /// A texture slot after animation.
@@ -534,24 +597,30 @@ fn draw_ground(
     let shade = shade_for(scene, camera);
 
     // The four corners once, in the engine's order, then the two halves.
-    let mut quad = [None; 4];
+    let mut quad = [Near::default(); 4];
     for (i, (dx, dz)) in [(0, 0), (1, 0), (1, 1), (0, 1)].into_iter().enumerate() {
         let (wx, wz) = (origin.0 + dx * CELL_SIZE, origin.1 + dz * CELL_SIZE);
-        quad[i] = project(camera, target, wx, height(dx, dz), wz).map(|(x, y, depth)| {
-            let (u, v) = uvs[i];
-            Vertex { x, y, depth, u, v, light: ground_light(scene, cell.x + dx, cell.z + dz) }
-        });
+        let (u, v) = uvs[i];
+        quad[i] = Near {
+            at: camera.to_view(wx, height(dx, dz), wz),
+            u,
+            v,
+            light: ground_light(scene, cell.x + dx, cell.z + dz),
+        };
     }
-    let average = quad.iter().flatten().map(|v| v.depth).sum::<f32>() / 4.0;
+    let average = quad.iter().map(|c| c.at[2].max(NEAR)).sum::<f32>() / 4.0;
     let texture = at_distance(scene, slot, texture, average);
     for half in [Half::First, Half::Second] {
         let tri = triangle(cell, half);
-        let points: Option<Vec<Vertex>> = tri.corners.iter().map(|&c| quad[quad_corner(c)]).collect();
-        let Some(points) = points else {
+        let corners: Vec<Near> = tri.corners.iter().map(|&c| quad[quad_corner(c)]).collect();
+        let points = clipped_face(target.width, target.height, &corners);
+        if points.len() < 3 {
             drawn.clipped += 1;
             continue;
-        };
-        target.triangle([points[0], points[1], points[2]], texture, &shade);
+        }
+        for i in 1..points.len() - 1 {
+            target.triangle([points[0], points[i], points[i + 1]], texture, &shade);
+        }
         drawn.ground += 1;
     }
 }
@@ -600,31 +669,25 @@ fn draw_chamber(
         let uvs = word.corner_uvs(UV_LO, UV_HI);
         for half in [Half::First, Half::Second] {
             let tri = triangle(cell, half);
-            let mut points = [Vertex::default(); 3];
-            let mut visible = true;
-            for (point, corner) in points.iter_mut().zip(tri.corners) {
+            let mut corners = [Near::default(); 3];
+            for (point, corner) in corners.iter_mut().zip(tri.corners) {
                 let (dx, dz) = corner.offset();
                 let (wx, wz) = corner_world(origin, corner);
                 let height = scene
                     .grid
                     .height_at_grid(layer, cell.x + dx, cell.z + dz)
                     .unwrap_or(0);
-                match project(camera, target, wx, height, wz) {
-                    Some((x, y, depth)) => {
-                        let (u, v) = uvs[quad_corner(corner)];
-                        *point = Vertex { x, y, depth, u, v, light };
-                    }
-                    None => {
-                        visible = false;
-                        break;
-                    }
-                }
+                let (u, v) = uvs[quad_corner(corner)];
+                *point = Near { at: camera.to_view(wx, height, wz), u, v, light };
             }
-            if !visible {
+            let points = clipped_face(target.width, target.height, &corners);
+            if points.len() < 3 {
                 drawn.clipped += 1;
                 continue;
             }
-            target.triangle(points, texture, &shade);
+            for i in 1..points.len() - 1 {
+                target.triangle([points[0], points[i], points[i + 1]], texture, &shade);
+            }
             drawn.chambers += 1;
         }
     }
@@ -709,32 +772,25 @@ fn draw_box(
             continue;
         };
         let uvs = word.corner_uvs(UV_LO, UV_HI);
-        let mut quad = [Vertex::default(); 4];
-        let mut visible = true;
+        let mut quad = [Near::default(); 4];
         for (i, (dx, dz, up)) in face.corners().into_iter().enumerate() {
             let (wx, wz) = (origin.0 + dx * CELL_SIZE, origin.1 + dz * CELL_SIZE);
             let y = if up { top } else { bottom };
-            match project(camera, target, wx, y, wz) {
-                Some((x, sy, depth)) => {
-                    let (u, v) = uvs[i];
-                    let light = corner_light(dx, dz, up);
-                    quad[i] = Vertex { x, y: sy, depth, u, v, light };
-                }
-                None => {
-                    visible = false;
-                    break;
-                }
-            }
+            let (u, v) = uvs[i];
+            quad[i] =
+                Near { at: camera.to_view(wx, y, wz), u, v, light: corner_light(dx, dz, up) };
         }
-        if !visible {
+        let average = quad.iter().map(|c| c.at[2].max(NEAR)).sum::<f32>() / 4.0;
+        let points = clipped_face(target.width, target.height, &quad);
+        if points.len() < 3 {
             drawn.clipped += 1;
             continue;
         }
-        let average = quad.iter().map(|v| v.depth).sum::<f32>() / 4.0;
         let texture = at_distance(scene, slot, full, average);
-        target.triangle([quad[0], quad[1], quad[2]], texture, &shade);
-        target.triangle([quad[0], quad[2], quad[3]], texture, &shade);
-        drawn.boxes += 2;
+        for i in 1..points.len() - 1 {
+            target.triangle([points[0], points[i], points[i + 1]], texture, &shade);
+            drawn.boxes += 1;
+        }
     }
 }
 

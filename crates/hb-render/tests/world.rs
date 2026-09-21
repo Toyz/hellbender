@@ -177,3 +177,39 @@ fn an_explosion_puff_draws() {
     let lit = target.colour.iter().filter(|&&c| c != 0).count();
     assert!(lit > 200, "only {lit} pixels");
 }
+
+/// The floor does not vanish when the ship's nose touches it.
+///
+/// A cell the camera is standing in has corners behind the near plane, and
+/// dropping any face with a corner behind it took the whole cell with them -
+/// so looking down from a unit above the ground left the bottom of the frame
+/// black. The near-plane clip keeps the part in front (worklog 61).
+#[test]
+fn the_ground_survives_a_camera_that_touches_it() {
+    let Some(level) = level("float") else { return };
+    let (w, h) = Target::MODE_200;
+    let grid = hb_world::Grid::new(&level.terrain);
+    // Half a cell in, so the camera is inside a cell rather than on its edge.
+    let (x, z) = ((40 << 19) + (1 << 18), (40 << 19) + (1 << 18));
+    let ground = grid
+        .height_at(hb_formats::terrain::Layer::Ground, x, z)
+        .unwrap_or(0);
+
+    // Straight down, a third of a unit above the surface - closer than the
+    // near plane, so the corners of the cell the camera is in are behind it.
+    let mut camera = Camera::looking_at(x, ground + (1 << 16) / 3, z, Angle(0));
+    camera.pitch = Angle(16000);
+    let mut target = Target::new(w, h);
+    target.clear(0);
+    let drawn = hb_render::draw_world(&mut target, &level.scene(), &camera);
+
+    assert!(drawn.ground > 300, "only {} ground triangles", drawn.ground);
+    // The bottom half is where the dropped cells used to be.
+    let bottom = &target.colour[(h / 2) * w..];
+    let black = bottom.iter().filter(|&&c| c == 0).count();
+    assert!(
+        black * 20 < bottom.len(),
+        "{black} of {} pixels below the middle are black",
+        bottom.len()
+    );
+}
