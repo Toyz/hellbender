@@ -164,13 +164,19 @@ impl Ship {
             *key = if on { (*key + 2.0 * dt).min(1.0) } else { (*key - 4.0 * dt).max(0.0) };
         }
         // A stick is already where the ramp would have climbed to, so it
-        // replaces the ramp outright rather than adding to it.
+        // stands in for the ramp rather than adding to it - but only where it
+        // is pushed further than the keys are. Whichever is asking for more
+        // wins, so a stick never takes the keyboard away.
         if let Some([pitch, turn, roll]) = controls.stick {
-            let split = |v: f32| (v.max(0.0).min(1.0), (-v).max(0.0).min(1.0));
+            let split = |v: f32| (v.clamp(0.0, 1.0), (-v).clamp(0.0, 1.0));
             let (up, down) = split(pitch);
             let (right, left) = split(turn);
             let (roll_right, roll_left) = split(roll);
-            self.keys = [up, down, left, right, roll_left, roll_right];
+            for (key, axis) in
+                self.keys.iter_mut().zip([up, down, left, right, roll_left, roll_right])
+            {
+                *key = key.max(axis);
+            }
         }
         if controls.throttle_up {
             self.throttle += dt;

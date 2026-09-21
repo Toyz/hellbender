@@ -142,3 +142,29 @@ fn a_throttle_lever_sets_the_throttle_where_it_is() {
     fly(&mut ship, Controls { lever: Some(1.0), ..Controls::default() }, 0.1);
     assert_eq!(ship.throttle, 1.0);
 }
+
+/// A stick reading centred must not take the keyboard away, which is what a
+/// device that is not a joystick at all reports.
+#[test]
+fn a_centred_stick_leaves_the_keys_alone() {
+    let mut ship = Ship::new([0.0; 3], 0.0);
+    let controls = Controls { right: true, stick: Some([0.0; 3]), ..Controls::default() };
+    fly(&mut ship, controls, 1.0);
+    let with = s16(ship.angles()[2]);
+
+    let mut ship = Ship::new([0.0; 3], 0.0);
+    fly(&mut ship, Controls { right: true, ..Controls::default() }, 1.0);
+    let without = s16(ship.angles()[2]);
+
+    assert!((with - without).abs() < 1e-3, "with {with}, without {without}");
+}
+
+/// And a stick pushed the other way does not cancel a key either: whichever
+/// is asking for more of a direction wins.
+#[test]
+fn a_key_and_a_stick_do_not_fight() {
+    let mut ship = Ship::new([0.0; 3], 0.0);
+    let controls = Controls { right: true, stick: Some([0.0, -0.3, 0.0]), ..Controls::default() };
+    fly(&mut ship, controls, 1.0);
+    assert!(s16(ship.angles()[2]) > 0.0, "the key still turns right");
+}

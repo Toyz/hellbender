@@ -34,8 +34,14 @@ mod linux {
     const BUTTON: u8 = 0x01;
     const AXIS: u8 = 0x02;
     /// Set on the burst of events the driver sends when the device opens,
-    /// which report the current state rather than a change. They are worth
-    /// taking: they are how the throttle's resting place is known.
+    /// which report the current state rather than a change.
+    ///
+    /// They are not to be believed. `/dev/input/js0` is whatever the kernel
+    /// numbered first, and on a machine with a touchscreen and no stick that
+    /// is the touchscreen, whose axes sit wherever they were last touched -
+    /// which arrives as a stick held hard over and takes the keyboard away.
+    /// So an axis counts for nothing until an event without this bit moves
+    /// it, which only something a hand is on will send.
     const INIT: u8 = 0x80;
 
     /// How far from centre an axis has to be before it counts. The engine
@@ -45,6 +51,9 @@ mod linux {
     pub struct Stick {
         device: File,
         axes: [f32; 16],
+        /// Which axes have moved since the device was opened. Until one has,
+        /// it reads centred whatever the device says.
+        live: [bool; 16],
         buttons: [bool; 32],
         /// What the buttons were before this frame's events, so a press can
         /// be told from a hold.
@@ -77,8 +86,14 @@ mod linux {
                 rudder: number("HB_JOY_RUDDER", 3),
                 invert_y: std::env::var("HB_JOY_INVERT_Y").as_deref() != Ok("0"),
             };
-            let mut stick =
-                Stick { device, axes: [0.0; 16], buttons: [false; 32], was: [false; 32], map };
+            let mut stick = Stick {
+                device,
+                axes: [0.0; 16],
+                live: [false; 16],
+                buttons: [false; 32],
+                was: [false; 32],
+                map,
+            };
             stick.poll();
             Some(stick)
         }
@@ -97,16 +112,29 @@ mod linux {
         /// init bit, and which axis or button it belongs to.
         fn apply(&mut self, event: [u8; EVENT]) {
             let value = i16::from_le_bytes([event[4], event[5]]);
+            let initial = event[6] & INIT != 0;
             let kind = event[6] & !INIT;
             let which = event[7] as usize;
             match kind {
-                AXIS if which < self.axes.len() => self.axes[which] = value as f32 / 32767.0,
-                BUTTON if which < self.buttons.len() => self.buttons[which] = value != 0,
+                AXIS if which < self.axes.len() => {
+                    self.axes[which] = value as f32 / 32767.0;
+                    self.live[which] |= !initial;
+                }
+                BUTTON if which < self.buttons.len() => {
+                    self.buttons[which] = value != 0;
+                    // A button held down at open is the same kind of lie.
+                    if initial {
+                        self.buttons[which] = false;
+                    }
+                }
                 _ => {}
             }
         }
 
         fn axis(&self, which: usize) -> f32 {
+            if !self.live.get(which).copied().unwrap_or(false) {
+                return 0.0;
+            }
             let v = self.axes.get(which).copied().unwrap_or(0.0);
             if v.abs() < DEAD_ZONE {
                 return 0.0;
@@ -129,6 +157,9 @@ mod linux {
         /// axis to report. A lever that has never moved reads at its resting
         /// place, which the driver sends on open.
         pub fn lever(&self) -> Option<f32> {
+            if !self.live.get(self.map.throttle).copied().unwrap_or(false) {
+                return None;
+            }
             let raw = *self.axes.get(self.map.throttle)?;
             // Levers sit at -1 shut and +1 open, the opposite way round on
             // some, so this only says how far along the travel it is.
@@ -152,10 +183,17 @@ mod linux {
         }
 
         /// Whether the device has a throttle axis worth listening to. A pad
-        /// that reports four axes still has no lever, so a throttle that has
-        /// never left its resting place is ignored.
+        /// that reports four axes still has no lever, so the axis has to be
+        /// named before anything is read from it.
         pub fn has_lever(&self) -> bool {
             std::env::var("HB_JOY_THROTTLE").is_ok()
+        }
+
+        /// Whether anything on the device has actually moved yet. Until it
+        /// has, the port says nothing about it, because the device may well
+        /// not be a joystick at all.
+        pub fn woken(&self) -> bool {
+            self.live.iter().any(|&l| l)
         }
     }
 }
@@ -216,13 +254,34 @@ mod tests {
     }
 
     #[test]
-    fn an_axis_event_moves_that_axis_and_the_init_bit_is_ignored() {
+    fn an_axis_moves_once_a_hand_has_moved_it() {
         let Some(mut s) = stick() else { return };
         s.feed(event(0x02, 1, -32767));
         // Pushed forward is nose up, which is the up key.
         assert!((s.stick()[0] - 1.0).abs() < 0.01, "{:?}", s.stick());
-        s.feed(event(0x02 | 0x80, 1, 0));
+        s.feed(event(0x02, 1, 0));
         assert_eq!(s.stick()[0], 0.0);
+    }
+
+    /// The whole reason this exists: `/dev/input/js0` on a machine with a
+    /// touchscreen and no stick is the touchscreen, and its axes sit wherever
+    /// they were last touched. Believed, that is a stick held hard over, and
+    /// it takes the keyboard away.
+    #[test]
+    fn the_opening_burst_is_not_believed() {
+        let Some(mut s) = stick() else { return };
+        s.feed(event(0x02 | 0x80, 0, -32767));
+        s.feed(event(0x02 | 0x80, 1, 32767));
+        s.feed(event(0x01 | 0x80, FIRE as u8, 1));
+        assert_eq!(s.stick(), [0.0; 3], "a device that has not moved is centred");
+        assert!(!s.button(FIRE), "and its buttons are up");
+        assert!(!s.woken());
+        // One real event and that axis is worth listening to. The other is
+        // still where the burst left it, and still ignored.
+        s.feed(event(0x02, 0, 32767));
+        assert!((s.stick()[2] - 1.0).abs() < 0.01, "{:?}", s.stick());
+        assert_eq!(s.stick()[0], 0.0);
+        assert!(s.woken());
     }
 
     #[test]

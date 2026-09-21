@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-73 entries: audio 3, build 2, content 4, decomp 44, engine 26, flight 1, format 30, port 60, render 23, test 3, tooling 4, ui 7, world 10.
+74 entries: audio 3, build 2, content 4, decomp 44, engine 26, flight 2, format 30, port 61, render 23, test 3, tooling 4, ui 7, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -84,3 +84,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 71 | [The radar I ported was the debug overlay](worklog/0071-the-radar-i-ported-was-the-debug-overlay.md) | 2026-09-20 | decomp, ui, port |
 | 72 | [The weapon has a picture](worklog/0072-the-weapon-has-a-picture.md) | 2026-09-20 | decomp, ui, port |
 | 73 | [A joystick, eight bytes at a time](worklog/0073-a-joystick-eight-bytes-at-a-time.md) | 2026-09-20 | port, flight |
+| 74 | [A touchscreen is not a joystick](worklog/0074-a-touchscreen-is-not-a-joystick.md) | 2026-09-20 | port, flight |

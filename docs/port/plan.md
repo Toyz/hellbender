@@ -190,7 +190,11 @@ cargo run --release -p hb-fly -- hoth --mode 480 --scale 1
 `HB_GAME` points at the directory holding `system/GAME.POD`. It defaults to
 `original/`, which in this repository is a symlink to the mounted disc.
 
-A joystick is picked up from `/dev/input/js0` if one is there. `HB_JOYSTICK`
+A joystick is picked up from `/dev/input/js0` if one is there - but nothing
+is read from it until an axis moves, because `js0` is whatever the kernel
+numbered first and on a machine with a touchscreen and no stick that is the
+touchscreen, whose axes sit wherever they were last touched. A stick also
+only ever adds to the keys, never replaces them. `HB_JOYSTICK`
 names another, `HB_JOY_X`, `HB_JOY_Y`, `HB_JOY_RUDDER` and `HB_JOY_THROTTLE`
 say which axis is which - the throttle is ignored unless it is named, since a
 pad's third axis is not a lever - and `HB_JOY_INVERT_Y=0` stops the y axis

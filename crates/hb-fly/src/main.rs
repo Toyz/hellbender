@@ -320,9 +320,15 @@ fn main() -> Result<(), String> {
     let mut show_cockpit = cockpit.is_some();
     // A joystick, if the kernel has one to give. Without it nothing changes.
     let mut joystick = stick::Stick::open();
+    let mut stick_woke = false;
     println!(
         "joystick: {}",
-        if joystick.is_some() { "open" } else { "none - keyboard only" }
+        match joystick {
+            // Whatever the kernel numbered first may not be a joystick at
+            // all, so nothing is read from it until something moves.
+            Some(_) => "open, waiting for an axis to move",
+            None => "none - keyboard only",
+        }
     );
 
     // The twelve weapon pictures, which the icon box shows one of.
@@ -508,6 +514,11 @@ fn main() -> Result<(), String> {
 
         if let Some(joystick) = joystick.as_mut() {
             joystick.poll();
+            // Say so the once, so it is clear which device answered.
+            if joystick.woken() && !stick_woke {
+                stick_woke = true;
+                println!("joystick: an axis moved - flying with it");
+            }
         }
         let tab = window.is_key_down(Key::Tab);
         // The port's own: after a mission ends, three seconds with the result
