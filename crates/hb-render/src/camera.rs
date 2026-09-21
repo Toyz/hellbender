@@ -64,9 +64,18 @@ impl Camera {
     }
 
     /// How view space reaches a screen of this size: the scale on x and y and
-    /// the centre, as the engine's viewport setup at `0x485940` derives them
-    /// from the view rectangle - for the in-game view the whole screen,
+    /// the centre, as the engine's viewport setup derives them from the view
+    /// rectangle - for the in-game view the whole screen,
     /// `setViewport(0, 0, W, H)` at `0x45a0f1`.
+    ///
+    /// `0x42c9d0` is the same setup for a *small* rectangle, and it is the
+    /// one the reticle, the objective arrow, the weapon picture and the
+    /// briefing's globe are drawn through. It pushes the whole camera state
+    /// onto parallel stacks at `0x53a4a8` and up first, then sets the centre
+    /// to `(x + w/2, y + h/2)` and the scale to `(w/2, h/2)`, both in 16.16,
+    /// and puts the zoom at `0x512550` back to 1.0. So a viewport is this
+    /// same projection over a different rectangle, which is why one
+    /// `Camera::screen` serves the whole port.
     ///
     /// Each scale is half the rectangle's size, rounded down to even, less
     /// one, and the projection is `x * sx / z + cx` and `y * sy / z + cy` with
