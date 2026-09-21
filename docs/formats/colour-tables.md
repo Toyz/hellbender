@@ -2,7 +2,7 @@
 title: The colour tables - .MAP, .LTE, .FOG, .MIX
 status: partial
 covers: FOG\*.MAP, FOG\*.LTE, FOG\*.FOG, FOG\*.MIX, DATA\*.LTE
-worklog: 6, 11, 50
+worklog: 6, 11, 50, 82
 ---
 
 # The colour tables
@@ -141,16 +141,45 @@ indices included.
 - The `.LTE` and `.FOG` shade index is 4 bits. That is the whole dynamic range
   of lighting in the engine.
 
+## How a span reads the ramp
+
+The `.LTE` is read straight into `0x605370` with one
+`fread(0x605370, 256, 16)` (`0x4861d3`), and the loader then does two more
+things to it (`0x48623c`): it copies row 0 into the 256 bytes *ahead* of the
+file, at `0x605270`, and it fills the 256 bytes at `0x606270` - which is
+where the file's last row landed - with a single byte from `0x666f54`.
+
+So the table the rasteriser sees starts at `0x605270`, has row 0 duplicated
+in front of it and ends in a flat row.
+
+The textured span loop (`0x4a1a01` and the fifteen copies of it that follow -
+it is unrolled) reads it like this:
+
+```
+mov bl, ch                  ; the texture's x
+mov bh, dh                  ; and its y
+mov eax, ebp                ; ebp is the interpolated light
+mov al, [ebx]               ; al = the texel
+mov bl, [eax + 0x605270]    ; and the shade of it
+```
+
+`al` is overwritten with the texel and `ah` is left holding the light's own
+high byte, so one 32-bit register carries both halves of the lookup and the
+whole thing is `table[light >> 8][texel]` in a single addressing mode. The
+light is stepped per pixel by `0x513310`, whose gradient was built with
+`sar 4` (`0x4a19c0`), so the accumulator is the light shifted down four - and
+the byte that picks the row is the light's **top four bits**, which is what
+this port uses.
+
 ## Unknown
 
 How `.MAP` was generated.
 
-How an intensity picks one of the sixteen rows. The per-cell bytes of the
-[terrain shading database](terrain.md) do not index a row directly: the
-ground draw takes the byte for each vertex and shifts it up eight
-(`0x414e30`), so what the rasteriser interpolates across a triangle is an
-intensity from 0 to 0.996 rather than a row number - and a vertex whose
-following flag byte has bit 0 set takes the level's ambient (line 19 of the
-[.LVL](lvl.md)) in place of its own. Sixteen rows over that range means the
-top four bits, inverted, which is what this port does; the span loop that
-would say so for certain has not been read.
+Which end of the ramp a light of zero is. Row 0 of the `.LTE` is the identity
+and row 15 sends everything to black, and the port inverts - a bright vertex
+takes a low row - because that is what makes a rendered level look like a
+rendered level. But `0x44fb7d` puts `0xffff` in the vertex light for a draw
+that wants no shading at all, and a straight reading of the span would make
+that the *darkest* row, so one of the two is carrying a sign this reading has
+not accounted for. The terrain's own bytes run 96 to 255 rather than over the
+whole range, which is consistent with either.
