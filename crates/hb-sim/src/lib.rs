@@ -13,6 +13,7 @@ pub mod explosion;
 pub mod flight;
 pub mod flyer;
 pub mod behaviour;
+pub mod mine;
 pub mod mission;
 pub mod powerup;
 pub mod quake;

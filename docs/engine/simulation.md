@@ -480,9 +480,14 @@ single-player level a mine can only ever be set off by the player who laid
 it - the damage then falls on whatever else is inside the 32-unit blast, so
 it is a weapon by proxy, not a trap.
 
+It draws an explosion of `0x186a0` - 1.53 units - where it goes off
+(`0x479a8f`), which is small beside the 32-unit splash.
+
 There is a second, unreachable copy of the drop at `0x479500`. It is the same
 code down to the speed test and the message, and nothing in the image
 references it: not a call, not a table entry.
+
+`hb_sim::mine` is the whole of it, and `hb-fly` lays one on the `0` key.
 
 ## The guided missile
 

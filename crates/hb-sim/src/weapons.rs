@@ -88,20 +88,34 @@ pub const CRUISE: usize = 24;
 /// The MIRV and the guided MIRV, which break up a second into their flight.
 pub const MIRV: usize = 26;
 pub const GUIDED_MIRV: usize = 27;
+/// The floating mine, laid behind the ship rather than fired
+/// ([`crate::mine`]).
+pub const MINE: usize = 28;
 /// The Bion super weapon: the eight pieces make it and select it.
 pub const SUPER: usize = 30;
 
 /// The weapons this port can fire. The cluster missile's spread
-/// (`0x47cec0`), the mine (`0x47d82a`) and the super weapon, which burns
-/// what it passes (`0x477a19`), are not ported yet.
-pub const PORTED: [usize; 10] =
-    [SERVO_KINETIC, DISPERSION, RAPID_FIRE, VALKYRIE, DEAD_ON, CRUISE, VIPER, MIRV, GUIDED_MIRV, SUPER];
+/// (`0x47cec0`) is not ported yet.
+pub const PORTED: [usize; 11] = [
+    SERVO_KINETIC,
+    DISPERSION,
+    RAPID_FIRE,
+    VALKYRIE,
+    DEAD_ON,
+    CRUISE,
+    VIPER,
+    MIRV,
+    GUIDED_MIRV,
+    MINE,
+    SUPER,
+];
 
 /// The weapon keys, as `HELLBEND.INI` binds them and the trigger routine
 /// reads them (`0x47dcc4` on): the backquote for the Valkyrie
 /// (`keyVulcanCannon`), 1 the dispersion cannon, 2 the servo-kinetic laser,
 /// 3 the rapid-fire laser, 4 Dead-On, 5 cruise, 6 Viper missiles.
-pub const KEYS: [(char, usize); 9] = [
+pub const KEYS: [(char, usize); 10] = [
+    ('0', MINE),
     ('`', VALKYRIE),
     ('1', DISPERSION),
     ('2', SERVO_KINETIC),
@@ -127,6 +141,10 @@ pub const NO_CRUISE: Voice =
     Voice { id: 0x21, sound: "pause.wav", text: "Scorcher Missiles not in arsenal" };
 pub const NO_VIPER: Voice =
     Voice { id: 0x22, sound: "pause.wav", text: "Viper Missiles not in arsenal" };
+/// Not a voice line but a line on the HUD: the mine's own refusal, printed
+/// by `0x480ee0` from the string at `0x50f410`.
+pub const TOO_SLOW_FOR_MINE: Voice =
+    Voice { id: 0, sound: "", text: "Go Faster to Deploy Mine" };
 
 /// The behaviour classes that fly, as `0x40dca0` sorts them for the Viper's
 /// lock; the cruise missile's (`0x40dc00`) takes every other class up to 62.
@@ -170,6 +188,9 @@ pub struct Pose {
 pub struct Volley {
     pub shots: Vec<Shot>,
     pub missiles: Vec<Missile>,
+    /// A mine was laid this shot: the caller puts it in the field, since
+    /// the mines outlive the volley.
+    pub mine: bool,
     /// The weapon's sound, played at the ship.
     pub sound: &'static str,
 }
@@ -379,11 +400,22 @@ impl Guns {
         let speed = row.speed as f32 / 65536.0 + pose.speed;
         let damage = row.damage as f32 / 65536.0;
         let (mut shots, mut missiles) = (Vec::new(), Vec::new());
+        let mut mine = false;
         match w {
             SERVO_KINETIC | RAPID_FIRE | VALKYRIE => shots = self.guns(w, pose, speed, damage, dt, stores, voices),
             DISPERSION => shots = self.dispersion(pose, speed, damage, stores, rng, voices),
             DEAD_ON | MIRV => missiles.push(self.missile(w, pose, None)),
             VIPER | CRUISE | GUIDED_MIRV | SUPER => missiles.push(self.missile(w, pose, self.lock)),
+            // The mine is laid rather than fired, and refused outright below
+            // 6.1 units a second - the engine does not spend one for a
+            // refusal (`0x47d861`).
+            MINE => {
+                if !crate::mine::Field::fast_enough(pose.speed) {
+                    voices.push(TOO_SLOW_FOR_MINE);
+                    return None;
+                }
+                mine = true;
+            }
             _ => return None,
         }
         let stock = &mut stores.ammo[w];
@@ -394,7 +426,7 @@ impl Guns {
                 self.next(stores);
             }
         }
-        Some(Volley { shots, missiles, sound: row.sound })
+        Some(Volley { shots, missiles, mine, sound: row.sound })
     }
 
     /// `0x47cd70` into `0x477890`: a missile from under one wing or the

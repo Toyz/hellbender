@@ -614,6 +614,7 @@ fn main() -> Result<(), String> {
                 (Key::Key6, '6'),
                 (Key::Key8, '8'),
                 (Key::Key9, '9'),
+                (Key::Key0, '0'),
             ] {
                 if window.is_key_pressed(key.0, minifb::KeyRepeat::No) {
                     if let Some(&(_, w)) = hb_sim::weapons::KEYS.iter().find(|(c, _)| *c == key.1) {
@@ -983,6 +984,16 @@ fn main() -> Result<(), String> {
                     at,
                     (missile.heading as i32 as u16, missile.pitch as i32 as u16),
                 ),
+                None => sparks.push((at, colours.missile)),
+            }
+        }
+        // The mines lying about, each on its own two angles.
+        for mine in battle.mines.live() {
+            let at = near(mine.at);
+            match level.shot_mesh.get(hb_sim::weapons::MINE).copied().flatten() {
+                Some(mesh) => {
+                    shot_at(&mut drawn, mesh, at, (mine.angles[1] as u16, mine.angles[0] as u16))
+                }
                 None => sparks.push((at, colours.missile)),
             }
         }

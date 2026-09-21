@@ -69,6 +69,8 @@ pub struct Battle {
     pub guns: Guns,
     /// The explosions burning (`hb_sim::explosion`).
     pub blasts: Blasts,
+    /// The mines laid, a hundred slots as the engine has.
+    pub mines: hb_sim::mine::Field,
     /// How long the afterburner's tank has been empty.
     empty_for: f32,
     /// The powerups the player was inside last frame.
@@ -124,6 +126,7 @@ impl Battle {
             missiles: Vec::new(),
             pilot: Pilot::default(),
             ground_hits: Vec::new(),
+            mines: hb_sim::mine::Field::new(),
             clock: 0.0,
             field: Field::default(),
             stores: Stores::default(),
@@ -364,6 +367,18 @@ impl Battle {
         for (at, size) in bursts {
             self.blasts.burst(at, size, &mut self.rng);
         }
+        // The mines, which go off on the ship and splash everything near
+        // them (`0x479670`).
+        for blast in self.mines.step(dt, player) {
+            self.blasts.burst(blast.at, hb_sim::mine::BURST, &mut self.rng);
+            for i in combat::splash(blast.at, hb_sim::mine::BLAST, live, |i| !self.health[i].destroyed) {
+                hits.push((i, blast.damage, hb_sim::mine::KIND));
+            }
+            // The ship is what set it off, so the ship is inside the blast.
+            if self.pilot.alive() {
+                player_damage += blast.damage;
+            }
+        }
         for (at, damage, kind) in scorched {
             for i in combat::splash(at, hb_sim::turret::SUPER_REACH, live, |i| !self.health[i].destroyed) {
                 hits.push((i, damage, kind));
@@ -428,6 +443,10 @@ impl Battle {
                 self.shots.push(Flying::new(*s));
             }
             self.missiles.extend(v.missiles.iter().copied());
+            if v.mine {
+                let damage = hb_sim::weapons::ROWS[hb_sim::weapons::MINE].damage as f32 / 65536.0;
+                self.mines.lay(pose.position, pose.forward, pose.speed, damage);
+            }
         }
         (volleys, voices)
     }
