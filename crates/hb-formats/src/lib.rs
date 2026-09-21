@@ -6,6 +6,7 @@
 
 pub mod act;
 pub mod anim;
+pub mod campaign;
 pub mod colour;
 pub mod font;
 pub mod glt;

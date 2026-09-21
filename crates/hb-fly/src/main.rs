@@ -238,6 +238,9 @@ impl Flight {
     }
 }
 
+/// Every level in `GAME.POD`, for the demo check - the campaign's own order
+/// is [`hb_formats::campaign::CAMPAIGN`], which is what flying through them
+/// follows.
 const LEVELS: [&str; 26] = [
     "float", "float2", "hoth", "hoth2", "hoth3", "iowah", "iowah2", "iowah3", "jurasic",
     "jurasic2", "jurasic3", "kreash", "kreash2", "kreash3", "morbos", "morbos2", "morbos3",
@@ -250,7 +253,8 @@ fn main() -> Result<(), String> {
         print!("{USAGE}");
         return Ok(());
     }
-    let mut level_name = "hoth".to_string();
+    // Where the campaign starts (`0x482720`), not where the archive does.
+    let mut level_name = hb_formats::campaign::FIRST.to_string();
     let mut mode = 200usize;
     let mut scale = 3usize;
     let mut demo_number: Option<u32> = None;
@@ -303,9 +307,13 @@ fn main() -> Result<(), String> {
         None => None,
     };
 
-    let mut index = LEVELS.iter().position(|l| *l == level_name).unwrap_or(2);
-    let mut level = Level::load(&game, Some(&startup), LEVELS[index])?;
+    let mut index = hb_formats::campaign::index_of(&level_name).unwrap_or(0);
+    let mut level = Level::load(&game, Some(&startup), &level_name)?;
     let describe = |level: &Level| {
+        if let Some(at) = hb_formats::campaign::index_of(&level.stem) {
+            let m = hb_formats::campaign::CAMPAIGN[at];
+            println!("mission {}-{} of the campaign ({} of 23)", m.chapter, m.mission, at + 1);
+        }
         println!(
             "{}: {} terrain textures plus {} animation frames, {} cycles, \
              {} objects, {}x{} screen",
@@ -581,9 +589,9 @@ fn main() -> Result<(), String> {
         };
         if (tab && !tab_was_down) || next.is_some() {
             if next != Some(false) {
-                index = (index + 1) % LEVELS.len();
+                index = (index + 1) % hb_formats::campaign::CAMPAIGN.len();
             }
-            level = Level::load(&game, Some(&startup), LEVELS[index])?;
+            level = Level::load(&game, Some(&startup), hb_formats::campaign::CAMPAIGN[index].stem)?;
             describe(&level);
             play_music(&level);
             (flight, mission, followers, live, battle, colours) = begin(&level);

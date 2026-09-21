@@ -15,7 +15,7 @@
 //! to `keyCockpitLabel`.
 
 use crate::camera::Camera;
-use crate::raster::{Shade, Target, Vertex};
+use crate::raster::Target;
 use hb_formats::raw::Image;
 use hb_formats::hud_font::{HudFont, LINE};
 use hb_formats::mrgl::Model;
@@ -457,26 +457,15 @@ pub fn arrow(target: &mut Target, bearing: u16) {
 pub fn reticle(target: &mut Target, model: &Model, colour: u8) {
     let (w, h) = (target.width, target.height);
     let ([sx, sy], [cx, cy]) = Camera::screen(w, h);
-    let shade = Shade {
-        light: None,
-        fog: None,
-        fog_start: 0.0,
-        fog_range: 1.0,
-        index_zero_is_clear: false,
-    };
     let point = |v: &hb_formats::mrgl::Vertex| {
         let z = v.z as f32 / 65536.0;
         if z <= 0.0 {
             return None;
         }
-        Some(Vertex {
-            x: cx + (v.x as f32 / 65536.0) / z * sx,
-            y: cy - (v.y as f32 / 65536.0) / z * sy,
-            depth: z,
-            u: 0.0,
-            v: 0.0,
-            light: 255.0,
-        })
+        Some((
+            cx + (v.x as f32 / 65536.0) / z * sx,
+            cy - (v.y as f32 / 65536.0) / z * sy,
+        ))
     };
     for polygon in &model.polygons {
         let Some(first) = polygon.corners.first() else { continue };
@@ -488,7 +477,34 @@ pub fn reticle(target: &mut Target, model: &Model, colour: u8) {
             ) else {
                 continue;
             };
-            target.flat_triangle([a, b, c], colour, &shade);
+            flat(target, [a, b, c], colour);
+        }
+    }
+}
+
+/// A triangle straight into the frame, with no depth test and no shading.
+///
+/// The reticle is fifty units ahead of an eye that is not the player's, so
+/// tested against the world's depth it vanishes into the first hillside -
+/// which is what it did. It is an overlay: it goes on top.
+fn flat(target: &mut Target, tri: [(f32, f32); 3], colour: u8) {
+    let (w, h) = (target.width, target.height);
+    let top = tri.iter().map(|p| p.1).fold(f32::MAX, f32::min).floor().max(0.0) as isize;
+    let bottom = tri.iter().map(|p| p.1).fold(f32::MIN, f32::max).ceil().min(h as f32) as isize;
+    let left = tri.iter().map(|p| p.0).fold(f32::MAX, f32::min).floor().max(0.0) as isize;
+    let right = tri.iter().map(|p| p.0).fold(f32::MIN, f32::max).ceil().min(w as f32) as isize;
+    let side = |a: (f32, f32), b: (f32, f32), p: (f32, f32)| {
+        (b.0 - a.0) * (p.1 - a.1) - (b.1 - a.1) * (p.0 - a.0)
+    };
+    for py in top..bottom {
+        for px in left..right {
+            let p = (px as f32 + 0.5, py as f32 + 0.5);
+            let (d0, d1, d2) = (side(tri[0], tri[1], p), side(tri[1], tri[2], p), side(tri[2], tri[0], p));
+            let inside =
+                (d0 >= 0.0 && d1 >= 0.0 && d2 >= 0.0) || (d0 <= 0.0 && d1 <= 0.0 && d2 <= 0.0);
+            if inside {
+                target.colour[py as usize * w + px as usize] = colour;
+            }
         }
     }
 }

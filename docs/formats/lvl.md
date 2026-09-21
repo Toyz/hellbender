@@ -2,7 +2,7 @@
 title: The .LVL manifest
 status: solid
 covers: LEVELS\*.LVL
-worklog: 3, 29, 30, 48
+worklog: 3, 29, 30, 48, 79
 ---
 
 # The .LVL manifest
@@ -11,6 +11,29 @@ CRLF text, positional, exactly 43 lines in all 26 shipped levels. It names the
 files a level is made of and sets the numbers that are not worth a file of
 their own. Lines 2 to 17 are bare filenames; the directory for each slot is
 fixed, because the engine addresses [POD](pod.md) entries as (directory, name).
+
+## The campaign
+
+A `.LVL` does not say what follows it, and `GAME.POD` holds them
+alphabetically. The order is the engine's: `0x482720` builds it when a new
+game starts, copying twenty three file names into forty-byte slots at
+`0x6106c0` and filling two parallel arrays - the chapter at `0x60ff60` and
+the mission within that chapter at `0x60fc30`.
+
+| # | Chapter | Levels |
+| --- | --- | --- |
+| 1 | Morbos | `morbos`, `morbos2`, `morbos3` |
+| 2 | Float | `float`, `float2` |
+| 3 | Iowah | `iowah`, `iowah2`, `iowah3` |
+| 4 | Kreash | `kreash`, `kreash2`, `kreash3` |
+| 5 | Jurasic | `jurasic`, `jurasic2`, `jurasic3` |
+| 6 | Roid | `roid`, `roid2`, `roid3`, `roid4` |
+| 7 | Hoth | `hoth`, `hoth2`, `hoth3` |
+| 8 | Ship | `ship`, `ship2` |
+
+So the game starts on `morbos`, not on the archive's first entry. The three
+`NETLVL` levels are not in the table; `netlvl.ini` lists those for network
+play.
 
 ## Layout
 

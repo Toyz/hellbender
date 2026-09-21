@@ -1601,3 +1601,42 @@ fn the_ini_overrides_what_it_names_and_nothing_else() {
     assert_eq!(ini.binding("nonsense"), None);
     assert_eq!(ini.int("Graphics", "fireKey"), Some(1), "sections are kept apart");
 }
+
+/// The campaign's order is not the archive's, and every level it names is in
+/// the archive.
+#[test]
+fn the_campaign_names_levels_that_exist_and_starts_on_morbos() {
+    use hb_formats::campaign::{after, index_of, CAMPAIGN, FIRST, NETWORK};
+    let pod = archive!("GAME.POD");
+    assert_eq!(FIRST, "morbos", "the campaign starts where 0x482720 puts it");
+    for m in CAMPAIGN {
+        let file = format!("{}.lvl", m.stem);
+        assert!(pod.find("levels", &file).is_some(), "{file} is not in GAME.POD");
+    }
+    // Twenty three, which is the twenty six in the archive less the three
+    // network levels.
+    assert_eq!(CAMPAIGN.len(), 23);
+    for n in NETWORK {
+        assert!(index_of(n).is_none(), "{n} is not campaign");
+        assert!(pod.find("levels", &format!("{n}.lvl")).is_some());
+    }
+    // The chapters run 1 to 8 and each one's missions count from 1.
+    let mut chapter = 0;
+    let mut mission = 0;
+    for m in CAMPAIGN {
+        if m.chapter != chapter {
+            assert_eq!(m.chapter, chapter + 1, "chapters are in order");
+            assert_eq!(m.mission, 1, "{} starts its chapter", m.stem);
+            chapter = m.chapter;
+            mission = 1;
+        } else {
+            assert_eq!(m.mission, mission + 1, "{} follows in its chapter", m.stem);
+            mission = m.mission;
+        }
+    }
+    assert_eq!(chapter, 8);
+    // And it wraps.
+    assert_eq!(after("ship2"), FIRST);
+    assert_eq!(after("morbos"), "morbos2");
+    assert_eq!(after("not a level"), FIRST);
+}
