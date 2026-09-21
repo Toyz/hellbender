@@ -77,6 +77,27 @@ impl Kind {
     pub fn code(self) -> i64 {
         Kind::ALL.iter().position(|&k| k == self).unwrap_or(0) as i64
     }
+
+    /// The three letters the HUD's objective box shows for this kind - the
+    /// jump table at `0x44ead0` picks one of twelve strings at `0x505478`,
+    /// and four of the sixteen entries fall through, which leaves whatever
+    /// the box already said. 15, which only network play uses, is `PLY`.
+    pub fn abbreviation(self) -> Option<&'static str> {
+        Some(match self {
+            Kind::Destroy | Kind::Kill => "TGT",
+            Kind::EnterTunnel => "TUN",
+            Kind::Checkpoint => "CHK",
+            Kind::JumpZone => "JMP",
+            Kind::ExitTunnel => "EXT",
+            Kind::Guardian => "GRD",
+            Kind::Start => "STR",
+            Kind::DropBeacon => "RES",
+            Kind::Beacon => "BCN",
+            Kind::Escort => "EST",
+            Kind::MessagePod => "MSG",
+            Kind::Sync | Kind::End | Kind::Warp => return None,
+        })
+    }
 }
 
 /// What follows the display text, which depends on the kind.

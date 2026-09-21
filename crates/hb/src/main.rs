@@ -624,16 +624,30 @@ fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
                 // Every placement, as the radar would see it from here.
                 let heading = camera.yaw.0 as f32 * std::f32::consts::TAU / 65536.0;
                 let (sin, cos) = heading.sin_cos();
-                let blips: Vec<(f32, f32)> = level
+                let blips: Vec<hb_render::hud::Blip> = level
                     .placements
                     .iter()
+                    .filter(|p| {
+                        let class = level.kinds[p.kind].class();
+                        class != 18 && class != 33
+                    })
                     .map(|p| {
                         // The world wraps at 1024 units, which is what the
                         // engine's shl 6 / sar 6 does to the offset.
                         let wrap = |d: f32| d - (d / 1024.0).round() * 1024.0;
                         let dx = wrap((p.x - x) as f32 / 65536.0);
                         let dz = wrap((p.z - z) as f32 / 65536.0);
-                        (dx * cos - dz * sin, dx * sin + dz * cos)
+                        let class = level.kinds[p.kind].class();
+                        hb_render::hud::Blip {
+                            right: dx * cos - dz * sin,
+                            forward: dx * sin + dz * cos,
+                            colour: if hb_render::hud::is_target(class) {
+                                hb_render::hud::BLIP_TARGET
+                            } else {
+                                hb_render::hud::BLIP_OTHER
+                            },
+                            below: p.y < y,
+                        }
                     })
                     .collect();
                 let readout = hb_render::hud::Readout {
@@ -647,8 +661,11 @@ fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
                     blips: &blips,
                 };
                 hb_render::hud::draw(&mut target, &font, &readout);
-                if let Some(model) =
-                    startup.read("models", "target.bin").ok().and_then(|b| hb_formats::mrgl::Model::parse(&b).ok())
+                hb_render::hud::arrow(&mut target, 0x2000);
+                if let Some(model) = startup
+                    .read("models", "target.bin")
+                    .ok()
+                    .and_then(|b| hb_formats::mrgl::Model::parse(&b).ok())
                 {
                     hb_render::hud::reticle(&mut target, &model, 0x30);
                 }

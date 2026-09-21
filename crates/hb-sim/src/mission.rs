@@ -142,7 +142,15 @@ pub struct Mission {
     pub start: Option<Start>,
     /// The HUD's line for the current point (`0x625110`). Kinds without one
     /// leave the last line up, as the engine does.
+    ///
+    /// This is not what the objective box shows: that is [`Mission::code`],
+    /// three letters. Where the long line is drawn, if anywhere, has not
+    /// been found - `0x625110` is written twice in the image and read
+    /// nowhere.
     pub label: String,
+    /// The three letters the objective box shows (`0x44e5fe`), which the
+    /// current point's kind picks. Kinds without one leave the last up.
+    pub code: &'static str,
     /// Horizontal distance to the current point, units (`0x6283c0`).
     pub distance: f32,
     /// The HUD arrow (`0x59d118`): the direction from the point to the
@@ -261,6 +269,7 @@ impl Mission {
             outcome: None,
             start: None,
             label: String::new(),
+            code: "",
             distance: 0.0,
             arrow: 0,
             near: false,
@@ -535,6 +544,9 @@ impl Mission {
         };
         if let Some(label) = label {
             self.label = label.to_string();
+        }
+        if let Some(code) = kind.abbreviation() {
+            self.code = code;
         }
 
         // Every required point up to the end marker done: the level is won.

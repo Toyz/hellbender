@@ -1130,29 +1130,47 @@ fn main() -> Result<(), String> {
                 // (`0x437148`). Blips beyond the box are dropped by the draw.
                 let heading = flight.camera.yaw.0 as f32 * std::f32::consts::TAU / 65536.0;
                 let (sin, cos) = heading.sin_cos();
-                let blips: Vec<(f32, f32)> = live
+                let blips: Vec<hb_render::hud::Blip> = live
                     .iter()
                     .enumerate()
                     .filter(|&(i, _)| {
-                        !gone[i] && !battle.health[i].destroyed
+                        let class = level.kinds[level.placements[i].kind].class();
+                        !gone[i]
+                            && !battle.health[i].destroyed
                             && battle.health[i].hit_points > 0.0
+                            && class != 18
+                            && class != 33
                     })
-                    .map(|(_, p)| {
+                    .map(|(i, p)| {
                         let at = hb_sim::combat::position_of(p);
                         let dx = hb_sim::combat::wrapped(at[0] - eye[0]);
                         let dz = hb_sim::combat::wrapped(at[2] - eye[2]);
-                        (dx * cos - dz * sin, dx * sin + dz * cos)
+                        let class = level.kinds[level.placements[i].kind].class();
+                        hb_render::hud::Blip {
+                            right: dx * cos - dz * sin,
+                            forward: dx * sin + dz * cos,
+                            colour: if hb_render::hud::is_target(class) {
+                                hb_render::hud::BLIP_TARGET
+                            } else {
+                                hb_render::hud::BLIP_OTHER
+                            },
+                            below: at[1] < eye[1],
+                        }
                     })
                     .collect();
                 let weapon = battle.guns.selected;
-                let objective = demo.is_none().then(|| mission.label.clone());
+                // The objective box takes the three-letter code, not the
+                // long line: the box is 80 pixels in 640, and "Destroy
+                // Target" is twice that.
+                let objective = (demo.is_none() && !mission.code.is_empty())
+                    .then_some(mission.code);
                 let readout = hb_render::hud::Readout {
                     weapon: hb_sim::weapons::ROWS[weapon].code,
                     ammo: match battle.stores.ammo[weapon] {
                         -1 => None,
                         n => Some(n as i64),
                     },
-                    objective: objective.as_deref(),
+                    objective,
                     distance: (demo.is_none()).then_some(mission.distance as i32),
                     gauges: [
                         flight.ship.throttle,
@@ -1171,15 +1189,8 @@ fn main() -> Result<(), String> {
                     hb_render::hud::message(&mut target, font, text);
                 }
                 if mission.outcome.is_none() && demo.is_none() {
-                    let (_, by, _, bh) = hb_render::hud::box_of(hb_render::hud::DISTANCE, w, h);
-                    draw_arrow(
-                        &mut target.colour,
-                        w,
-                        h,
-                        (w / 2, (by + bh) as usize + 6),
-                        mission.arrow,
-                        mission.near,
-                    );
+                    // On the radar, which is where the engine puts it.
+                    hb_render::hud::arrow(&mut target, mission.arrow);
                 }
             }
         }
@@ -1410,35 +1421,6 @@ fn draw_brackets(pixels: &mut [u8], w: usize, h: usize, x: f32, y: f32, colour: 
     }
 }
 
-/// The HUD's nav arrow: a short line from `centre` toward the current point,
-/// brighter within 60 units. `arrow` is the engine's (`0x59d118`), which runs
-/// from the point to the player, so the way to go is half a turn from it.
-fn draw_arrow(pixels: &mut [u8], w: usize, h: usize, centre: (usize, usize), arrow: u16, near: bool) {
-    let turn = arrow.wrapping_add(0x8000) as f32 / 65536.0 * std::f32::consts::TAU;
-    let (dx, dy) = (turn.sin(), -turn.cos());
-    let colour = if near { 255 } else { 250 };
-    let mut plot = |x: f32, y: f32| {
-        let (x, y) = (x.round() as isize, y.round() as isize);
-        if x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h {
-            pixels[y as usize * w + x as usize] = colour;
-        }
-    };
-    let (cx, cy) = (centre.0 as f32, centre.1 as f32);
-    let length = 10.0;
-    for i in 0..=(length as usize * 2) {
-        let t = i as f32 / 2.0;
-        plot(cx + dx * t, cy + dy * t);
-    }
-    // The head: two short strokes back from the tip.
-    let (tx, ty) = (cx + dx * length, cy + dy * length);
-    for side in [-1.0f32, 1.0] {
-        let (bx, by) = (-dx * 0.7 + side * -dy * 0.7, -dy * 0.7 + side * dx * 0.7);
-        for i in 0..=8 {
-            let t = i as f32 / 2.0;
-            plot(tx + bx * t, ty + by * t);
-        }
-    }
-}
 
 /// Start in the middle of the map, above whatever is there.
 fn start_of(level: &Level) -> Camera {

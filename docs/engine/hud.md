@@ -23,7 +23,7 @@ game's screen sizes.
 
 | # | Box | What it holds |
 | --- | --- | --- |
-| 0 | 312, 3, 80, 17 | `Obj: %s` |
+| 0 | 312, 3, 80, 17 | `Obj: %s`, three letters |
 | 1 | 140, 36, 110, 17 | `Ammo: %d` or `Ammo: inf` |
 | 2 | 312, 24, 80, 17 | `Dist:%4d` |
 | 3 | 514, 96, 88, 17 | nothing - no reference in the image |
@@ -56,11 +56,28 @@ bottom band first.
 ## What draws what
 
 **`0x44e5e0`** is the frame's HUD. It looks up the current mission point's
-kind and writes its three-letter code into box 0 - `TGT`, `TUN`, `CHK`,
-`JMP`, `EXT`, `GRD`, `STR`, `EST`, `MSG`, `RES`, `PLY`, `BCN`, from the jump
-table at `0x44ead0` - then the distance into box 2, then the six gauges. A
-`GRD` point adds the guardian's health as a percentage. Last it plays or
-stops the missile warning.
+kind and writes its three-letter code into box 0, from the jump table at
+`0x44ead0`:
+
+| Kind | Code | Kind | Code |
+| --- | --- | --- | --- |
+| 0 destroy | `TGT` | 8 drop beacon | `RES` |
+| 1 enter tunnel | `TUN` | 11 beacon | `BCN` |
+| 2 checkpoint | `CHK` | 12 escort | `EST` |
+| 3 jump zone | `JMP` | 13 message pod | `MSG` |
+| 4 exit tunnel | `EXT` | 14 kill | `TGT` |
+| 5 guardian | `GRD` | 15 network player | `PLY` |
+| 6 start | `STR` | 7, 9, 10 | none |
+
+Three of the sixteen entries fall through to the rest of the routine, so
+those kinds leave whatever the box already said. It is the code that goes in
+the box, never the long line the nav code builds at `0x625110` - that is
+"Destroy Target" and the box is eighty pixels. Where the long line is drawn,
+if anywhere, is not known: it is written twice in the image and read nowhere.
+
+Then the distance into box 2, then the six gauges. A `GRD` point adds the
+guardian's health as a percentage. Last it plays or stops the missile
+warning.
 
 **`0x44eb0f`** is the weapon pair. The name comes from a table at `0x50e798`
 indexed by the selected weapon times 0x44; the count from `0x61bce0` indexed
@@ -109,25 +126,40 @@ a label's width comes from its text.
 
 The dish in the top right of the cockpit art is a square the engine draws
 into: 507, 6, 101 by 101 in the same 640x480, built out of the view's size at
-`0x474a70`. With the cockpit off and the view zoomed the top moves to the
+`0x474bb8`. With the cockpit off and the view zoomed the top moves to the
 view's own top instead.
 
-`0x437148` walks the object table once a frame and plots every object that is
-not the player, has hit points above zero and does not have bit 1 of its
-flags set. Each offset is wrapped at the world's edge - the `shl 6`, `sar 6`
-pair that appears everywhere - turned by the player's heading, and scaled:
-the offset is 16.16, shifted down 13, multiplied by the box's width and
-shifted down 11 again, which puts 256 world units across the box. So the
-radar reaches about 128 units, an eighth of the world.
+`0x475100` walks the placements once a frame and drops the ones with hit
+points at or below zero, the ones in the flyers' dying phase 0x12d, and
+classes 18 and 33. What survives goes to `0x474f00`, which wraps the offset
+at the world's edge - the `shl 6`, `sar 6` pair - turns it by the player's
+heading, and shifts it down 11. That is where the range lives: the offset is
+16.16, so down 11 is world units times 32, and the box's width multiplies
+before another shift down 11, which makes a unit `width / 64` pixels. Sixty
+four units across the box. Before any of that it tests the squared offset
+against 0xef420, so the edge is round at about 31 units, not square.
 
-A blip is not a dot. `0x4749a0` draws a short string, six pixels right of the
-plotted point, from a field in the object's own record at `0x667128 + n *
-112`, which a loader at `0x448298` fills from a table of strings by index
-from 0x1393. That table has not been found: it is not in the executable's
-string resources.
+A blip (`0x4746a0`) is five pixels: a three-pixel bar with one above and one
+below, outlined in the paper colour. For something below the player the top
+and bottom go, leaving the bar. Its colour is 0x3f when `0x40dc00` says the
+class is one the guns count as a target - the same question the missile lock
+asks - and 0x94 when it does not.
 
-Everything is skipped while `0x512744` is clear, which is the flag the
+The arrow to the objective is on the dish too. `0x475290` sets the viewport
+to that square, points a camera straight down, turns `navtarg.bin` by
+`0x8000` less the bearing and draws it - a four-cornered dart, a tip, two
+shoulders and a base. Its colour is the shade global: -101 for an objective
+ahead, -152 for one roughly behind, between 0x7800 and 0x8800, and a
+negative shade is a palette index outright. When it is behind, a few pixels
+in 138 go at the top of the box as well.
+
+The whole thing is skipped while `0x512744` is clear, which is the flag the
 "Radar destroyed." message goes with.
+
+**Not the radar:** `0x436fe0` walks the same objects and plots them through
+`0x474830` at a different scale, drawing each one's name rather than a blip,
+and `0x474c3b` runs it only when `0x5b3340` is set, with the viewport set to
+the whole view. That is a debug overlay.
 
 ## The reticle
 
@@ -162,18 +194,19 @@ so the last row is always clear.
 ## What the port has
 
 `crates/hb-render/src/hud.rs` is all of the above except the leader lines for
-the five labels that do not name a gauge, and what a blip says. `hb fly
+the five labels that do not name a gauge. `hb fly
 <level> <out.png>` draws the HUD over its frame, and `--labels` turns the
 cockpit labels on, which is how the layout is checked without a window.
 `hb-fly` binds L to the labels and G to the reticle.
 
 ## Not read yet
 
-What a blip says - the string table indexed from 0x1393 that `0x448298`
-reads - so the port draws a mark instead.
+How the viewport the objective arrow is drawn through is set up - the
+camera at `0x42c9a0` and `0x42c980` sits at the origin looking down and the
+model lies in a plane through it, so something else must part them. The port
+turns the model's four corners in two dimensions instead.
 
-The objective arrow is half read. `0x475290` takes the heading
-to the objective and draws a model - `0x6210c0` - into the same rect the
-radar uses, with the whole view as the rect instead when `0x474af0` set it.
-When the objective is behind, between 0x7800 and 0x8800, it plots a handful
-of pixels in index 138 instead of the model.
+What the debug overlay at `0x436fe0` is for, and where the string it draws
+per object comes from - a field at `0x667128 + n * 112` that `0x448298` fills
+from a table by index from 0x1393, which is not in the executable's string
+resources.
