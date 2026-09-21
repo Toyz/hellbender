@@ -1341,7 +1341,7 @@ fn main() -> Result<(), String> {
             None => {
                 for (slot, &index) in buffer.iter_mut().zip(&target.colour) {
                     let [r, g, b] = level.palette.rgb(index);
-                    *slot = ((r as u32) << 16) | ((g as u32) << 8) | b as u32;
+                    *slot = OPAQUE | ((r as u32) << 16) | ((g as u32) << 8) | b as u32;
                 }
             }
         }
@@ -1567,7 +1567,12 @@ fn draw_brackets(pixels: &mut [u8], w: usize, h: usize, x: f32, y: f32, colour: 
 }
 
 
-/// The briefing for a level, as a window-sized buffer of 0x00RRGGBB - or
+/// The alpha a window's pixel needs. minifb hands the buffer to a 32-bit
+/// visual, and a compositing window manager reads the top byte: leave it
+/// zero and the dark parts of the picture are a hole through to the desktop.
+pub const OPAQUE: u32 = 0xff00_0000;
+
+/// The briefing for a level, as a window-sized buffer of 0xffRRGGBB - or
 /// nothing when the level has none, which is every level that is not the
 /// first of its chapter.
 fn briefing_for(
@@ -1606,7 +1611,7 @@ fn briefing_for(
             let sx = (x * iw / w).min(iw - 1);
             let sy = (y * ih / h).min(ih - 1);
             let [r, g, b] = palette.rgb(pixels[sy * iw + sx]);
-            out[y * w + x] = ((r as u32) << 16) | ((g as u32) << 8) | b as u32;
+            out[y * w + x] = OPAQUE | ((r as u32) << 16) | ((g as u32) << 8) | b as u32;
         }
     }
     Some(out)

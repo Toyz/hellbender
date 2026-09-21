@@ -56,6 +56,18 @@ impl Blasts {
     /// the size scattered within it, then one of four times at the centre.
     /// The engine takes the first free slot and writes over the first slot
     /// when there is none, so a big explosion can cut an older one short.
+    /// One puff, which is what most things make. `0x476f90` is called
+    /// directly all over the engine - a shot's mark, a missile's, and what a
+    /// destroyed actor leaves (`0x407c20`, which passes the type's own
+    /// radius) - and each of those is a single square, not a burst. Only a
+    /// handful of places go through [`Blasts::burst`].
+    ///
+    /// The rate is 1.0: `0x476fd3` only draws a random one for mode 2, which
+    /// is the burst's.
+    pub fn puff(&mut self, at: [f32; 3], size: f32) {
+        self.light(Puff { position: at, size, age: 0.0, rate: 1.0 });
+    }
+
     pub fn burst(&mut self, at: [f32; 3], size: f32, rng: &mut Rng) {
         for _ in 0..PUFFS {
             let offset = |rng: &mut Rng| (rng.next() as f32 / 65536.0 - 0.25) * size * 4.0;

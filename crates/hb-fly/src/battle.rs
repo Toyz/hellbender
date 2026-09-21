@@ -426,13 +426,15 @@ impl Battle {
             }
         }
         self.ground_hits = ground_hits;
+        // A shot's mark and a missile's are single puffs too: `0x476e22`
+        // and `0x4784f2` call the spawner straight.
         for (at, size) in bursts {
-            self.blasts.burst(at, size, &mut self.rng);
+            self.blasts.puff(at, size);
         }
         // The mines, which go off on the ship and splash everything near
         // them (`0x479670`).
         for blast in self.mines.step(dt, player) {
-            self.blasts.burst(blast.at, hb_sim::mine::BURST, &mut self.rng);
+            self.blasts.puff(blast.at, hb_sim::mine::BURST);
             for i in combat::splash(blast.at, hb_sim::mine::BLAST, live, |i| !self.health[i].destroyed) {
                 hits.push((i, blast.damage, hb_sim::mine::KIND));
             }
@@ -445,7 +447,7 @@ impl Battle {
         // scale what they take off by how far in he was.
         if self.pilot.alive() {
             for blast in self.laid.step(player) {
-                self.blasts.burst(blast.at, hb_sim::mine::laid::BURST, &mut self.rng);
+                self.blasts.puff(blast.at, hb_sim::mine::laid::BURST);
                 player_damage += blast.damage;
             }
         }
@@ -479,7 +481,10 @@ impl Battle {
                 // engine's (`0x47f3f0`).
                 let radius = level.kinds[original].radius() as f32 / 65536.0;
                 let at = combat::position_of(&live[i]);
-                self.blasts.burst(at, radius.clamp(0.5, 8.0), &mut self.rng);
+                // One puff of the type's own radius, which is what
+                // `0x407c20` spawns - not a burst. A burst of eleven at a
+                // building's radius filled the screen.
+                self.blasts.puff(at, radius);
                 // What it leaves behind (`0x40cc3c`), before it becomes its
                 // wreck.
                 if let Some(k) = powerup::drop_for(&level.kinds[original], &mut self.rng) {
@@ -522,9 +527,9 @@ impl Battle {
         (volleys, voices)
     }
 
-    /// An explosion this wide, and nothing else.
+    /// One puff this wide, and nothing else.
     pub fn burst(&mut self, at: [f32; 3], size: f32) {
-        self.blasts.burst(at, size, &mut self.rng);
+        self.blasts.puff(at, size);
     }
 
     /// The wreck hitting the ground: the engine's explosion two units

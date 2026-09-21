@@ -819,12 +819,34 @@ life it never reaches, because `0x4771e0` drops it once its clock passes
 sixteen frames of a sixteenth of a second each. It is drawn as a square facing
 the eye, textured `blast1.raw` to `blast16.raw`, its corners a size out.
 
-The player's death is one of these two units across, and then the loadout goes
-back to what it started with (`0x465560`, `0x464850`, `0x464998`, which are
-being shot down, flying into the ground and flying into a ceiling). What the
-engine does for a destroyed actor is a different path - `0x40cb3c` spawns an
-actor of its own (`0x40c7d0`) - and is not read; the port uses the puffs
-there too, at the type's radius.
+**A burst of eleven is rare.** `0x47f3f0` has six callers and they are the
+player's own ends - `0x465560`, `0x464850`, `0x464998`: being shot down,
+flying into the ground, flying into a ceiling - and two scripted places.
+Everything else calls `0x476f90` straight and gets **one** puff: a shot's
+mark (`0x476e22`, 60,000 in 16.16 - 0.92 units), a missile's (`0x4784f2` and
+three more, 4.0), a mine's (`0x479a95`), and what a destroyed actor leaves.
+
+### What a destroyed actor leaves
+
+Two things, and the interesting one does nothing.
+
+`0x40c7d0` spawns an actor whose type is found by searching the type table
+for the model `half.bin`. No shipped `.DEF` declares it and no archive holds
+it, so the search fails, `Unable to find half` goes to the log, and the actor
+is spawned with a type of -1. Whatever that was meant to be, it is not in the
+shipped game.
+
+The explosion comes from `0x407c20`, which switches on the destroyed type's
+class through a byte table at `0x407d3c` and a jump table at `0x407d00`.
+Every arm calls `0x476f90` with the **type's own radius** (`type+0x08`) and
+differs only in a mode and a flag: class 33 gets half the radius, the classes
+the byte table maps to 0-13 get mode 0, and everything else mode 1. Mode
+only matters at `0x476fd3`, where mode 2 - the burst's - draws a random rate
+and the others leave it at 1.
+
+So a destroyed building is one square of its own size, not eleven of twice
+and four times it. The port made a burst there until worklog 84 and a large
+building filled the screen with fire.
 
 ## Powerups
 

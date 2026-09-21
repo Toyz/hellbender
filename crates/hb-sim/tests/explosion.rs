@@ -59,3 +59,36 @@ fn the_pool_holds_sixteen() {
     blasts.step(10.0);
     assert!(blasts.puffs.is_empty(), "they all burn out");
 }
+
+/// Most things in the engine make one puff, not eleven: `0x476f90` is called
+/// straight from the shot's mark, the missile's, and what a destroyed actor
+/// leaves behind.
+#[test]
+fn one_puff_is_one_slot_at_its_own_size() {
+    use hb_sim::explosion::Blasts;
+    let mut blasts = Blasts::default();
+    blasts.puff([1.0, 2.0, 3.0], 5.0);
+    assert_eq!(blasts.puffs.len(), 1);
+    let puff = blasts.puffs[0];
+    assert_eq!(puff.position, [1.0, 2.0, 3.0]);
+    assert_eq!(puff.size, 5.0, "the size it was given, not a multiple of it");
+    assert_eq!(puff.rate, 1.0, "only a burst draws a random rate");
+}
+
+/// And a burst is eleven of them, which is what a big radius made of every
+/// destroyed building until it was read properly.
+#[test]
+fn a_burst_is_eleven_puffs_and_much_wider() {
+    use hb_sim::explosion::Blasts;
+    use hb_sim::turret::Rng;
+    let mut rng = Rng::new(9);
+    let mut blasts = Blasts::default();
+    blasts.burst([0.0; 3], 5.0, &mut rng);
+    assert_eq!(blasts.puffs.len(), 11);
+    let widest = blasts.puffs.iter().map(|p| p.size).fold(0.0f32, f32::max);
+    assert_eq!(widest, 20.0, "the middle one is four times over");
+
+    let mut one = Blasts::default();
+    one.puff([0.0; 3], 5.0);
+    assert!(widest > one.puffs[0].size * 3.0, "a burst dwarfs a puff");
+}
