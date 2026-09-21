@@ -98,3 +98,47 @@ fn auto_level_brings_the_wings_back() {
     fly(&mut ship, Controls::default(), 6.0);
     assert!(s16(ship.angles()[1]) > 3000.0);
 }
+
+/// A stick held all the way over turns the ship the same amount as the key
+/// that has been held long enough to reach the top of its ramp, because the
+/// ramp is what a stick would have fed in the first place.
+#[test]
+fn a_stick_fully_over_turns_like_a_key_already_held() {
+    let key = {
+        let mut ship = Ship::new([0.0; 3], 0.0);
+        // Half a second gets the ramp to 1.0, then a second of turning.
+        fly(&mut ship, Controls { right: true, ..Controls::default() }, 1.5);
+        s16(ship.angles()[2])
+    };
+    let stick = {
+        let mut ship = Ship::new([0.0; 3], 0.0);
+        fly(&mut ship, Controls { stick: Some([0.0, 1.0, 0.0]), ..Controls::default() }, 1.5);
+        s16(ship.angles()[2])
+    };
+    // The key spends its first half second climbing; the stick is there from
+    // the start, so it is further round, and by that half second's worth.
+    assert!(stick > key, "stick {stick}, key {key}");
+    assert!(stick - key < key * 0.6, "stick {stick}, key {key}");
+}
+
+/// Half over is half the turn, which a key cannot ask for at all.
+#[test]
+fn a_stick_half_over_turns_half_as_far() {
+    let turn = |deflection: f32| {
+        let mut ship = Ship::new([0.0; 3], 0.0);
+        fly(&mut ship, Controls { stick: Some([0.0, deflection, 0.0]), ..Controls::default() }, 1.0);
+        s16(ship.angles()[2])
+    };
+    let (half, full) = (turn(0.5), turn(1.0));
+    assert!((half / full - 0.5).abs() < 0.02, "half {half}, full {full}");
+}
+
+/// The lever sets the throttle outright, where the keys walk it.
+#[test]
+fn a_throttle_lever_sets_the_throttle_where_it_is() {
+    let mut ship = Ship::new([0.0; 3], 0.0);
+    fly(&mut ship, Controls { lever: Some(0.25), ..Controls::default() }, 1.0);
+    assert!((ship.throttle - 0.25).abs() < 1e-6, "{}", ship.throttle);
+    fly(&mut ship, Controls { lever: Some(1.0), ..Controls::default() }, 0.1);
+    assert_eq!(ship.throttle, 1.0);
+}

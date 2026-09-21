@@ -56,6 +56,15 @@ pub struct Controls {
     /// The afterburner. In the game it is a selectable weapon (row 22 of the
     /// weapon table, `0x612220`); here it is held.
     pub afterburner: bool,
+    /// A stick's deflection in place of the six key ramps: pitch, turn and
+    /// roll, each -1 to 1, with pitch positive where [`Controls::up`] is
+    /// held. The ramps exist so a key feels like a stick being pushed, so a
+    /// stick sets them rather than nudging them - which is what the engine
+    /// does with an axis at `0x463df3`, though its own curve, dead zone and
+    /// `xStickMin`/`xStickMax` calibration are not transcribed here.
+    pub stick: Option<[f32; 3]>,
+    /// A throttle lever, 0 to 1, in place of the throttle keys.
+    pub lever: Option<f32>,
 }
 
 #[derive(Debug, Clone)]
@@ -154,11 +163,23 @@ impl Ship {
         for (key, on) in self.keys.iter_mut().zip(held) {
             *key = if on { (*key + 2.0 * dt).min(1.0) } else { (*key - 4.0 * dt).max(0.0) };
         }
+        // A stick is already where the ramp would have climbed to, so it
+        // replaces the ramp outright rather than adding to it.
+        if let Some([pitch, turn, roll]) = controls.stick {
+            let split = |v: f32| (v.max(0.0).min(1.0), (-v).max(0.0).min(1.0));
+            let (up, down) = split(pitch);
+            let (right, left) = split(turn);
+            let (roll_right, roll_left) = split(roll);
+            self.keys = [up, down, left, right, roll_left, roll_right];
+        }
         if controls.throttle_up {
             self.throttle += dt;
         }
         if controls.throttle_down {
             self.throttle -= dt;
+        }
+        if let Some(lever) = controls.lever {
+            self.throttle = lever;
         }
         self.throttle = self.throttle.clamp(0.0, 1.0);
 

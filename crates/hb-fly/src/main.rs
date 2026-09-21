@@ -11,6 +11,7 @@ use hb_formats::terrain::CELL_SIZE;
 use hb_formats::Angle;
 mod battle;
 mod sound;
+mod stick;
 
 use hb_formats::raw::Image;
 use hb_pod::Pod;
@@ -36,12 +37,18 @@ hb-fly - fly around a Hellbender level
   ` 1 2 3       Valkyrie cannon, dispersion cannon, servo-kinetic and
                 rapid-fire lasers        =       next weapon
   4 5 6 8 9     Dead-On, cruise, Viper, MIRV and guided MIRV missiles
-  v             lock the next target
+  v             lock the next target    l       label the cockpit
   , .           main energy to the weapons, to the shield
-  esc           quit
+  g             reticle on/off          esc     quit
 
-  The level's mission runs from its .NAV file: the HUD names the current
-  objective, how far it is, and an arrow points at it. Flying into the jump
+  A joystick on /dev/input/js0 flies it too: x and y steer, the twist axis
+  is the rudder, button 1 fires, 2 is the afterburner and 3 the next weapon.
+  HB_JOYSTICK names another device, HB_JOY_X, HB_JOY_Y, HB_JOY_RUDDER and
+  HB_JOY_THROTTLE move the axes - the throttle is off unless it is set - and
+  HB_JOY_INVERT_Y=0 stops the y axis being inverted.
+
+  The level's mission runs from its .NAV file: the HUD shows the current
+  objective's code, how far it is, and an arrow on the radar points at it. Flying into the jump
   zone, or finishing every objective, moves on to the next level; failing
   starts the level again.
 ";
@@ -79,8 +86,10 @@ impl Flight {
     /// `HELLBEND.INI` binds - arrows to steer, Z and X for the throttle, Home
     /// and PgUp to roll - and some friendlier ones alongside.
     /// `fuel` says whether the afterburner has anything to burn.
-    fn step(&mut self, window: &Window, dt: f32, fuel: bool) {
+    fn step(&mut self, window: &Window, joystick: Option<&stick::Stick>, dt: f32, fuel: bool) {
         let down = |keys: &[Key]| keys.iter().any(|&k| window.is_key_down(k));
+        let deflection = joystick.map(|s| s.stick()).filter(|d| d.iter().any(|v| *v != 0.0));
+        let lever = joystick.filter(|s| s.has_lever()).and_then(|s| s.lever());
         let controls = hb_sim::flight::Controls {
             up: down(&[Key::Up]),
             down: down(&[Key::Down]),
@@ -88,9 +97,15 @@ impl Flight {
             right: down(&[Key::Right]),
             roll_left: down(&[Key::Home, Key::A]),
             roll_right: down(&[Key::PageUp, Key::D]),
-            throttle_up: down(&[Key::X, Key::W]),
-            throttle_down: down(&[Key::Z, Key::S]),
-            afterburner: fuel && down(&[Key::LeftShift, Key::RightShift]),
+            throttle_up: down(&[Key::X, Key::W])
+                || joystick.is_some_and(|s| s.button(stick::THROTTLE_UP)),
+            throttle_down: down(&[Key::Z, Key::S])
+                || joystick.is_some_and(|s| s.button(stick::THROTTLE_DOWN)),
+            afterburner: fuel
+                && (down(&[Key::LeftShift, Key::RightShift])
+                    || joystick.is_some_and(|s| s.button(stick::AFTERBURNER))),
+            stick: deflection,
+            lever,
         };
         self.was = self.ship.position;
         self.ship.step(&controls, dt);
@@ -303,6 +318,13 @@ fn main() -> Result<(), String> {
         .ok()
         .and_then(|b| Image::parse_guessed(b).ok().flatten());
     let mut show_cockpit = cockpit.is_some();
+    // A joystick, if the kernel has one to give. Without it nothing changes.
+    let mut joystick = stick::Stick::open();
+    println!(
+        "joystick: {}",
+        if joystick.is_some() { "open" } else { "none - keyboard only" }
+    );
+
     // The twelve weapon pictures, which the icon box shows one of.
     let icons: Vec<Option<Image>> = hb_render::hud::ICONS
         .iter()
@@ -484,6 +506,9 @@ fn main() -> Result<(), String> {
             }
         }
 
+        if let Some(joystick) = joystick.as_mut() {
+            joystick.poll();
+        }
         let tab = window.is_key_down(Key::Tab);
         // The port's own: after a mission ends, three seconds with the result
         // on the HUD, then the next level if it was won and this one again
@@ -580,7 +605,7 @@ fn main() -> Result<(), String> {
                 }
             }
             None => {
-                flight.step(&window, dt, battle.stores.fuel > 0.0);
+                flight.step(&window, joystick.as_ref(), dt, battle.stores.fuel > 0.0);
                 flight.settle(&hb_world::Grid::new(&level.terrain));
             }
         }
@@ -638,7 +663,9 @@ fn main() -> Result<(), String> {
                 candidates[i].lockable(selected)
             });
             let burn = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
-            let (volleys, mut voices) = battle.trigger(window.is_key_down(Key::Space), burn, dt, &pose);
+            let firing = window.is_key_down(Key::Space)
+                || joystick.as_ref().is_some_and(|s| s.button(stick::FIRE));
+            let (volleys, mut voices) = battle.trigger(firing, burn, dt, &pose);
             for key in [
                 (Key::Backquote, '`'),
                 (Key::Key1, '1'),
@@ -658,7 +685,9 @@ fn main() -> Result<(), String> {
                     }
                 }
             }
-            if window.is_key_pressed(Key::Equal, minifb::KeyRepeat::No) {
+            if window.is_key_pressed(Key::Equal, minifb::KeyRepeat::No)
+                || joystick.as_ref().is_some_and(|s| s.pressed(stick::WEAPON))
+            {
                 battle.guns.next(&battle.stores);
             }
             if window.is_key_pressed(Key::Comma, minifb::KeyRepeat::No) {

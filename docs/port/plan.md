@@ -33,7 +33,10 @@ observed fact. Everything else describes what the data and the binary do.
   or decodes the game's data has none, so that half of the workspace builds
   offline and will keep building. `hb-fly` is the exception and the only one: a
   window, a keyboard and a sound device are not worth writing by hand, and it
-  is the only file in the workspace that touches either API.
+  is the only file in the workspace that touches either API. The joystick is
+  not among them: Linux's `js` device is eight bytes an event, so
+  `hb-fly/src/stick.rs` reads it straight and every other platform gets the
+  keyboard.
 
 ## Crates
 
@@ -45,7 +48,8 @@ hb-render    the software rasteriser, plus the       draws a level
              level loader both binaries share
 hb           the `hb` inspection tool, no deps       growing
 hb-audio     .WAV decode, .MOD playback, no deps     music plays
-hb-fly       a window, a keyboard and a speaker      flies
+hb-fly       a window, a keyboard, a joystick and    flies
+             a speaker
 ```
 
 ```
@@ -185,3 +189,11 @@ cargo run --release -p hb-fly -- hoth --mode 480 --scale 1
 
 `HB_GAME` points at the directory holding `system/GAME.POD`. It defaults to
 `original/`, which in this repository is a symlink to the mounted disc.
+
+A joystick is picked up from `/dev/input/js0` if one is there. `HB_JOYSTICK`
+names another, `HB_JOY_X`, `HB_JOY_Y`, `HB_JOY_RUDDER` and `HB_JOY_THROTTLE`
+say which axis is which - the throttle is ignored unless it is named, since a
+pad's third axis is not a lever - and `HB_JOY_INVERT_Y=0` stops the y axis
+being inverted. None of the engine's own calibration (`xStickMin`,
+`joystickDeadZonePercent`, and the rest of `HELLBEND.INI`'s joystick block) is
+transcribed; the device reports its own range and the dead zone is a flat 8%.
