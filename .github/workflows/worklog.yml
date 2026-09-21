@@ -37,6 +37,7 @@ jobs:
       - name: Install cairns
         env:
           CAIRNS_BIN_DIR: ${{ runner.temp }}/bin
+          CAIRNS_VERSION: v0.2.1
         run: |
           curl -fsSL https://raw.githubusercontent.com/Toyz/cairns/main/install.sh | sh
           echo "${{ runner.temp }}/bin" >> "$GITHUB_PATH"
