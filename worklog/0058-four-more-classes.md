@@ -51,6 +51,12 @@ rock explodes where it landed. That is worth recording precisely because it
 looks like a gap: the fields exist, the code reads them, and the data never
 fills them in.
 
+One care in the port: class 17's departure is not a kill. The engine clears
+the actor's `+0x1c`, which drops it from the loop that thinks and the one
+that draws, and `hb-fly` does the same with a list of its own rather than
+marking it destroyed - otherwise a friendly frigate shipping out would count
+against the mission.
+
 `hb_sim::behaviour` now holds the three classes that only move, and
 `hb_sim::turret::Aim` the five that shoot. The unread list is down to classes
 55 and 58, which live in the `0x49` range with the flyers, and the scripted

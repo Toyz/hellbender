@@ -373,6 +373,9 @@ fn main() -> Result<(), String> {
     let (mut flight, mut mission, mut followers, mut live, mut battle, mut colours) = begin(&level);
     let mut doors = doors_of(&level);
     let mut hoverers = hoverers_for(&level);
+    // The actors that have left the level: class 17 ships, once they are
+    // high enough. Not destroyed - simply no longer here.
+    let mut gone = vec![false; live.len()];
     // The scatter an asteroid starts with, and anything else the loop needs
     // a number for.
     let mut rng = hb_sim::turret::Rng::new(0x5eed);
@@ -481,6 +484,7 @@ fn main() -> Result<(), String> {
             (flight, mission, followers, live, battle, colours) = begin(&level);
             doors = doors_of(&level);
             hoverers = hoverers_for(&level);
+            gone = vec![false; live.len()];
             last_eye = eye_of(&flight.camera);
             ended = 0.0;
             dying = None;
@@ -727,6 +731,7 @@ fn main() -> Result<(), String> {
                     (flight, mission, followers, live, battle, colours) = begin(&level);
                     doors = doors_of(&level);
                     hoverers = hoverers_for(&level);
+                    gone = vec![false; live.len()];
                     last_eye = eye_of(&flight.camera);
                     dying = None;
                     ended = 0.0;
@@ -819,6 +824,7 @@ fn main() -> Result<(), String> {
 
         for (i, motion, radius) in &mut hoverers {
             if battle.health[*i].destroyed
+                || gone[*i]
                 || !hb_sim::combat::in_range(eye, hb_sim::combat::position_of(&live[*i]))
             {
                 continue;
@@ -839,7 +845,10 @@ fn main() -> Result<(), String> {
                 battle.burst(at, *radius);
             }
             if moved.gone {
-                battle.health[*i].destroyed = true;
+                // The engine clears the actor's `+0x1c`, which takes it out
+                // of the loop that thinks and the one that draws. It is not
+                // a kill, so nothing here counts it as one.
+                gone[*i] = true;
             }
         }
 
@@ -872,7 +881,12 @@ fn main() -> Result<(), String> {
         // The engine turns them by two of the view's angles (`0x4266c0`
         // passes `0x5b37c8` and `0x5b37c4` to `0x42aa30`); which two is not
         // settled, so this turns them by the heading alone.
-        let mut drawn = live.clone();
+        let mut drawn: Vec<hb_formats::text::Placement> = live
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !gone.get(*i).copied().unwrap_or(false))
+            .map(|(_, p)| p.clone())
+            .collect();
         for item in battle.field.items.iter().filter(|p| !p.taken) {
             if let Some(Some(mesh)) = level.powerup_mesh.get(item.kind) {
                 let fixed = |v: f32| (v * 65536.0) as i32;
