@@ -42,3 +42,5 @@ It is not the engine's collision: that pushes out of the chamber's triangles
 the way it pushes out of everything else, with the overshoot, and sweeps
 between frames. This keeps the ship inside the tunnel, which is what it was
 for.
+
+**Still unknown:** the engine's own chamber collision, which pushes out of the chamber's triangles with the same overshoot it uses everywhere else rather than clamping to a sampled floor and ceiling.

@@ -9,7 +9,7 @@ docs/                the reference: formats, engine, content, port plan
 worklog/             how each of those was worked out, newest last
 crates/              the Rust port - hb-pod, hb-formats, hb-world,
                      hb-render, hb (tools), hb-fly (the window)
-tools/               Python: pod.py, pe.py, mrgl.py, worklog.py, docs.py
+tools/               Python: pod.py, pe.py, mrgl.py, docs.py
 work/                scratch - extracted archives, dumps. Not checked in.
 ```
 
@@ -103,7 +103,7 @@ tools/pe.py xref 0x005013d0        who mentions this address
 tools/pe.py calls 0x00474360       who calls this function
 tools/pe.py dis 0x00412d00 --len 400
 tools/mrgl.py check work/game/MODELS
-tools/worklog.py new "What I found" --area format
+cairns new "What I found" --area format       the worklog
 tools/docs.py check
 ```
 

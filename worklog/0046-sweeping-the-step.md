@@ -4,6 +4,7 @@ title: Sweeping the step
 date: 2026-09-20
 area: port
 files: crates/hb-fly/src/main.rs,docs/engine/simulation.md
+resolves: 41
 ---
 
 # 46. Sweeping the step
@@ -29,3 +30,5 @@ the same answer.
 
 Resolving one position is now its own function, which is what made the sweep
 two lines rather than a rewrite.
+
+**Still unknown:** whether the engine's own sweep subdivides by the same half-unit step, or tests the whole swept box at once.

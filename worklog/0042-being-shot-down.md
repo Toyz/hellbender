@@ -34,3 +34,5 @@ Two tests: a wreck dropped from sixty units noses over to its limit, drifts,
 and explodes two units over the ground about where the arithmetic says; and
 one already on the ground explodes at once and asks for the level to end five
 seconds later, staying where it fell.
+
+**Still unknown:** what follows a lost mission - the debriefing, and the death movie the `.LVL` names on line 38.

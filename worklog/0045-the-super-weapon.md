@@ -29,3 +29,5 @@ Two of the player's weapons are still not ported: the cluster missile, whose
 launch is a straight-line run of randomised angles I have not pinned to a
 count, and the floating mine, which needs the hundred-slot pool at
 `0x61bde0` and its own update.
+
+**Still unknown:** the floating mine: the pool at `0x61bde0`, its update, and what lays one.

@@ -4,6 +4,7 @@ title: The guns that aim
 date: 2026-09-20
 area: decomp,engine,port
 files: crates/hb-sim/src/turret.rs,crates/hb-sim/tests/turret.rs,crates/hb-fly/src/battle.rs,docs/engine/simulation.md
+resolves: 54
 ---
 
 # 55. The guns that aim
@@ -38,3 +39,5 @@ included.
 `Turret::aiming` is the class 1 constructor, `battle` collects classes 1 and
 10 together, and a class 1 gun's pitch reaches the renderer so the model
 points where it is shooting.
+
+**Still unknown:** class 14, which aims exactly as class 1 does but from a point it asks the model for - porting it waits on the animated models being posed.

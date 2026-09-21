@@ -39,3 +39,5 @@ intensity from 0 to 0.996, and a vertex whose following flag byte has bit 0
 set takes the level's ambient instead of its own (`0x414e0b`). Sixteen rows
 over that range is the top four bits, inverted, which is what `hb-render`
 already does - but the span loop that would prove it has not been found yet.
+
+**Still unknown:** how `.MAP` was generated - it is not an exhaustive nearest-colour search - and which of the sixteen ramp rows an interpolated intensity picks, which is in the span loop and not yet read.

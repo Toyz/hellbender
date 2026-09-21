@@ -4,6 +4,7 @@ title: What opens a door
 date: 2026-09-20
 area: decomp,engine
 files: crates/hb-formats/src/quake.rs,crates/hb-formats/tests/against_the_game.rs,docs/formats/scenery.md
+resolves: 47
 ---
 
 # 51. What opens a door
@@ -67,3 +68,5 @@ re-deriving any of this.
 What is still unread is what throws a switch in the first place - the
 transition out of the resting state is there, but not the thing that calls
 it - and what the ground quake's two kinds do differently.
+
+**Still unknown:** what throws a switch in the first place: the transition out of the resting state is there, but not the thing that calls it. And what the ground quake's two kinds do differently.

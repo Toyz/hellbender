@@ -48,3 +48,5 @@ scene as a placement turned along its velocity, or to the eye for the kinds
 that want that, and keeps the old coloured point for anything whose model did
 not load. One test checks that every weapon the port fires has its model, that
 the Valkyrie has its flashes, and that a shot in front of the eye is drawn.
+
+**Still unknown:** how the engine picks between a shot's model and a plain point for the kinds whose model does not load, and when the Valkyrie's three muzzle flashes advance.

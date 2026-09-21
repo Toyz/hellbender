@@ -4,6 +4,7 @@ title: The ground moves too
 date: 2026-09-20
 area: decomp,port
 files: crates/hb-sim/src/quake.rs,crates/hb-sim/tests/quake.rs,crates/hb-formats/src/quake.rs,crates/hb-fly/src/main.rs,docs/formats/scenery.md
+resolves: 52
 ---
 
 # 53. The ground moves too
@@ -45,3 +46,5 @@ which the dispatch does not match at all and which therefore does nothing.
 saying which grid a moved cell belongs to - and `hb-fly` writes each moved
 cell back into the terrain, ground and chambers included. `HOTH`'s chamber
 ceilings move on their own from the moment the level loads.
+
+**Still unknown:** what the flags line's first number - the mode byte the resting state tests - selects beyond 1, and what a kind 3 ground entry does with the ship's cell.

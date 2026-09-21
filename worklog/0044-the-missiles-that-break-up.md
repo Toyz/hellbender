@@ -39,3 +39,5 @@ Three tests: a MIRV launched unguided breaks into ten Dead-Ons at half speed
 going different ways, a guided MIRV hands its ten the targets it is given and
 lets them fly on when there are none, and a blast catches the corner of its
 cube at 31 units but not 33 on one axis, across the world's wrap.
+
+**Still unknown:** the cluster missile, whose launch fans a count this port could not pin, and the floating mine, which needs the 100-slot pool at `0x61bde0`.

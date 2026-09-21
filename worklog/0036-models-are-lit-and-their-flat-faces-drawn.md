@@ -54,3 +54,5 @@ wrong guess on the format page.
 The format tests keep the 0x0e-family counts they had and gain one for the
 flat polygons: 215 in 34 models, all after colour 0, all with unit normals,
 and the band arithmetic at its ends.
+
+**Still unknown:** what colour the 118 polygons with neither a material nor a flat colour are, and whether a model is fogged by distance the way the terrain is - the model draw is a separate path.

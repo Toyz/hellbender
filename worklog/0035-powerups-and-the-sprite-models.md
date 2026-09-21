@@ -79,3 +79,5 @@ and that the `.DEF` drop fields stay in range.
 Still out: the ceiling limit on where a drop lands, which needs a ceiling query
 the port does not have; the engine repeating a refusal's line every frame; and
 anything that spends the stocks.
+
+**Still unknown:** the ceiling a dropped powerup lands under, which needs a ceiling query this port does not have; whether the engine really repeats a refusal's voice line every frame; and anything that spends the stocks.

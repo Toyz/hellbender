@@ -102,3 +102,5 @@ point completes when its hit points reach zero, which is presumably how it
 leaves at the jump zone, but the class-50 routine is not read - the map
 screen's markers, and choosing a point by hand (`keyNavChoose` is Tab, which
 `hb-fly` uses for changing level).
+
+**Still unknown:** the escort shuttle's own route, which is the class 50 routine and is not read; the map screen's markers; and choosing a nav point by hand, which `keyNavChoose` binds to Tab.

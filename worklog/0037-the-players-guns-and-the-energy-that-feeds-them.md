@@ -61,3 +61,5 @@ the transfers and the afterburner.
 
 The missiles and mines go through `0x477890` with a locked target and are
 next.
+
+**Still unknown:** the last word of a weapon row, which is the same in 29 of the 31 rows; the missiles and the mine, which go through `0x477890`; and what the engine draws for a lock.

@@ -51,3 +51,5 @@ pushes a ship out of its middle.
 What is still missing is the engine's sweep: it tests the box that covers
 where the ship was and where it is going, and this only tests where it is. A
 fast enough ship can pass through a thin wall in one frame.
+
+**Still unknown:** the engine's own sweep: it tests the box covering where the ship was and where it is going, and this tests only where it is, so a fast enough ship still passes through a thin wall in one frame.

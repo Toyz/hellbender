@@ -54,3 +54,5 @@ it, one pixel a star, before anything else. `ROID` has a sky now.
 Two things left on that page: why the sky texture's indices sit exactly 48
 above the palette band they name, and `"Sky clip overflow!"`, which belongs to
 the ground clipper rather than to the sky.
+
+**Still unknown:** why a sky texture's indices sit exactly 48 above the palette band they name. It holds for all twenty levels with a sky texture and nothing says where the number comes from.

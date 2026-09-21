@@ -4,6 +4,7 @@ title: The last three numbers in the .LVL
 date: 2026-09-20
 area: decomp,format
 files: crates/hb-formats/src/glt.rs,crates/hb-formats/src/lvl.rs,crates/hb-formats/tests/against_the_game.rs,docs/formats/lvl.md,docs/formats/scenery.md
+resolves: 35
 ---
 
 # 48. The last three numbers in the .LVL
@@ -73,3 +74,5 @@ five strikes alive at once.
 Still unread: what the eight numbers of a `.GLT` record set, and what actually
 puts a light out - the textures for an unlit and a broken light are loaded and
 indexed, but the code that swaps them has not been found.
+
+**Still unknown:** what the eight numbers of a `.GLT` record set, and what actually puts a light out - the unlit and broken textures are loaded and indexed but the code that swaps them has not been found. Whether line 1's version 4 has an earlier form the parser still accepts.

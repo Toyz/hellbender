@@ -39,3 +39,5 @@ three are 16.16 and take a handful of values, 2.0, 0, 2.0 in 479 entries and
 3.0, 0, 3.0 in 324, which looks like a distance and a rate with a pause
 between - and what the flags and the two trailing numbers select. Moving the
 boxes at runtime is `processBoxQuake`, and that is the next piece.
+
+**Still unknown:** what the motion line's five numbers mean exactly, what the flags line counts, and what the number after `!--Additional quake info--` and the switch block's number select.

@@ -50,3 +50,5 @@ double-driven; they simply stood there before.
 Two more shooters are left, and the bigger of the two aims: class 1 computes
 the vector from the actor to the player as floats, the way the turret does.
 That is 109 more guns that should be firing back.
+
+**Still unknown:** the two classes left with a crowd of placements behind them: 1 with 109 and 14 with 96, both of which aim at the player.

@@ -47,3 +47,5 @@ position, homing and straight flight.
 
 Not done: the splitting missiles, the mine and the super weapon; the cruise
 missile's own steering; and whatever the engine draws for its lock.
+
+**Still unknown:** the splitting missiles, the mine and the super weapon; the cruise missile's own steering at `0x4780b0`; and whatever the engine draws for its lock.

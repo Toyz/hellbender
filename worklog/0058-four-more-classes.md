@@ -61,3 +61,5 @@ against the mission.
 `hb_sim::turret::Aim` the five that shoot. The unread list is down to classes
 55 and 58, which live in the `0x49` range with the flyers, and the scripted
 handful for the shuttle and for Nyx.
+
+**Still unknown:** classes 55 and 58, which drive 83 placements between them and are full AI routines in the `0x49` range, and the scripted handful: 50 to 52 for the shuttle and its escort, 62 to 64 for Nyx.

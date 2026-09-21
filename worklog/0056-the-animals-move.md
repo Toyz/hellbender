@@ -4,6 +4,7 @@ title: The animals move
 date: 2026-09-20
 area: decomp,format,render,port
 files: crates/hb-formats/src/anim.rs,crates/hb-formats/tests/against_the_game.rs,crates/hb-render/src/level.rs,crates/hb-fly/src/main.rs,crates/hb/src/main.rs,docs/formats/anim.md
+resolves: 18, 19
 ---
 
 # 56. The animals move
@@ -56,3 +57,5 @@ posed.
 `hb-render` re-poses every animated mesh each frame off the level's clock, so
 the dinosaurs in Chimera walk, the pterosaurs flap, and the spider towers
 move. `hb view` grew an optional time so a single frame can be looked at.
+
+**Still unknown:** what `magPower` and `legFlag` do, and what `pivot` and `parent` were for in the tool that wrote them; what the 24 bytes beyond an in-memory vertex's coordinates are; and where an actor's animation clock comes from.

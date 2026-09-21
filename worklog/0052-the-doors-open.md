@@ -4,6 +4,7 @@ title: The doors open
 date: 2026-09-20
 area: port,engine
 files: crates/hb-sim/src/quake.rs,crates/hb-sim/tests/quake.rs,crates/hb-render/src/level.rs,crates/hb-fly/src/battle.rs,crates/hb-fly/src/main.rs,docs/formats/scenery.md
+resolves: 51
 ---
 
 # 52. The doors open
@@ -52,3 +53,5 @@ two id-broadcast entry points have no callers. The switch's own texture swap
 is read but not ported, so a switch does not light up. The ground quakes are
 parsed and ignored; they move a rectangle of the heightfield rather than one
 box, and their two kinds have not been told apart.
+
+**Still unknown:** the switch's own texture swap, which is read but not ported, and the ground quakes, which are parsed and ignored.

@@ -54,3 +54,5 @@ and where the player dies, and resets the stores on death as the engine does.
 Three tests cover the shape of a burst, a puff's sixteen frames, and the
 pool's sixteen slots; one more in `hb-render` checks a puff actually puts
 pixels on the screen.
+
+**Still unknown:** which sound an explosion plays, and whether the engine scales a burst by what it came from - both call sites pass the same two units.

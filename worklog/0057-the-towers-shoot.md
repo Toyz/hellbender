@@ -4,6 +4,7 @@ title: The towers shoot
 date: 2026-09-20
 area: decomp,engine,port
 files: crates/hb-sim/src/turret.rs,crates/hb-sim/tests/turret.rs,crates/hb-formats/src/anim.rs,crates/hb-render/src/level.rs,crates/hb-fly/src/battle.rs,docs/engine/simulation.md
+resolves: 55
 ---
 
 # 57. The towers shoot
@@ -37,3 +38,5 @@ second pose the engine keeps for it - written down rather than guessed.
 That leaves the unread classes at 17 with 54 placements, 55 with 49, 58 with
 34, 18 with 29, 3 with 15 and 35 with 12, plus the scripted handful for the
 shuttle and for Nyx.
+
+**Still unknown:** turning a class 14 tower's gun on the model, which needs the second pose the engine keeps for it at `+0x4c`.
