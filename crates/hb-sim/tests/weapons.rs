@@ -364,3 +364,27 @@ fn the_super_weapon_is_what_the_eight_pieces_make() {
     assert_eq!(hb_sim::turret::SUPER_REACH, 16.0);
     assert!(hb_sim::turret::SUPER_REACH < hb_sim::turret::SPLIT_REACH);
 }
+
+/// The cluster fires two at once, one out to each side, and spends one round
+/// for the pair (`0x47cec0` calls the launcher twice; worklog 65).
+#[test]
+fn the_cluster_fires_a_pair() {
+    let mut guns = Guns::default();
+    let mut stores = Stores::default();
+    stores.ammo[weapons::CLUSTER] = 4;
+    guns.select(weapons::CLUSTER, &stores);
+    let mut rng = Rng::new(1);
+    let pose = level();
+
+    let (volleys, _, _) = guns.step(true, false, 1.0, &pose, &mut stores, &mut rng);
+    let fired: Vec<_> = volleys.iter().flat_map(|v| v.missiles.iter()).collect();
+    assert_eq!(fired.len(), 2, "two missiles for one trigger");
+    assert_eq!(stores.ammo[weapons::CLUSTER], 3, "and one round for the pair");
+
+    // One each side of the nose, and both the same height.
+    let (left, right) = (fired[0].position, fired[1].position);
+    assert!((left[0] + right[0] - 2.0 * pose.position[0]).abs() < 1e-3, "{left:?} {right:?}");
+    assert!((left[0] - right[0]).abs() > 0.5, "they leave from the same place");
+    assert_eq!(left[1], right[1]);
+    assert!(fired.iter().all(|m| m.kind == weapons::CLUSTER as i32));
+}

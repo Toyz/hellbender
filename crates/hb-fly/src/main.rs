@@ -612,6 +612,7 @@ fn main() -> Result<(), String> {
                 (Key::Key4, '4'),
                 (Key::Key5, '5'),
                 (Key::Key6, '6'),
+                (Key::Key7, '7'),
                 (Key::Key8, '8'),
                 (Key::Key9, '9'),
                 (Key::Key0, '0'),

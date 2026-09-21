@@ -433,8 +433,16 @@ missile that scorches as it flies: every sub-step `0x477a19` puts a quarter of
 its damage into everything within 16 units of where it is. It does not need to
 hit anything.
 
-The cluster missile (`0x47cec0`) is not ported, nor is the cruise missile's
-own steering (`0x4780b0`): the port steers it as the others.
+**The cluster missile** (25, "Legion") is two missiles rather than a fan.
+`0x47cec0` calls the launcher `0x477890` exactly twice, both of kind 25: the
+first from the ship plus half its forward row and half the sum of its right
+and up rows, the second a full right row along from that, which puts them
+half a unit either side of the nose and half a unit up. One round covers the
+pair. Two random numbers are drawn before the launches - one from 0.75 to
+0.875 and one from 4.0 to 6.0 - and what they scale is not read.
+
+The cruise missile's own steering (`0x4780b0`) is still not ported: the port
+steers it as the others.
 
 ## The floating mine
 

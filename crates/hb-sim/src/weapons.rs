@@ -84,6 +84,8 @@ pub const AFTERBURNER: usize = 22;
 pub const VALKYRIE: usize = 23;
 /// "Scorcher Missiles": locks on things on the ground, flies ten seconds.
 pub const CRUISE: usize = 24;
+/// "Legion": two missiles at once, one each side (`0x47cec0`).
+pub const CLUSTER: usize = 25;
 
 /// The MIRV and the guided MIRV, which break up a second into their flight.
 pub const MIRV: usize = 26;
@@ -96,7 +98,7 @@ pub const SUPER: usize = 30;
 
 /// The weapons this port can fire. The cluster missile's spread
 /// (`0x47cec0`) is not ported yet.
-pub const PORTED: [usize; 11] = [
+pub const PORTED: [usize; 12] = [
     SERVO_KINETIC,
     DISPERSION,
     RAPID_FIRE,
@@ -106,6 +108,7 @@ pub const PORTED: [usize; 11] = [
     VIPER,
     MIRV,
     GUIDED_MIRV,
+    CLUSTER,
     MINE,
     SUPER,
 ];
@@ -114,7 +117,7 @@ pub const PORTED: [usize; 11] = [
 /// reads them (`0x47dcc4` on): the backquote for the Valkyrie
 /// (`keyVulcanCannon`), 1 the dispersion cannon, 2 the servo-kinetic laser,
 /// 3 the rapid-fire laser, 4 Dead-On, 5 cruise, 6 Viper missiles.
-pub const KEYS: [(char, usize); 10] = [
+pub const KEYS: [(char, usize); 11] = [
     ('0', MINE),
     ('`', VALKYRIE),
     ('1', DISPERSION),
@@ -123,6 +126,7 @@ pub const KEYS: [(char, usize); 10] = [
     ('4', DEAD_ON),
     ('5', CRUISE),
     ('6', VIPER),
+    ('7', CLUSTER),
     ('8', MIRV),
     ('9', GUIDED_MIRV),
 ];
@@ -406,6 +410,31 @@ impl Guns {
             DISPERSION => shots = self.dispersion(pose, speed, damage, stores, rng, voices),
             DEAD_ON | MIRV => missiles.push(self.missile(w, pose, None)),
             VIPER | CRUISE | GUIDED_MIRV | SUPER => missiles.push(self.missile(w, pose, self.lock)),
+            // Two at once (`0x47cec0` calls the launcher twice): half a unit
+            // forward and half up, one out to each side. The engine's first
+            // leaves at `+(right + up) / 2` and the second a full right
+            // vector along from it, which is `+(up - right) / 2`.
+            CLUSTER => {
+                for side in [1.0, -1.0] {
+                    let at = add(
+                        add(add(pose.position, pose.forward, 0.5), pose.up, 0.5),
+                        pose.right,
+                        0.5 * side,
+                    );
+                    missiles.push(Missile {
+                        position: at,
+                        heading: pose.heading,
+                        pitch: pose.pitch,
+                        speed: pose.speed,
+                        age: 0.0,
+                        damage,
+                        kind: w as i32,
+                        side: Side::Player,
+                        target: self.lock,
+                        life: Missile::LIFE,
+                    });
+                }
+            }
             // The mine is laid rather than fired, and refused outright below
             // 6.1 units a second - the engine does not spend one for a
             // refusal (`0x47d861`).
