@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-76 entries: audio 4, build 2, content 4, decomp 46, engine 26, flight 3, format 30, port 63, render 23, test 3, tooling 4, ui 7, world 10.
+77 entries: audio 4, build 2, content 4, decomp 47, engine 26, flight 4, format 30, port 64, render 23, test 3, tooling 4, ui 7, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -87,3 +87,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 74 | [A touchscreen is not a joystick](worklog/0074-a-touchscreen-is-not-a-joystick.md) | 2026-09-20 | port, flight |
 | 75 | [The keys are in the INI, and so is everything else](worklog/0075-the-keys-are-in-the-ini-and-so-is-everything-else.md) | 2026-09-20 | decomp, port, flight |
 | 76 | [The sounds hurt](worklog/0076-the-sounds-hurt.md) | 2026-09-20 | port, audio, decomp |
+| 77 | [The mine layer lays its own kind of mine](worklog/0077-the-mine-layer-lays-its-own-kind-of-mine.md) | 2026-09-21 | decomp, port, flight |

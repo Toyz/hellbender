@@ -240,6 +240,51 @@ and integrates a rigid body in x87. `hb_sim::flyer` turns heading and pitch
 toward the target at the type's turn rate (65,536 is a turn a second) and flies
 along its nose.
 
+## The mine layers, class 55
+
+`0x496060` is the same routine again - the same two cone tests, the same
+situation ladder, the same phases 200, 201 and 2000 - with three differences
+and a phase of its own. Ten types use it, and their names say what they are:
+`Mine Layer` in HOTH and HOTH2, `Pincher Flying` and `huge ship` in the two
+FLOAT levels.
+
+- Phase 200 has no retreat test. Where a fighter turns for home inside the
+  type's retreat range, a layer goes round again.
+- Phase 201 breaks at half the turn rate (`0x49650c`), where a fighter's is an
+  eighth.
+- Situation 6 in phase 200 - the player ahead of it but off its nose - sends
+  it to **phase 2002** (`0x4964b5`).
+
+Phase 2002 (`0x49658f`) steers to the player's position plus 24 units along
+the player's own nose - where he is about to be - remembering how close it
+has come. When it stops closing it drops a mine there and goes to 201.
+`0x49661e` refuses over a dead player and `0x496666` refuses within eight
+units of him, measured flat.
+
+### The enemy's mines are not the player's
+
+They go into a pool of their own: a hundred slots of 48 bytes at `0x5c00e0`,
+written only here and stepped only by `0x495de0`. Nothing else in the image
+touches it.
+
+A slot carries the laying actor's position, the laying **type's** retreat
+range at `+0x18` as its reach, and the type's shot damage at `+0x20` as its
+bite. It does not arm, it does not spin and it does not wait: each frame
+`0x479b60` tests the player against the reach on each of the three axes,
+wrapped at the world's edge, and inside all three the player takes
+
+```
+damage = shot_damage * max(1/4, |reach - distance| / reach)
+```
+
+through the shield (`0x4653a0`), the slot clears, and an explosion of
+`0x186a0` - 1.53 units, the same size the player's mine draws - goes off
+(`0x495ed5`).
+
+So the two mines are opposites. The player's arms on proximity, spins, and
+splashes 32 units into everything nearby; the enemy's sits still, tests only
+the player, and bites hardest at its middle.
+
 ## Time
 
 Frame time is `0x59d14c`, 16.16 seconds. `0x46f160` reads `timeGetTime` and

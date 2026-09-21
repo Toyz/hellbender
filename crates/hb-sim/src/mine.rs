@@ -132,3 +132,103 @@ fn near(mine: [f32; 3], ship: [f32; 3]) -> bool {
         && (mine[1] - ship[1]).abs() < TRIGGER
         && wrapped(mine[2] - ship[2]).abs() < TRIGGER
 }
+
+/// The mines the enemy lays, which are a different thing in a different
+/// pool: a hundred slots of 48 bytes at `0x5c00e0`, stepped by `0x495de0`
+/// and written only by the mine layers' own AI (class 55, [`crate::flyer`]).
+///
+/// It does not arm, spin or wait. Each frame `0x479b60` tests the player
+/// against the mine's own radius on each of the three axes, wrapped at the
+/// world's edge; inside all three, the player takes the laying type's shot
+/// damage scaled by how far in he is, and the mine is gone.
+pub mod laid {
+    use crate::combat::wrapped;
+
+    /// A hundred slots, as the player's pool has.
+    pub const SLOTS: usize = super::SLOTS;
+
+    /// The least a hit can be scaled to, whatever the distance
+    /// (`0x495e93`): a quarter.
+    pub const LEAST: f32 = 0.25;
+
+    /// The explosion it leaves, in units (`0x495ed5`) - the same size the
+    /// player's mine draws.
+    pub const BURST: f32 = super::BURST;
+
+    /// How far from the player it refuses to be laid at all
+    /// (`0x496666`): eight units across, measured flat.
+    pub const CLEAR: f32 = 8.0;
+
+    /// Where in front of the player it is laid (`0x49658f`): 24 units along
+    /// the player's own nose, which is where he is about to be.
+    pub const AHEAD: f32 = 24.0;
+
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub struct Mine {
+        pub at: [f32; 3],
+        /// The laying type's retreat range, which is how far this reaches.
+        pub radius: f32,
+        /// The laying type's shot damage, before the falloff.
+        pub damage: f32,
+    }
+
+    /// One that has gone off: what the player takes, and where to draw it.
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub struct Blast {
+        pub at: [f32; 3],
+        pub damage: f32,
+    }
+
+    #[derive(Debug, Clone, Default)]
+    pub struct Field {
+        pub slots: Vec<Option<Mine>>,
+    }
+
+    impl Field {
+        pub fn new() -> Field {
+            Field { slots: vec![None; SLOTS] }
+        }
+
+        /// Lay one. `None` when every slot is taken, which is all the engine
+        /// does about it.
+        pub fn lay(&mut self, at: [f32; 3], radius: f32, damage: f32) -> Option<usize> {
+            let free = self.slots.iter().position(Option::is_none)?;
+            self.slots[free] = Some(Mine { at, radius, damage });
+            Some(free)
+        }
+
+        /// Whether a mine may be laid here at all: the flat distance from the
+        /// player has to be over [`CLEAR`] (`0x496666`).
+        pub fn clear_of(at: [f32; 3], player: [f32; 3]) -> bool {
+            let (dx, dz) = (wrapped(at[0] - player[0]), wrapped(at[2] - player[2]));
+            (dx * dx + dz * dz).sqrt() > CLEAR
+        }
+
+        /// One frame against the player. Returns what went off.
+        pub fn step(&mut self, player: [f32; 3]) -> Vec<Blast> {
+            let mut blasts = Vec::new();
+            for slot in &mut self.slots {
+                let Some(mine) = *slot else { continue };
+                let d = [
+                    wrapped(mine.at[0] - player[0]),
+                    wrapped(mine.at[1] - player[1]),
+                    wrapped(mine.at[2] - player[2]),
+                ];
+                // A box on each axis first, as the engine does, then the
+                // real distance for the falloff.
+                if d.iter().any(|v| v.abs() >= mine.radius) {
+                    continue;
+                }
+                let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+                let scale = if mine.radius > 0.0 {
+                    ((mine.radius - distance).abs() / mine.radius).max(LEAST)
+                } else {
+                    LEAST
+                };
+                blasts.push(Blast { at: mine.at, damage: mine.damage * scale });
+                *slot = None;
+            }
+            blasts
+        }
+    }
+}

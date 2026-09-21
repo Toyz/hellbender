@@ -15,7 +15,7 @@ use hb_sim::turret::{Aim, Launch, Missile, Rng, Struck, Turret};
 /// `0x4967b0`; 56, 59 and 60 have routines of their own (`0x497050`,
 /// `0x497be0`, `0x4999a0`) that start the same way and are not read yet, so
 /// they borrow it.
-pub const FLYING: [i64; 5] = [7, 53, 56, 59, 60];
+pub const FLYING: [i64; 6] = [7, 53, 55, 56, 59, 60];
 
 /// What a shot leaves where it hits the world, in units: `0x476e14` passes
 /// 60,000 in 16.16 to the explosion.
@@ -72,6 +72,9 @@ pub struct Battle {
     pub blasts: Blasts,
     /// The mines laid, a hundred slots as the engine has.
     pub mines: hb_sim::mine::Field,
+    /// And the enemy's own pool, which the mine layers fill
+    /// (`0x5c00e0`).
+    pub laid: hb_sim::mine::laid::Field,
     /// How long the afterburner's tank has been empty.
     empty_for: f32,
     /// Whether the afterburner is lit, which the engine gives a kick and a
@@ -119,7 +122,13 @@ impl Battle {
             .iter()
             .enumerate()
             .filter(|(_, p)| level.kinds.get(p.kind).is_some_and(|k| FLYING.contains(&k.class())))
-            .map(|(i, p)| (i, Flyer::new(p)))
+            .map(|(i, p)| {
+                let flyer = match level.kinds[p.kind].class() {
+                    55 => Flyer::layer(p),
+                    _ => Flyer::new(p),
+                };
+                (i, flyer)
+            })
             .collect();
         Battle {
             health: level.placements.iter().map(Health::for_placement).collect(),
@@ -131,6 +140,7 @@ impl Battle {
             pilot: Pilot::default(),
             ground_hits: Vec::new(),
             mines: hb_sim::mine::Field::new(),
+            laid: hb_sim::mine::laid::Field::new(),
             clock: 0.0,
             field: Field::default(),
             stores: Stores::default(),
@@ -203,7 +213,8 @@ impl Battle {
             match turret.step(def, mesh, p, player, velocity, dt, &mut self.rng) {
                 Some(Launch::Shot(s)) => self.shots.push(Flying::new(s)),
                 Some(Launch::Missile(m)) => self.missiles.push(m),
-                None => {}
+                // A turret has no mines to lay.
+                Some(Launch::Mine { .. }) | None => {}
             }
             // The turret's heading is what the renderer shows, and a class
             // 1 gun's pitch with it. A class 14 tower keeps its own angles
@@ -224,7 +235,14 @@ impl Battle {
 
         // The flyers, within the same 80 units.
         if let (Some(player), Some((axes, speed))) = (target, ship) {
-            let seen = Target { position: player, right: axes[0], up: axes[1], forward: axes[2], speed };
+            let seen = Target {
+                position: player,
+                right: axes[0],
+                up: axes[1],
+                forward: axes[2],
+                speed,
+                alive: self.pilot.alive(),
+            };
             for (i, flyer) in &mut self.flyers {
                 if self.health[*i].destroyed || !combat::in_range(player, flyer.position) {
                     continue;
@@ -234,6 +252,9 @@ impl Battle {
                 match flyer.step(def, mesh, &seen, dt, ground, &mut self.rng) {
                     Some(Launch::Shot(s)) => self.shots.push(Flying::new(s)),
                     Some(Launch::Missile(m)) => self.missiles.push(m),
+                    Some(Launch::Mine { at, radius, damage }) => {
+                        self.laid.lay(at, radius, damage);
+                    }
                     None => {}
                 }
                 let fixed = |v: f32| (v * 65536.0) as i32;
@@ -381,6 +402,14 @@ impl Battle {
             }
             // The ship is what set it off, so the ship is inside the blast.
             if self.pilot.alive() {
+                player_damage += blast.damage;
+            }
+        }
+        // And the enemy's, which only ever test the player (`0x495de0`) and
+        // scale what they take off by how far in he was.
+        if self.pilot.alive() {
+            for blast in self.laid.step(player) {
+                self.blasts.burst(blast.at, hb_sim::mine::laid::BURST, &mut self.rng);
                 player_damage += blast.damage;
             }
         }

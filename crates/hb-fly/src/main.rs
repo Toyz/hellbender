@@ -1159,6 +1159,15 @@ fn main() -> Result<(), String> {
                 None => sparks.push((at, colours.missile)),
             }
         }
+        // And the enemy's, which have no angles of their own - they are
+        // dropped and they sit there.
+        for mine in battle.laid.slots.iter().flatten() {
+            let at = near(mine.at);
+            match level.shot_mesh.get(hb_sim::weapons::MINE).copied().flatten() {
+                Some(mesh) => shot_at(&mut drawn, mesh, at, (0, 0)),
+                None => sparks.push((at, colours.missile)),
+            }
+        }
         scene.placements = &drawn;
         hb_render::draw_world(&mut target, &scene, &flight.camera);
         for (at, colour) in sparks {

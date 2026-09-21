@@ -82,3 +82,48 @@ fn an_armed_mine_turns_while_it_waits() {
     assert!((mine.angles[0] - 16384.0).abs() < 600.0, "{:?}", mine.angles);
     assert!((mine.angles[1] - 8192.0).abs() < 300.0, "{:?}", mine.angles);
 }
+
+/// The enemy's mines are a different pool with different rules: no arming,
+/// no spin, and what they take off falls away with distance.
+#[test]
+fn a_laid_mine_bites_hardest_at_its_middle() {
+    use hb_sim::mine::laid::{Field, LEAST};
+    let mut field = Field::new();
+    field.lay([0.0, 0.0, 0.0], 10.0, 1.0).expect("a free slot");
+    // Outside its reach on any axis, nothing happens and it stays.
+    let none = field.step([0.0, 11.0, 0.0]);
+    assert!(none.is_empty());
+    assert_eq!(field.slots.iter().flatten().count(), 1);
+    // On top of it: the full bite, and the slot is gone.
+    let blasts = field.step([0.0, 0.0, 0.0]);
+    assert_eq!(blasts.len(), 1);
+    assert!((blasts[0].damage - 1.0).abs() < 1e-6, "{}", blasts[0].damage);
+    assert_eq!(field.slots.iter().flatten().count(), 0);
+
+    // Right at the edge it is scaled down to the floor rather than to
+    // nothing.
+    let mut field = Field::new();
+    field.lay([0.0, 0.0, 0.0], 10.0, 1.0).unwrap();
+    let blasts = field.step([9.99, 0.0, 0.0]);
+    assert!((blasts[0].damage - LEAST).abs() < 0.01, "{}", blasts[0].damage);
+}
+
+#[test]
+fn the_enemys_pool_fills_up_and_stops() {
+    use hb_sim::mine::laid::{Field, SLOTS};
+    let mut field = Field::new();
+    for i in 0..SLOTS {
+        assert_eq!(field.lay([i as f32, 0.0, 0.0], 1.0, 1.0), Some(i));
+    }
+    assert_eq!(field.lay([0.0, 0.0, 0.0], 1.0, 1.0), None);
+}
+
+/// It will not go down on top of the player - eight units across, flat.
+#[test]
+fn a_laid_mine_keeps_its_distance() {
+    use hb_sim::mine::laid::Field;
+    assert!(!Field::clear_of([0.0, 0.0, 0.0], [4.0, 0.0, 4.0]));
+    assert!(Field::clear_of([0.0, 0.0, 0.0], [9.0, 0.0, 0.0]));
+    // Height does not count: it is the flat distance.
+    assert!(!Field::clear_of([0.0, 0.0, 0.0], [0.0, 100.0, 0.0]));
+}

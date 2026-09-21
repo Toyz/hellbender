@@ -1,4 +1,5 @@
-//! The flying enemies: classes 7 and 53, `0x4967b0` - 1,108 placements.
+//! The flying enemies: classes 7 and 53, `0x4967b0` - 1,108 placements - and
+//! class 55, `0x496060`, the mine layers.
 //!
 //! Read from the engine - the decisions:
 //!
@@ -27,6 +28,21 @@
 //!   within the attack range and it is aimed, at twice its own speed
 //!   (`0x496f86`).
 //!
+//! **Class 55, the mine layers** (`0x496060`) is the same routine with the
+//! same two cone tests, the same situation ladder and the same phases, plus
+//! one of its own. Three differences:
+//!
+//! - Phase 200 has no retreat test: where a fighter turns for home inside the
+//!   type's retreat range, a layer keeps going round.
+//! - Phase 201 breaks at half the turn rate (`0x49650c`), not an eighth.
+//! - Situation 6 in phase 200 - the player ahead of it but off its nose -
+//!   sends it to phase 2002 (`0x4964b5`), which flies to 24 units along the
+//!   player's own nose, where he is about to be, and drops a mine when it
+//!   stops closing on that point. Not over the player: `0x496666` refuses
+//!   within eight units, measured flat, and `0x49661e` refuses over a wreck.
+//!
+//! What it drops goes into a pool of its own - see [`crate::mine::laid`].
+//!
 //! This port's own - the flying: the engine's steering, `0x4944c0`, is 1,250
 //! instructions of x87 rigid-body integration not yet read. What is known of
 //! it is used: the target's direction as a heading and a pitch, the -1 for
@@ -36,6 +52,8 @@
 //! pitch toward the target at the turn rate and flies along its nose; that it
 //! is aimed means the player is within its 30-degree cone.
 
+use crate::mine::laid::Field as Laid;
+use crate::mine::laid::AHEAD;
 use hb_formats::mrgl::Model;
 use hb_formats::text::{EnemyDef, Placement};
 
@@ -56,6 +74,9 @@ pub struct Target {
     pub forward: [f32; 3],
     /// Forward speed, units a second.
     pub speed: f32,
+    /// Whether the player is still flying. A mine layer will not lay one
+    /// over a wreck (`0x49661e`).
+    pub alive: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -66,6 +87,10 @@ pub struct Flyer {
     pub pitch: f32,
     pub roll: f32,
     pub phase: u32,
+    /// Class 55 rather than 7 or 53: it lays mines, breaks at half the turn
+    /// rate instead of an eighth, and does not turn for home on the retreat
+    /// range.
+    pub lays: bool,
     /// Where a break-off is headed (`+0xb4`), and the nearest it has come
     /// (`+0x154`).
     pub break_point: [f32; 3],
@@ -130,7 +155,15 @@ impl Flyer {
             break_point: [0.0; 3],
             closest: 0.0,
             gun: Turret::new(p),
+            lays: false,
         }
+    }
+
+    /// A mine layer, class 55 (`0x496060`). It is this routine with one more
+    /// phase and a slower break; [`Flyer::step`] returns [`Launch::Mine`]
+    /// when it drops one.
+    pub fn layer(p: &Placement) -> Flyer {
+        Flyer { lays: true, ..Flyer::new(p) }
     }
 
     fn forward(&self) -> [f32; 3] {
@@ -213,6 +246,10 @@ impl Flyer {
                     2009
                 };
             }
+            // The layer peels off to lay one the moment the player is ahead
+            // of it but off its nose (`0x4964b5`). Everything else matches
+            // his speed and keeps station.
+            6 if self.lays && self.phase == 200 => self.phase = 2002,
             6 if attack > distance => speed = player.speed,
             _ => {}
         }
@@ -221,13 +258,17 @@ impl Flyer {
         let mut away = false;
         match self.phase {
             200 => {
-                if retreat > distance {
+                // The layer has no such test: it goes round again rather
+                // than turning for home (`0x496482` tests nothing else).
+                if !self.lays && retreat > distance {
                     self.phase = 201;
                 }
             }
             201 => {
                 speed = speed.max(twice_player);
-                turn /= 8.0;
+                // The layer breaks at half the turn rate (`0x49650c`), the
+                // fighters at an eighth.
+                turn /= if self.lays { 2.0 } else { 8.0 };
                 away = true;
                 if distance > attack {
                     self.phase = 200;
@@ -251,6 +292,32 @@ impl Flyer {
                 };
                 self.closest = 2048.0;
                 self.phase = 2012;
+            }
+            // The layer's own phase: fly to where the player is about to be
+            // and leave a mine there (`0x49658f`).
+            2002 => {
+                target = std::array::from_fn(|k| player.position[k] + player.forward[k] * AHEAD);
+                let t = [
+                    wrapped(target[0] - self.position[0]),
+                    target[1] - self.position[1],
+                    wrapped(target[2] - self.position[2]),
+                ];
+                let to_target = dot(t, t).sqrt();
+                if self.closest > to_target {
+                    self.closest = to_target;
+                } else {
+                    // Stopped closing: drop it here and break away.
+                    self.closest = 2048.0;
+                    self.phase = 201;
+                    if player.alive && Laid::clear_of(self.position, player.position) {
+                        self.fly(def, target, false, speed, turn, dt, &ground);
+                        return Some(Launch::Mine {
+                            at: self.position,
+                            radius: retreat,
+                            damage: def.shot_damage as f32 / 65536.0,
+                        });
+                    }
+                }
             }
             2012 => {
                 target = self.break_point;

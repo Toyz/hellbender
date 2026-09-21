@@ -106,6 +106,9 @@ pub enum Aim {
 pub enum Launch {
     Shot(Shot),
     Missile(Missile),
+    /// A mine laid by a class 55 flyer (`0x49668b`), with the reach and the
+    /// damage its type gives it.
+    Mine { at: [f32; 3], radius: f32, damage: f32 },
 }
 
 impl Turret {

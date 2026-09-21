@@ -22,7 +22,14 @@ fn hornet() -> EnemyDef {
 }
 
 fn player_at(position: [f32; 3]) -> Target {
-    Target { position, right: [1.0, 0.0, 0.0], up: [0.0, 1.0, 0.0], forward: [0.0, 0.0, 1.0], speed: 0.0 }
+    Target {
+        position,
+        right: [1.0, 0.0, 0.0],
+        up: [0.0, 1.0, 0.0],
+        forward: [0.0, 0.0, 1.0],
+        speed: 0.0,
+        alive: true,
+    }
 }
 
 #[test]
@@ -78,3 +85,62 @@ fn it_breaks_away_when_the_player_is_on_its_tail() {
     assert!((flyer.break_point[1] - 36.0).abs() < 1e-3, "{:?}", flyer.break_point);
 }
 
+
+/// HOTH's `hmship5.bin`, the Mine Layer: class 55.
+fn layer() -> EnemyDef {
+    EnemyDef { fields: [55, 0, 5 << 16, 0, 0, 0], ..hornet() }
+}
+
+/// A mine layer flies to where the player is about to be and leaves one
+/// there, rather than shooting its way in.
+#[test]
+fn a_mine_layer_drops_one_in_front_of_the_player() {
+    let def = layer();
+    let place = Placement { kind: 0, hit_points: 65536, x: 0, y: 0, z: 60 << 16, heading: 0x8000, pitch: 0, roll: 0 };
+    let mut flyer = Flyer::layer(&place);
+    // The player is flying along +z, well clear, with the layer ahead of him
+    // and off his nose.
+    let player = player_at([6.0, 0.0, 0.0]);
+    let mut rng = Rng::new(7);
+    let ground = |_: f32, _: f32| -100.0;
+
+    let mut laid = None;
+    for _ in 0..600 {
+        if let Some(Launch::Mine { at, radius, damage }) =
+            flyer.step(&def, None, &player, 1.0 / 30.0, ground, &mut rng)
+        {
+            laid = Some((at, radius, damage));
+            break;
+        }
+    }
+    let Some((at, radius, damage)) = laid else {
+        panic!("no mine in twenty seconds, phase {}", flyer.phase);
+    };
+    // Its reach is the type's retreat range and its bite the type's shot
+    // damage.
+    assert_eq!(radius, 14.0);
+    assert!((damage - 4096.0 / 65536.0).abs() < 1e-6, "{damage}");
+    // And it went down clear of the player, not on top of him.
+    assert!(
+        hb_sim::mine::laid::Field::clear_of(at, player.position),
+        "laid at {at:?}, player at {:?}",
+        player.position
+    );
+}
+
+/// A plain fighter has no such phase, whatever the situation.
+#[test]
+fn a_fighter_lays_nothing() {
+    let def = hornet();
+    let place = Placement { kind: 0, hit_points: 65536, x: 0, y: 0, z: 60 << 16, heading: 0x8000, pitch: 0, roll: 0 };
+    let mut flyer = Flyer::new(&place);
+    let player = player_at([6.0, 0.0, 0.0]);
+    let mut rng = Rng::new(7);
+    for _ in 0..600 {
+        if let Some(Launch::Mine { .. }) =
+            flyer.step(&def, None, &player, 1.0 / 30.0, |_, _| -100.0, &mut rng)
+        {
+            panic!("a class 53 laid a mine");
+        }
+    }
+}
