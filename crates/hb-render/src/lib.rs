@@ -10,6 +10,7 @@
 pub mod camera;
 pub mod level;
 pub mod raster;
+pub mod hud;
 pub mod scene;
 
 pub use camera::Camera;

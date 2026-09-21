@@ -28,8 +28,9 @@ hb - inspect Hellbender's data
   hb ground <level> <out.png> [--authored]
                                     a level's ground, textured, from above;
                                     --authored ignores the orientation codes
-  hb fly <level> <out.png> [x z yaw height pitch] [--bare]
+  hb fly <level> <out.png> [x z yaw height pitch] [--bare] [--labels]
                                     one frame from in-level; --bare skips the cockpit
+                                    and the HUD, --labels names every readout
   hb bench <level> [mode]           frames a second drawing a turn in place
   hb look <level> <n> <out.png> [distance] [--powerup K] [--at S]
                                     placement n, framed from the south and above;
@@ -568,7 +569,9 @@ fn cmd_look(name: &str, index: &str, out: &Path, rest: &[&str]) -> Result<(), St
 
 fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
     let bare = rest.contains(&"--bare");
-    let rest: Vec<&str> = rest.iter().copied().filter(|a| *a != "--bare").collect();
+    let labels = rest.contains(&"--labels");
+    let rest: Vec<&str> =
+        rest.iter().copied().filter(|a| *a != "--bare" && *a != "--labels").collect();
     let rest = rest.as_slice();
     let game = open_pod("game")?;
     let startup = open_pod("startup")?;
@@ -612,6 +615,24 @@ fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
         .and_then(|b| raw::Image::parse_guessed(b).ok().flatten());
     if let (Some(art), false) = (cockpit, bare) {
         target.overlay(&art);
+    }
+    // The readout, so the layout can be looked at without a window. The
+    // numbers are a sample; what feeds them in flight is `hb-fly`.
+    if !bare {
+        if let Ok(exe) = std::fs::read(game_dir().join("HELLBEND.EXE")) {
+            if let Ok(font) = hb_formats::hud_font::HudFont::read(&exe) {
+                let readout = hb_render::hud::Readout {
+                    weapon: "VAL",
+                    ammo: None,
+                    objective: Some("TGT"),
+                    distance: Some(144),
+                    gauges: [0.7, 1.0, 0.35, 0.5, 0.85, 1.0],
+                    countdown: Some(57),
+                    labels,
+                };
+                hb_render::hud::draw(&mut target, &font, &readout);
+            }
+        }
     }
     let rgb = target.to_rgb(&level.palette);
     std::fs::write(out, png::rgb(w, h, &rgb)).map_err(|e| e.to_string())?;
