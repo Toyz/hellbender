@@ -1104,6 +1104,25 @@ fn main() -> Result<(), String> {
         }
         if show_hud {
             if let Some(font) = &hud_font {
+                // The radar, which the engine fills from every object that is
+                // alive and not hidden, turned so the nose points up
+                // (`0x437148`). Blips beyond the box are dropped by the draw.
+                let heading = flight.camera.yaw.0 as f32 * std::f32::consts::TAU / 65536.0;
+                let (sin, cos) = heading.sin_cos();
+                let blips: Vec<(f32, f32)> = live
+                    .iter()
+                    .enumerate()
+                    .filter(|&(i, _)| {
+                        !gone[i] && !battle.health[i].destroyed
+                            && battle.health[i].hit_points > 0.0
+                    })
+                    .map(|(_, p)| {
+                        let at = hb_sim::combat::position_of(p);
+                        let dx = hb_sim::combat::wrapped(at[0] - eye[0]);
+                        let dz = hb_sim::combat::wrapped(at[2] - eye[2]);
+                        (dx * cos - dz * sin, dx * sin + dz * cos)
+                    })
+                    .collect();
                 let weapon = battle.guns.selected;
                 let objective = demo.is_none().then(|| mission.label.clone());
                 let readout = hb_render::hud::Readout {
@@ -1124,6 +1143,7 @@ fn main() -> Result<(), String> {
                     ],
                     countdown: None,
                     labels: show_labels,
+                    blips: &blips,
                 };
                 hb_render::hud::draw(&mut target, font, &readout);
                 if let Some((text, _)) = &flash {

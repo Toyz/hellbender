@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-68 entries: audio 3, build 2, content 4, decomp 40, engine 26, format 29, port 55, render 23, test 3, tooling 4, ui 3, world 10.
+69 entries: audio 3, build 2, content 4, decomp 41, engine 26, format 29, port 56, render 23, test 3, tooling 4, ui 4, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -79,3 +79,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 66 | [Three sounds the port was missing](worklog/0066-three-sounds-the-port-was-missing.md) | 2026-09-20 | decomp, audio, port |
 | 67 | [The HUD has its own font, and it is in the executable](worklog/0067-the-hud-has-its-own-font-and-it-is-in-the-executable.md) | 2026-09-20 | decomp, format, ui, port |
 | 68 | [The whole HUD, read out of the image](worklog/0068-the-whole-hud-read-out-of-the-image.md) | 2026-09-20 | decomp, ui, port |
+| 69 | [The radar is a square over the dish](worklog/0069-the-radar-is-a-square-over-the-dish.md) | 2026-09-20 | decomp, ui, port |

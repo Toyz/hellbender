@@ -105,6 +105,30 @@ callout, which is what the second helper, `0x44eec0`, exists for; the rest
 run right from it (`0x44ee10`). The table's third value, 200, is never read -
 a label's width comes from its text.
 
+## The radar
+
+The dish in the top right of the cockpit art is a square the engine draws
+into: 507, 6, 101 by 101 in the same 640x480, built out of the view's size at
+`0x474a70`. With the cockpit off and the view zoomed the top moves to the
+view's own top instead.
+
+`0x437148` walks the object table once a frame and plots every object that is
+not the player, has hit points above zero and does not have bit 1 of its
+flags set. Each offset is wrapped at the world's edge - the `shl 6`, `sar 6`
+pair that appears everywhere - turned by the player's heading, and scaled:
+the offset is 16.16, shifted down 13, multiplied by the box's width and
+shifted down 11 again, which puts 256 world units across the box. So the
+radar reaches about 128 units, an eighth of the world.
+
+A blip is not a dot. `0x4749a0` draws a short string, six pixels right of the
+plotted point, from a field in the object's own record at `0x667128 + n *
+112`, which a loader at `0x448298` fills from a table of strings by index
+from 0x1393. That table has not been found: it is not in the executable's
+string resources.
+
+Everything is skipped while `0x512744` is clear, which is the flag the
+"Radar destroyed." message goes with.
+
 ## Drawing a string
 
 Two routines put text on the screen and they are not the same. `0x484ad0`
@@ -127,6 +151,14 @@ how the layout is checked without a window.
 
 ## Not read yet
 
-The radar in the top right of the cockpit art, the reticle in the middle of
-the view, and whatever else is drawn in the 3D pass rather than over it.
-Neither appears in the three routines above.
+What a blip says - the string table indexed from 0x1393 that `0x448298`
+reads - so the port draws a mark instead. And the reticle in the middle of
+the view, which is in none of these routines and may be drawn in the 3D pass:
+`keyCrosshair` toggles `0x512584`, which gates an index oscillating between
+32 and 63 into `0x5b3888`, and the rasteriser reads that everywhere.
+
+The objective arrow is close by and half read. `0x475290` takes the heading
+to the objective and draws a model - `0x6210c0` - into the same rect the
+radar uses, with the whole view as the rect instead when `0x474af0` set it.
+When the objective is behind, between 0x7800 and 0x8800, it plots a handful
+of pixels in index 138 instead of the model.

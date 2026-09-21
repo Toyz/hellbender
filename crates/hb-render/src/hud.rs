@@ -67,6 +67,18 @@ pub const INK: u8 = 0x2f;
 /// What a gauge's empty part is filled with (`0x44e59c`).
 pub const EMPTY: u8 = 1;
 
+/// The radar, which sits over the dish in the cockpit art: a square at
+/// 507, 6 in 640x480, 101 on a side (`0x474a70` builds it out of the view's
+/// size). With no cockpit and the view zoomed the top moves to the view's
+/// own top, which is not here.
+pub const RADAR: [isize; 4] = [507, 6, 101, 101];
+
+/// How much of the world the radar shows across its box. `0x4748d2` takes
+/// the offset in 16.16, shifts it down 13 and multiplies by the box's width
+/// before shifting down 11, which puts 256 world units across it - so it
+/// reaches about 128 units, an eighth of the world's 1024.
+pub const RADAR_ACROSS: f32 = 256.0;
+
 /// What a label's border is drawn in (`0x44ee8a`).
 pub const BORDER: u8 = 0x97;
 
@@ -124,6 +136,9 @@ pub struct Readout<'a> {
     pub countdown: Option<i32>,
     /// Whether the cockpit labels are up (`keyCockpitLabel`).
     pub labels: bool,
+    /// What the radar has, as offsets from the player in world units, right
+    /// and forward. Empty while the radar is destroyed (`0x512744`).
+    pub blips: &'a [(f32, f32)],
 }
 
 pub fn fill(
@@ -222,6 +237,28 @@ pub fn legend(target: &mut Target, font: &HudFont) {
     }
 }
 
+/// The radar's blips. Each is an offset from the player in world units,
+/// already turned so that `forward` is where the nose points; the engine
+/// wraps the offset at the world's edge and turns it by the heading at
+/// `0x474845`. It draws a short string per object, from a field filled at
+/// load, and the port has no such field, so it draws a mark.
+pub fn radar(target: &mut Target, blips: &[(f32, f32)], colour: u8) {
+    let (w, h) = (target.width, target.height);
+    let [rx, ry, rw, rh] = RADAR;
+    let (x0, y0) = (rx * w as isize / 640, ry * h as isize / 480);
+    let (bw, bh) = (rw * w as isize / 640, rh * h as isize / 480);
+    for &(right, forward) in blips {
+        let x = x0 + bw / 2 + (right * bw as f32 / RADAR_ACROSS) as isize;
+        let y = y0 + bh / 2 - (forward * bh as f32 / RADAR_ACROSS) as isize;
+        // The engine clips a blip to the box and then to three pixels inside
+        // the view (`0x474953` on).
+        if x < x0 || x >= x0 + bw || y < y0 || y >= y0 + bh {
+            continue;
+        }
+        fill(&mut target.colour, w, h, x, y, 2, 2, colour);
+    }
+}
+
 /// The whole readout.
 pub fn draw(target: &mut Target, font: &HudFont, readout: &Readout) {
     line(target, font, WEAPON, &format!("Weapon: {}", readout.weapon));
@@ -241,6 +278,9 @@ pub fn draw(target: &mut Target, font: &HudFont, readout: &Readout) {
     }
     if let Some(seconds) = readout.countdown.filter(|&s| s != 0) {
         countdown(target, font, seconds);
+    }
+    if !readout.blips.is_empty() {
+        radar(target, readout.blips, INK);
     }
     if readout.labels {
         legend(target, font);

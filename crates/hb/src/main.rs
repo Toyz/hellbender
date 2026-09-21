@@ -621,6 +621,21 @@ fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
     if !bare {
         if let Ok(exe) = std::fs::read(game_dir().join("HELLBEND.EXE")) {
             if let Ok(font) = hb_formats::hud_font::HudFont::read(&exe) {
+                // Every placement, as the radar would see it from here.
+                let heading = camera.yaw.0 as f32 * std::f32::consts::TAU / 65536.0;
+                let (sin, cos) = heading.sin_cos();
+                let blips: Vec<(f32, f32)> = level
+                    .placements
+                    .iter()
+                    .map(|p| {
+                        // The world wraps at 1024 units, which is what the
+                        // engine's shl 6 / sar 6 does to the offset.
+                        let wrap = |d: f32| d - (d / 1024.0).round() * 1024.0;
+                        let dx = wrap((p.x - x) as f32 / 65536.0);
+                        let dz = wrap((p.z - z) as f32 / 65536.0);
+                        (dx * cos - dz * sin, dx * sin + dz * cos)
+                    })
+                    .collect();
                 let readout = hb_render::hud::Readout {
                     weapon: "VAL",
                     ammo: None,
@@ -629,6 +644,7 @@ fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
                     gauges: [0.7, 1.0, 0.35, 0.5, 0.85, 1.0],
                     countdown: Some(57),
                     labels,
+                    blips: &blips,
                 };
                 hb_render::hud::draw(&mut target, &font, &readout);
             }
