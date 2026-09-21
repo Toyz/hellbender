@@ -30,12 +30,13 @@ pub const GUNS: [i64; 5] = [1, 3, 10, 14, 35];
 
 /// Something the frame wants played.
 pub enum Noise {
-    /// A placement of this type was destroyed.
-    Destroyed(usize),
+    /// A placement of this type was destroyed, and where it was.
+    Destroyed(usize, [f32; 3]),
     /// The player was hit: one of `exp1.wav`-`exp5.wav`, as `0x476ef0` picks.
     PlayerHit(usize),
-    /// An enemy shot of this weapon kind came within 16 units, closing.
-    NearMiss(i32),
+    /// An enemy shot of this weapon kind came within 16 units, closing, and
+    /// where the shot was when it did.
+    NearMiss(i32, [f32; 3]),
     /// The player was killed.
     Died,
 }
@@ -293,7 +294,7 @@ impl Battle {
                 let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
                 if distance < 16.0 && distance < flying.last_distance {
                     flying.whizzed = true;
-                    noises.push(Noise::NearMiss(shot.kind));
+                    noises.push(Noise::NearMiss(shot.kind, shot.position));
                 }
                 flying.last_distance = distance;
             }
@@ -422,7 +423,7 @@ impl Battle {
                     self.field.place(at, k, size, ground(at[0], at[2]));
                 }
                 live[i].kind = level.wreck_mesh[original].unwrap_or(usize::MAX);
-                noises.push(Noise::Destroyed(original));
+                noises.push(Noise::Destroyed(original, at));
             }
         }
 

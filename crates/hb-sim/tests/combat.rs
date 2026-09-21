@@ -249,3 +249,21 @@ fn a_blast_catches_everything_in_its_cube() {
     let far = [at(0.0, 0.0, 511.0)];
     assert_eq!(hb_sim::combat::splash([0.0, 0.0, -511.0], 32.0, &far, |_| true), vec![0]);
 }
+
+/// Something on top of you is at full volume and something at the edge of
+/// what the engine bothers with is silent.
+#[test]
+fn a_sound_falls_away_with_distance() {
+    use hb_sim::combat::falloff;
+    let eye = [0.0, 0.0, 0.0];
+    assert_eq!(falloff(eye, eye), 1.0);
+    assert_eq!(falloff(eye, [80.0, 0.0, 0.0]), 0.0, "the edge of in_range");
+    assert_eq!(falloff(eye, [500.0, 0.0, 0.0]), 0.0, "and beyond it");
+    // Halfway out is a quarter as loud, not half: the fall is squared.
+    let half = falloff(eye, [40.0, 0.0, 0.0]);
+    assert!((half - 0.25).abs() < 1e-5, "{half}");
+    // It wraps at the world's edge like everything else, so something just
+    // over the seam is close, not 1,000 units away.
+    let seam = falloff([510.0, 0.0, 0.0], [-510.0, 0.0, 0.0]);
+    assert!(seam > 0.9, "{seam}");
+}

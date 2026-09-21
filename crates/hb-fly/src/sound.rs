@@ -14,6 +14,9 @@ pub struct Music {
     voices: Arc<Mutex<Voices>>,
     _stream: cpal::Stream,
     pub rate: u32,
+    /// `musicVolume` from the `.INI`, kept so a module started later gets it
+    /// too.
+    music_volume: f32,
 }
 
 impl Music {
@@ -63,12 +66,28 @@ impl Music {
             )
             .map_err(|e| format!("could not open the output stream: {e}"))?;
         stream.play().map_err(|e| format!("could not start audio: {e}"))?;
-        Ok(Music { mixer, voices, _stream: stream, rate })
+        Ok(Music { mixer, voices, _stream: stream, rate, music_volume: 1.0 })
     }
 
     pub fn play(&self, module: Module) {
         if let Ok(mut guard) = self.mixer.lock() {
-            *guard = Some(Mixer::new(module, self.rate));
+            let mut mixer = Mixer::new(module, self.rate);
+            mixer.set_volume(self.music_volume);
+            *guard = Some(mixer);
+        }
+    }
+
+    /// The engine's two volumes: `musicVolume` and `soundVolume` out of the
+    /// `.INI`, both 1.0 by default.
+    pub fn set_volumes(&mut self, music: f32, effects: f32) {
+        self.music_volume = music;
+        if let Ok(mut guard) = self.mixer.lock() {
+            if let Some(mixer) = guard.as_mut() {
+                mixer.set_volume(music);
+            }
+        }
+        if let Ok(mut voices) = self.voices.lock() {
+            voices.set_master(effects);
         }
     }
 

@@ -47,6 +47,8 @@ pub struct Mixer {
     /// Samples still to generate before the next tick.
     until_tick: f32,
     pub finished: bool,
+    /// The engine's `musicVolume` (`0x5125bc`, 16.16, 1.0 by default).
+    volume: f32,
     /// Effects seen in this module that the mixer ignores.
     pub unimplemented_effects: Vec<u8>,
 }
@@ -78,6 +80,7 @@ impl Mixer {
             tempo: DEFAULT_TEMPO,
             until_tick: 0.0,
             finished: false,
+            volume: 1.0,
             unimplemented_effects: Vec::new(),
         }
     }
@@ -96,6 +99,11 @@ impl Mixer {
     }
 
     /// Fill a stereo buffer. Returns the number of frames written.
+    /// `musicVolume`, 0 to 1. Anything outside that is clamped.
+    pub fn set_volume(&mut self, volume: f32) {
+        self.volume = volume.clamp(0.0, 1.0);
+    }
+
     pub fn render(&mut self, out: &mut [i16]) -> usize {
         let frames = out.len() / 2;
         for frame in 0..frames {
@@ -144,8 +152,9 @@ impl Mixer {
             }
             // Each channel contributes at most 127 * 64; scale so a full mix
             // of three channels a side does not clip.
-            out[frame * 2] = (left / 12).clamp(-32768, 32767) as i16;
-            out[frame * 2 + 1] = (right / 12).clamp(-32768, 32767) as i16;
+            let scale = |v: i32| ((v / 12) as f32 * self.volume).clamp(-32768.0, 32767.0) as i16;
+            out[frame * 2] = scale(left);
+            out[frame * 2 + 1] = scale(right);
         }
         frames
     }

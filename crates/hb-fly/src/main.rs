@@ -376,8 +376,23 @@ fn main() -> Result<(), String> {
 
     // The level's music, if a device will take it.
     let music = match sound::Music::open() {
-        Ok(music) => {
-            println!("audio: {} Hz", music.rate);
+        Ok(mut music) => {
+            // The engine's two volumes, 16.16 in the `.INI` and 1.0 by
+            // default. HB_VOLUME scales both on top, for a machine where
+            // 1.0 is too much.
+            let ini = hb_formats::ini::Ini::read(&game_dir().join("system").join("hellbend.ini"))
+                .unwrap_or_default();
+            let setting = |name: &str| {
+                ini.int("Sound", name).map_or(1.0, |v| v as f32 / 65536.0).clamp(0.0, 1.0)
+            };
+            let extra: f32 = std::env::var("HB_VOLUME")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(1.0f32)
+                .clamp(0.0, 1.0);
+            let (m, e) = (setting("musicVolume") * extra, setting("soundVolume") * extra);
+            music.set_volumes(m, e);
+            println!("audio: {} Hz, music {m:.2}, effects {e:.2}", music.rate);
             Some(music)
         }
         Err(why) => {
@@ -526,7 +541,14 @@ fn main() -> Result<(), String> {
         }
         for played in std::mem::take(&mut doors.sounds) {
             if let (Some(music), Some(s)) = (music.as_ref(), sound(&played.name.to_ascii_lowercase())) {
-                music.effect(&s, 0.6);
+                // A door at the far end of the level is a door you can hardly
+                // hear.
+                let at = [
+                    (played.cell.0 * 8) as f32 - 512.0,
+                    0.0,
+                    (played.cell.1 * 8) as f32 - 512.0,
+                ];
+                music.effect(&s, 0.6 * hb_sim::combat::falloff(eye_of(&flight.camera), at));
             }
         }
 
@@ -816,7 +838,7 @@ fn main() -> Result<(), String> {
 
         for noise in noises {
             let (name, volume) = match noise {
-                battle::Noise::Destroyed(kind) => {
+                battle::Noise::Destroyed(kind, at) => {
                     if level.kinds[kind].friendly {
                         mission.friendly_lost();
                         if level.kinds[kind].class() == 50 {
@@ -828,12 +850,15 @@ fn main() -> Result<(), String> {
                         .and_then(|b| hb_audio::Wav::parse(b).ok())
                         .map(std::sync::Arc::new);
                     if let (Some(music), Some(s)) = (music.as_ref(), own.or_else(|| sound("blast4.wav"))) {
-                        music.effect(&s, 0.8);
+                        music.effect(&s, 0.8 * hb_sim::combat::falloff(eye, at));
                     }
                     continue;
                 }
                 battle::Noise::PlayerHit(n) => (format!("exp{}.wav", n + 1), 0.8),
-                battle::Noise::NearMiss(kind) => (hb_sim::combat::near_miss_sound(kind).to_string(), 0.6),
+                battle::Noise::NearMiss(kind, at) => (
+                    hb_sim::combat::near_miss_sound(kind).to_string(),
+                    0.6 * hb_sim::combat::falloff(eye, at),
+                ),
                 battle::Noise::Died => {
                     println!("shot down ({} so far) - back to the start", battle.deaths);
                     ("blast7.wav".to_string(), 1.0)

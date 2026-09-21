@@ -492,3 +492,21 @@ pub fn near_miss_sound(kind: i32) -> &'static str {
 pub fn in_range(eye: [f32; 3], at: [f32; 3]) -> bool {
     wrapped(at[0] - eye[0]).abs() <= 80.0 && wrapped(at[2] - eye[2]).abs() <= 80.0
 }
+
+/// How loud something at `at` should be, 1.0 on top of you and 0.0 at the
+/// edge of the world the engine bothers with.
+///
+/// **The port's own.** The engine hands the sound driver a position
+/// (`0x41f0b0` takes one, `-1, -1, -1` meaning "no place") and the driver
+/// turns it into a volume; that driver has not been read. What is measured is
+/// the 80 units of [`in_range`], outside which an actor does not even think,
+/// so that is where this reaches zero. Without it every explosion in the
+/// level arrives at full volume, which is its own invention and a louder one.
+pub fn falloff(eye: [f32; 3], at: [f32; 3]) -> f32 {
+    let d = [wrapped(at[0] - eye[0]), at[1] - eye[1], wrapped(at[2] - eye[2])];
+    let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+    // Flat up close, then falling away - squared, so it is quiet well before
+    // the edge rather than only at it.
+    let near = 1.0 - (distance / 80.0).clamp(0.0, 1.0);
+    near * near
+}

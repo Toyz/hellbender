@@ -183,6 +183,22 @@ with `WaveBlocks`, `WaveBlockLen`, `SamplesPerSec`, `Remix` and `GoodWavePos`.
 Music is either a ProTracker module or a CD audio track; see
 [audio](../formats/audio-video.md).
 
+`[Sound]` of `HELLBEND.INI` carries `musicFlag`, `soundFlag`,
+`advancedSoundOptions`, `preferredSoundDevice` and the two volumes,
+`musicVolume` and `soundVolume` (`0x5125bc` and `0x5125c0`), which are 16.16
+and 1.0 by default.
+
+There are 32 voice slots at `0x655240`, 96 bytes each. A voice carries its
+volume at `+0x14`, a left and a right at `+0x30` and `+0x34` - both started at
+half the volume - the loop flag at `+0x1c`, and a position the allocator
+(`0x41f0b0`) is handed by pointer, with `-1, -1, -1` meaning "no place". Every
+volume is multiplied by `soundVolume` as it is set (`0x41f34f`). `0x452dac`
+walks all 32 and halves the volume, both sides and two more fields of each
+when one particular voice is sounding, which is a duck of some kind.
+
+What the driver does with a voice's position - attenuation, panning, or both -
+is still not read.
+
 ### Multiplayer
 
 DirectPlay, over IPX, TCP/IP or serial - `system/DPSERIAL.DLL`,
