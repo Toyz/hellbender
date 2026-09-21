@@ -17,6 +17,13 @@ use hb_sim::turret::{Aim, Launch, Missile, Rng, Struck, Turret};
 /// they borrow it.
 pub const FLYING: [i64; 5] = [7, 53, 56, 59, 60];
 
+/// What a shot leaves where it hits the world, in units: `0x476e14` passes
+/// 60,000 in 16.16 to the explosion.
+pub const SHOT_BURST: f32 = 60_000.0 / 65_536.0;
+
+/// And a missile, which is bigger: `0x478b07` passes 4.0.
+pub const MISSILE_BURST: f32 = 4.0;
+
 /// The classes that aim and shoot: the turret and the four guns that differ
 /// from it only in the aim.
 pub const GUNS: [i64; 5] = [1, 3, 10, 14, 35];
@@ -237,6 +244,11 @@ impl Battle {
         let mut player_damage = 0.0f32;
         self.ground_hits.clear();
         let mut ground_hits: Vec<[f32; 3]> = Vec::new();
+        // What a shot or a missile leaves where it meets the world: the
+        // engine explodes at the point of impact before it tells the quake
+        // code about it - 0.9155 units for a shot (`0x476e14`) and 4.0 for a
+        // missile (`0x478b07`).
+        let mut bursts: Vec<([f32; 3], f32)> = Vec::new();
         for flying in &mut self.shots {
             let shot = &mut flying.shot;
             let stop = combat::step_shot(
@@ -251,8 +263,11 @@ impl Battle {
             match stop {
                 Some(Stop::Object(i)) => hits.push((i, shot.damage, shot.kind)),
                 Some(Stop::Player) if self.pilot.alive() => player_damage += shot.damage,
-                Some(Stop::Ground) if shot.side == Side::Player => {
-                    ground_hits.push(shot.position)
+                Some(Stop::Ground) => {
+                    bursts.push((shot.position, SHOT_BURST));
+                    if shot.side == Side::Player {
+                        ground_hits.push(shot.position);
+                    }
                 }
                 _ => {}
             }
@@ -289,7 +304,10 @@ impl Battle {
                         player_damage += m.damage;
                         m.age = f32::MAX;
                     }
-                    Some(false) => m.age = f32::MAX,
+                    Some(false) => {
+                        bursts.push((m.position, MISSILE_BURST));
+                        m.age = f32::MAX;
+                    }
                     None => {}
                 },
                 // A MIRV breaks up a second in, into ten of its own and a
@@ -332,6 +350,7 @@ impl Battle {
                             m.age = f32::MAX;
                         }
                         Some(Struck::Ground) => {
+                            bursts.push((m.position, MISSILE_BURST));
                             ground_hits.push(m.position);
                             m.age = f32::MAX;
                         }
@@ -342,6 +361,9 @@ impl Battle {
             }
         }
         self.ground_hits = ground_hits;
+        for (at, size) in bursts {
+            self.blasts.burst(at, size, &mut self.rng);
+        }
         for (at, damage, kind) in scorched {
             for i in combat::splash(at, hb_sim::turret::SUPER_REACH, live, |i| !self.health[i].destroyed) {
                 hits.push((i, damage, kind));

@@ -645,9 +645,22 @@ fn main() -> Result<(), String> {
         }
 
         let grid = hb_world::Grid::new(&level.terrain);
+        // What stops a shot. Above ground that is the top of whatever is
+        // solid; inside a tunnel it is the chamber's own floor and ceiling,
+        // because the ground overhead is not what a shot fired down there
+        // meets first.
         let solid = |p: [f32; 3]| {
             let (x, z) = ((p[0] * 65536.0) as i32, (p[2] * 65536.0) as i32);
-            (p[1] * 65536.0) as i32 <= grid.ceiling_of_solid(x, z)
+            let y = (p[1] * 65536.0) as i32;
+            let cell = hb_world::Cell::containing(x, z);
+            if p[1] < 0.0 && grid.has_chamber(cell) {
+                let layer = hb_formats::terrain::Layer::ChamberFloor;
+                let floor = grid.height_at(layer, x, z).unwrap_or(i32::MIN);
+                let layer = hb_formats::terrain::Layer::ChamberCeiling;
+                let roof = grid.height_at(layer, x, z).unwrap_or(i32::MAX);
+                return y <= floor || y >= roof;
+            }
+            y <= grid.ceiling_of_solid(x, z)
         };
         // In a demo the recorded flight cannot dodge, so nothing shoots back.
         let ground = |x: f32, z: f32| grid.ceiling_of_solid((x * 65536.0) as i32, (z * 65536.0) as i32) as f32 / 65536.0;
