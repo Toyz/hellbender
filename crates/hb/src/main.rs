@@ -38,6 +38,7 @@ hb - inspect Hellbender's data
                                     --at sets the clock for flipbook textures,
                                     --blast draws explosion frame N there
   hb font <out.png> [text]          a specimen of the front end's typeface
+  hb brief <level> <out.png>        a level's mission briefing, as a PNG
   hb hudfont <out.png> [text]       a specimen of the HUD's font, from the EXE
   hb demo <n> <seconds> <out.png>   a frame of a recorded attract-mode flight
   hb check                          parse everything and report what fails
@@ -102,6 +103,7 @@ fn run(args: &[&str]) -> Result<(), String> {
         ["look", name, index, out, rest @ ..] => cmd_look(name, index, Path::new(out), rest),
         ["bench", name, rest @ ..] => cmd_bench(name, rest),
         ["font", out, rest @ ..] => cmd_font(Path::new(out), rest),
+        ["brief", name, out] => cmd_brief(name, Path::new(out)),
         ["hudfont", out, rest @ ..] => cmd_hud_font(Path::new(out), rest),
         ["demo", n, at, out] => cmd_demo(n, at, Path::new(out)),
         ["check"] => cmd_check(),
@@ -750,6 +752,67 @@ fn cmd_font(out: &Path, rest: &[&str]) -> Result<(), String> {
         HEIGHT,
         font.widths.iter().min().unwrap(),
         font.widths.iter().max().unwrap(),
+        out.display()
+    );
+    Ok(())
+}
+
+/// The mission briefing: the screen every level draws it on, with its prose
+/// over it.
+fn cmd_brief(name: &str, out: &Path) -> Result<(), String> {
+    use hb_formats::brief::{Brief, BACKDROP};
+    use hb_formats::hud_font::{HudFont, LINE};
+    let game = open_pod("game")?;
+    let startup = open_pod("startup")?;
+    let file = format!("{name}.txt");
+    let brief = Brief::parse(game.read("data", &file).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+
+    // Every briefing is drawn on the same screen; the name in the file is
+    // the texture the globe wears, not the background.
+    let art = startup.read("art", BACKDROP).map_err(|e| format!("{BACKDROP}: {e}"))?;
+    let image = raw::Image::parse_guessed(art)
+        .map_err(|e| e.to_string())?
+        .ok_or("brief.raw is not a .RAW this port knows")?;
+    let palette =
+        act::Palette::parse(startup.read("art", "brief.act").map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+
+    // `FONT.BIN` is 23 pixels a line and a briefing runs to seventeen
+    // lines, which does not fit a 200-line screen, so this is in the small
+    // font. Which font the engine uses here is not read.
+    let exe = std::fs::read(game_dir().join("HELLBEND.EXE"))
+        .map_err(|e| format!("HELLBEND.EXE: {e}"))?;
+    let font = HudFont::read(&exe).map_err(|e| e.to_string())?;
+
+    let (w, h) = (image.shape.width, image.shape.height);
+    let mut pixels = image.pixels.clone();
+    // The prose inside the frame the screen draws. Where the engine puts it
+    // is not read; this is inside the panel.
+    let ink = (0..=255u8)
+        .max_by_key(|&i| palette.rgb(i).iter().map(|&c| c as u32).sum::<u32>())
+        .unwrap_or(255);
+    let top = (h - brief.lines.len() * LINE) / 2;
+    for (i, line) in brief.lines.iter().enumerate() {
+        let y = top + i * LINE;
+        if y + LINE >= h {
+            break;
+        }
+        font.draw(&mut pixels, w, h, 40, y as isize, line, ink);
+    }
+    let mut rgb = Vec::with_capacity(pixels.len() * 3);
+    for &i in &pixels {
+        rgb.extend_from_slice(&palette.rgb(i));
+    }
+    std::fs::write(out, png::rgb(w, h, &rgb)).map_err(|e| e.to_string())?;
+    let (planet, mission) = brief.headline();
+    println!(
+        "{file}: {} wearing {}, {} lines - {} / {} -> {}",
+        brief.model,
+        brief.texture,
+        brief.lines.len(),
+        planet.unwrap_or("?"),
+        mission.unwrap_or("?"),
         out.display()
     );
     Ok(())

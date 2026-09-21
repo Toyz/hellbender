@@ -270,16 +270,29 @@ After reading, the loader:
 ## .TXT under DATA\ - the mission briefing
 
 Not a model and not a placement list. The first two lines name a model and a
-backdrop image, then free prose terminated by a line holding a single `.`:
+picture, then free prose terminated by a line holding a single `.`:
 
 ```
-Globe.Bin                     a model
-Morbos00.Raw                  a backdrop
+Globe.Bin                     the model the screen turns - always the globe
+Morbos00.Raw                  the texture it wears: the planet's surface
 PLANET: <name>                the briefing's own text follows, as many
 MISSION: <name>               lines as it likes
 ...
 .                             a line holding one dot ends it
 ```
+
+The second name is **not** the backdrop. Every briefing is drawn on
+`ART\BRIEF.RAW` in `ART\BRIEF.ACT`, which the engine opens by name
+(`0x50c594`, with `Unable to open brief.raw` when it cannot) and no briefing
+mentions. `Morbos00.Raw` is 64x64 - a texture, which the globe wears, so the
+planet you are about to fly to turns on the screen while you read about it.
+
+**There are eight of them**, one for the first level of each
+[chapter](lvl.md#the-campaign) - `morbos`, `float`, `iowah`, `kreash`,
+`jurasic`, `roid`, `hoth`, `ship`. The other fifteen levels carry on from the
+one before and have none. Every one names `globe.bin` and a `PLANET:` and
+`MISSION:` line; the missions are *Counterstrike*, *Savior*, *Protector*,
+*Pin Point*, *Steel Forge*, *Heavy Metal*, *Freedom* and *Dagger's Heart*.
 
 `MODELS\*.TXT` is a completely different thing - an animated model - and shares
 only the extension.

@@ -1640,3 +1640,41 @@ fn the_campaign_names_levels_that_exist_and_starts_on_morbos() {
     assert_eq!(after("morbos"), "morbos2");
     assert_eq!(after("not a level"), FIRST);
 }
+
+/// Every briefing in the archive parses, names the same model, and says
+/// which mission it is.
+#[test]
+fn the_briefings_name_a_globe_and_a_mission() {
+    use hb_formats::brief::Brief;
+    use hb_formats::campaign::CAMPAIGN;
+    let pod = archive!("GAME.POD");
+    let (mut found, mut missing) = (0, Vec::new());
+    for m in CAMPAIGN {
+        let file = format!("{}.txt", m.stem);
+        let Some(entry) = pod.find("data", &file) else {
+            missing.push(m.stem);
+            continue;
+        };
+        let brief = Brief::parse(pod.bytes(&entry)).expect(&file);
+        assert!(
+            brief.model.eq_ignore_ascii_case("globe.bin"),
+            "{file} turns {} rather than the globe",
+            brief.model
+        );
+        assert!(
+            brief.texture.to_ascii_lowercase().ends_with(".raw"),
+            "{file}: {} is not a picture",
+            brief.texture
+        );
+        assert!(!brief.lines.is_empty(), "{file} says nothing");
+        let (_, mission) = brief.headline();
+        assert!(mission.is_some(), "{file} names no mission");
+        found += 1;
+    }
+    // And the ones with none are exactly the levels that are not the first
+    // of their chapter, which is the chapter structure said twice over.
+    let later: Vec<&str> =
+        CAMPAIGN.iter().filter(|m| m.mission != 1).map(|m| m.stem).collect();
+    assert_eq!(missing, later);
+    assert_eq!(found, 8, "one briefing a chapter");
+}
