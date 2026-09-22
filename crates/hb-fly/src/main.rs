@@ -134,6 +134,28 @@ impl Flight {
         self.sync_camera();
     }
 
+    /// One frame of the jump-out: nose up, full throttle, no auto-level and
+    /// no collision - the ship is leaving.
+    fn jump_out(&mut self, dt: f32) {
+        self.ship.auto_level = false;
+        self.ship.throttle = 1.0;
+        // `angles` gives the circle unsigned; the nose comes up to -0x3f00.
+        let pitch = {
+            let p = self.ship.angles()[0] / 65536.0;
+            if p > 0.5 { p - 1.0 } else { p }
+        };
+        if pitch > -jump::PITCH {
+            let by = (jump::SPIN * dt).min(pitch + jump::PITCH);
+            self.ship.pitch_by(-by);
+        }
+        self.was = self.ship.position;
+        self.ship.step(&hb_sim::flight::Controls::default(), dt);
+        let wrap = |v: f32| (v + 512.0).rem_euclid(1024.0) - 512.0;
+        self.ship.position[0] = wrap(self.ship.position[0]);
+        self.ship.position[2] = wrap(self.ship.position[2]);
+        self.sync_camera();
+    }
+
     fn sync_camera(&mut self) {
         let [x, y, z] = self.ship.position;
         let fixed = |v: f32| (v * 65536.0) as i32;
@@ -601,6 +623,9 @@ fn main() -> Result<(), String> {
     // which is the movie's size, not the game's.
     let mut show: Option<movie::Show> = None;
     let mut reel: Vec<u32> = Vec::new();
+    // The jump-out: how long it has been running, and whether its one sound
+    // has gone off. See `jump_out`.
+    let mut jumping: Option<(f32, bool)> = None;
 
     // A line the mission flashes on the HUD, and for how much longer.
     let mut flash: Option<(String, f32)> = None;
@@ -741,9 +766,23 @@ fn main() -> Result<(), String> {
                         hb_sim::mission::Outcome::Complete => "complete",
                         hb_sim::mission::Outcome::Failed => "failed",
                     });
+                    if outcome == hb_sim::mission::Outcome::Jumped {
+                        jumping = Some((0.0, false));
+                    }
                 }
                 ended += dt;
-                (ended > 3.0).then_some(outcome != hb_sim::mission::Outcome::Failed)
+                // A jump zone is flown out of; anything else just ends.
+                let over = match jumping {
+                    Some((clock, _)) => {
+                        clock > jump::SECONDS
+                            || window.get_keys_pressed(minifb::KeyRepeat::No).iter().any(|k| *k != quit)
+                    }
+                    None => ended > 3.0,
+                };
+                if over {
+                    jumping = None;
+                }
+                over.then_some(outcome != hb_sim::mission::Outcome::Failed)
             }
             _ => None,
         };
@@ -845,10 +884,24 @@ fn main() -> Result<(), String> {
                     flight.camera.yaw = Angle(pose.angles[2] as u16);
                 }
             }
-            None => {
-                flight.step(&window, &binds, joystick.as_ref(), dt, battle.stores.fuel > 0.0);
-                flight.settle(&hb_world::Grid::new(&level.terrain), &scenery);
-            }
+            None => match jumping.as_mut() {
+                // Flying out takes the controls away: the ship stands on its
+                // tail at full throttle and the camera swings twice round it.
+                Some((clock, sounded)) => {
+                    *clock += dt;
+                    flight.jump_out(dt);
+                    if !*sounded && *clock >= jump::SOUND {
+                        *sounded = true;
+                        if let (Some(music), Some(s)) = (music.as_ref(), sound(jump::BLAST)) {
+                            music.effect(&s, 1.0);
+                        }
+                    }
+                }
+                None => {
+                    flight.step(&window, &binds, joystick.as_ref(), dt, battle.stores.fuel > 0.0);
+                    flight.settle(&hb_world::Grid::new(&level.terrain), &scenery);
+                }
+            },
         }
         target.clear(0);
         let eye = eye_of(&flight.camera);
@@ -1382,7 +1435,11 @@ fn main() -> Result<(), String> {
         // quarter `keyChangeViews` has left it on.
         let seen = {
             let mut c = flight.camera;
-            c.yaw = Angle(c.yaw.0.wrapping_add(hb_render::cockpit::VIEWS[view].0));
+            let mut turn = hb_render::cockpit::VIEWS[view].0;
+            if let Some((clock, _)) = jumping {
+                turn = turn.wrapping_add((clock * jump::SPIN * 65536.0) as i32 as u16);
+            }
+            c.yaw = Angle(c.yaw.0.wrapping_add(turn));
             c
         };
         hb_render::draw_world(&mut target, &scene, &seen);
@@ -1713,6 +1770,27 @@ fn begin(
         battle,
         ShotColours::for_palette(&level.palette),
     )
+}
+
+/// Flying out of a jump zone, which is what ends a level (`0x45a2a0`).
+///
+/// The engine takes the controls away and runs a loop of its own: the ship's
+/// roll goes to zero, its pitch climbs a quarter of a turn a second until it
+/// is standing on its tail, the throttle is held at full, and the camera
+/// swings round the ship a quarter of a turn a second - twice, which is what
+/// its clock reaching `0x20000` means. `blast4.wav` goes off seven eighths of
+/// the way through, and any of three keys cuts it short.
+mod jump {
+    /// How long it runs: the engine's clock gains a quarter of the frame time
+    /// each frame and ends past 2.0.
+    pub const SECONDS: f32 = 8.0;
+    /// When `blast4.wav` plays: the clock past `0x1c000`.
+    pub const SOUND: f32 = 7.0;
+    /// Turns a second, for both the ship's pitch and the camera's swing.
+    pub const SPIN: f32 = 0.25;
+    /// How far the nose comes up: `0xffffc100` of the circle.
+    pub const PITCH: f32 = 0x3f00 as f32 / 65536.0;
+    pub const BLAST: &str = "blast4.wav";
 }
 
 /// The level's doors and moving ground, with every cell's altitude as the

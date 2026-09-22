@@ -56,18 +56,9 @@ holds the player out of the controls while it runs:
 - three keyboard bytes checked each frame, any of them ending it early
 - and it ends when its own clock passes `0x20000`
 
-Whether that is the entry or the exit I have not established. Against its being
-the entry: it starts from whatever attitude the ship is already in rather than
-setting one, which is what levelling a player's ship before an exit looks like,
-and `blast4.wav` is an explosion. For it: the throttle. The engine's throttle
-is 0 in the image's `.data` and nothing in the level start sets it, so a level
-that opened without this routine would open with the ship stopped in the air -
-and this routine is the only thing that puts it at full.
+It is the exit, and [[105]] says how that was settled.
 
-It is reached from the command table at `0x503c68` rather than from the level
-sequence directly, which is the thread to pull next.
-
-**Still unknown:** which command dispatches `0x45a2a0`, and so whether it is
-the way in or the way out. What the second angle at `0x51255c` is - it is not
-the ship's, and it rises and falls where the ship's pitch only falls, which is
-the shape of a camera swinging and coming back.
+**Still unknown:** whether anything animates the way *in*. The spawn is a
+placement and nothing around it moves a camera, so on this reading a level
+simply begins - with, for four of them, an arrival movie in front of it
+([[101]]).

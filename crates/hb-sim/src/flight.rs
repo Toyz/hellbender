@@ -136,6 +136,18 @@ impl Ship {
         [circle(pitch), circle(roll), circle(heading)]
     }
 
+    /// Turn the ship about its own right axis, in turns. Positive is nose
+    /// down, as everywhere else here.
+    ///
+    /// The jump-out at `0x45a2a0` drives the ship's pitch itself rather than
+    /// through the controls, and this is what it needs.
+    pub fn pitch_by(&mut self, turns: f32) {
+        let (sp, cp) = (turns * std::f32::consts::TAU).sin_cos();
+        let (f, u) = (self.forward, self.up);
+        self.forward = normalise(add(scale(f, cp), u, -sp));
+        self.up = normalise(add(scale(u, cp), f, sp));
+    }
+
     /// Forward speed, units a second.
     pub fn speed(&self) -> f32 {
         self.velocity[2]
