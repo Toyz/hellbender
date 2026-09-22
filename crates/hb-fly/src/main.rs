@@ -637,6 +637,9 @@ fn main() -> Result<(), String> {
     let mut jumping: Option<(f32, bool)> = None;
     // And flying in, which is the port's own - see `entry`.
     let mut welcomed = false;
+    // The opening camera: how far it still has to fall, and where it has spun
+    // to. `None` once it has landed.
+    let mut arriving: Option<(f32, f32)> = None;
 
     // A line the mission flashes on the HUD, and for how much longer.
     let mut flash: Option<(String, f32)> = None;
@@ -718,11 +721,29 @@ fn main() -> Result<(), String> {
             }
         }
 
+        // The opening camera is armed on the first running frame, over the
+        // ship, and Eve waits for it to land.
+        if !welcomed && arriving.is_none() && dt > 0.0 && show.is_none() && briefing.is_none() {
+            let at = flight.ship.position;
+            let ground = floor_of(&level)(at);
+            arriving = Some(((ground + entry::ABOVE).max(at[1] + entry::STOP), 0.0));
+        }
+
         // Eve introduces herself on the first frame of the cockpit, which is
         // after the spin rather than over it: `0x4201a9` is in the cockpit's
         // own per-frame code, and it plays phrase 128 and clears the flag the
         // new-game routine armed at `0x4834e3`.
-        if !welcomed && dt > 0.0 && show.is_none() && briefing.is_none() {
+        if let Some((height, spin)) = arriving.as_mut() {
+            if dt > 0.0 {
+                *height -= entry::FALL * dt;
+                *spin += entry::SPIN * dt;
+                let skipped =
+                    window.get_keys_pressed(minifb::KeyRepeat::No).iter().any(|k| *k != quit);
+                if skipped || *height <= flight.ship.position[1] + entry::STOP {
+                    arriving = None;
+                }
+            }
+        } else if !welcomed && dt > 0.0 && show.is_none() && briefing.is_none() {
             welcomed = true;
             if let Some(eve) = hb_sim::phrases::phrase(WELCOME) {
                 say(&mut panel, &mut saying, eve.text);
@@ -1458,7 +1479,15 @@ fn main() -> Result<(), String> {
         scene.placements = &drawn;
         // The view the frame is drawn from: the ship's, turned by whichever
         // quarter `keyChangeViews` has left it on.
-        let seen = {
+        let seen = if let Some((height, spin)) = arriving {
+            // Straight over the ship, looking straight down, turning.
+            let mut c = flight.camera;
+            c.y = (height * 65536.0) as i32;
+            c.pitch = Angle(entry::PITCH);
+            c.roll = Angle(0);
+            c.yaw = Angle((spin * 65536.0) as i32 as u16);
+            c
+        } else {
             let mut c = flight.camera;
             let mut turn = hb_render::cockpit::VIEWS[view].0;
             if let Some((clock, _)) = jumping {
@@ -1516,7 +1545,7 @@ fn main() -> Result<(), String> {
         }
         // The cockpit is not drawn while the eye is off the ship, which is
         // what the engine's own outside view must do too.
-        if show_cockpit && jumping.is_none() {
+        if show_cockpit && jumping.is_none() && arriving.is_none() {
             if let Some(Some(art)) = cockpits.get(view) {
                 target.overlay(art);
             }
@@ -1808,6 +1837,32 @@ fn begin(
         battle,
         ShotColours::for_palette(&level.palette),
     )
+}
+
+/// The camera a level opens on, which is `0x45a780`.
+///
+/// It puts the eye straight over the ship - `0x42c980(ship.x, y, ship.z)` -
+/// looking straight down, `0x42c9a0(0x3fff, 0, 0)`, and switches to view mode
+/// 2, the outside one. Then it falls: `y` loses `0x100000` a second and a yaw
+/// gains a quarter of the frame time, until `y` is within `0x20000` of the
+/// ship. Any of the three skip keys ends it early, and it is not the sequence
+/// at `0x45a2a0` - patching that one to a bare `ret` leaves this untouched.
+///
+/// The ship does not move while it runs. The loop draws the world and nothing
+/// else.
+mod entry {
+    /// Where the eye starts: the ground under the ship plus half of
+    /// `0x5055d4`, which is 128.0, so 64 units up (`0x45a7a4`).
+    pub const ABOVE: f32 = 64.0;
+    /// How fast it falls, units a second (`0x100000`).
+    pub const FALL: f32 = 16.0;
+    /// How far above the ship it stops (`0x20000`).
+    pub const STOP: f32 = 2.0;
+    /// Turns a second, the same quarter the rest of the engine's animations
+    /// use.
+    pub const SPIN: f32 = 0.25;
+    /// Straight down.
+    pub const PITCH: u16 = 0x3fff;
 }
 
 /// Eve introducing herself once the cockpit is up: phrase 128 of the table at
