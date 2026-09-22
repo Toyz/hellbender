@@ -55,10 +55,13 @@ polygon: the same vertex indices, the same winding, the same clip.
 
 `+0x18` of what, exactly. `0x40f7b0` answers it: it walks the corner index
 list and for each index computes `eax*4` then `[eax+eax*8+0x59d378]`, which is
-a stride of 36 bytes into the transformed vertex array at `0x59d378`. So the
-interpolated value is a field of the transformed vertex, one per vertex rather
-than one per polygon - which is what a shaded polygon needs and what node 6's
-missing light explains. The polygon carries no extra data for it; its record
+a stride of 36 bytes into the transformed vertex array. So the interpolated
+value is a field of a record one per vertex rather than one per polygon - which
+is what a shaded polygon needs and what node 6's missing light explains.
+
+*(Corrected by [[94]]: the span's `esi` and `edi` are the rasteriser's 56-byte
+edge records, not these corners. `+0x18` of an edge is filled from `+0x0c` of a
+corner, which is the u slot. The rest of this entry stands.)* The polygon carries no extra data for it; its record
 in the stream is node 5's record exactly, a count and a list of vertex indices.
 
 24 polygons in the two archives are node 6. The parser now accepts them with

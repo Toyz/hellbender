@@ -9,7 +9,9 @@ worklog: 13, 16, 17, 20, 21, 22, 25, 28, 29, 30, 32, 35, 36
 
 `hb-render` draws Hellbender's world in perspective, in the 8-bit indexed
 colour space the original uses. It is **not** a transcription of the original's
-rasteriser - those inner loops have not been read. What it does reproduce is
+rasteriser - what has been read of those stages is on
+[its own page](rasteriser.md), and none of it is transcribed here. What it does
+reproduce is
 everything the data dictates, so that its output is in the same colour space
 and the same world units as the game's.
 

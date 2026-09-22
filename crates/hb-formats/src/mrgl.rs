@@ -81,14 +81,11 @@ pub const SOLID_POLYGON: u32 = 0x05;
 /// And once more (`0x456930`), which is node 6: the same back-face test and
 /// the same corner list, but no light and no band lookup - it never reads
 /// [`SHADE_COLOUR`]. What it changes is the span routine at `0x59d10c`.
-/// Node 5 leaves `0x4a76ac`, which takes one colour through the remap at
-/// `0x606a20` and `rep stos` it. Node 6 leaves `0x4a723f`, which reads `+0x18`
-/// of the two corners - a field of the 0x24-byte transformed vertex at
-/// `0x59d378` - steps it across the span by the difference times
-/// `0xffffffff / length` (the reciprocal table `0x484811` builds at
-/// `0x603070`), and indexes the same remap with the top byte per pixel. So
-/// node 5 is flat and node 6 is gouraud. 24 nodes in the archives, and this
-/// port draws them flat.
+/// Node 5 leaves `0x4a76ac`, which fills the span with one colour; node 6
+/// leaves `0x4a723f`, which interpolates a shade across it and takes every
+/// pixel through the remap on its own. So node 5 is flat and node 6 is
+/// shaded - see `docs/engine/rasteriser.md`. 24 nodes in the archives, and
+/// this port draws them flat.
 pub const SHADED_POLYGON: u32 = 0x06;
 
 /// The palette bands a [`SHADE_COLOUR`] of 0 to 15 picks: the darkest and

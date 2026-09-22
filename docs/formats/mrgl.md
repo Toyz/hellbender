@@ -108,15 +108,13 @@ when the normal is zero; they differ in how they fill.
   never reads the current shade colour. What it changes is two words it leaves
   for the rasteriser, the span routine at `0x59d10c` and a number at
   `0x667100`. Node 5 leaves `0x4a76ac` and 16; node 6 leaves `0x4a723f` and 4.
-  `0x4a76ac` takes one colour through the remap at `0x606a20`, replicates it
-  into a dword and `rep stos` it. `0x4a723f` reads `+0x18` of the span's two
-  corners, steps between them by the difference times `0xffffffff / length` -
-  the 1024-entry reciprocal table `0x484811` builds at `0x603070` - and indexes
-  the same remap with the top byte of the running value, a pixel at a time. So
-  0x05 is flat and 0x06 is gouraud, and the shade it interpolates is per
-  vertex: `+0x18` of the 0x24-byte transformed vertex records at `0x59d378`
-  that `0x40f7b0` gathers the corners from. 24 polygons; this port draws them
-  flat.
+  `0x4a76ac` fills the span with one colour, the byte in `0x59d100` through the
+  remap at `0x606a20`. `0x4a723f` interpolates between the two edges' shade
+  values across the span and takes each pixel's own byte through that same
+  remap. So 0x05 is flat and 0x06 is shaded, and `0x667100` is what the
+  Direct3D path is told instead - see
+  [the polygon pipeline](../engine/rasteriser.md). 24 polygons; this port draws
+  them flat.
 - **0x19** is flat: the normal's light (`0x48a6a0`) picks a shade in the
   colour set by the last 0x0a record - a ramp index into the tables at
   `0x50c4e8` (low) and `0x50c528` (high), or a palette index when negative
@@ -375,11 +373,10 @@ What colour the 118 polygons in `FANBODY`, `JAW1`, `JAW2` and `SHELL` are, since
 the stream does not say.
 
 Record types that appear in the data with no semantics yet: 0x0c, 0x12 and
-0x1f; and the `i32` at +4 of the material record. Two more on node 0x06: what
-fills `+0x18` of a transformed vertex, which is the shade it interpolates -
-all eight writers of the `0x59d378` array are indexed, so none of them names
-the field - and what `0x667100`, 16 for node 5 and 4 for node 6, tells the
-rasteriser. All 34 references to `0x667100` in the image are stores.
+0x1f; and the `i32` at +4 of the material record. One more on node 0x06: where
+the shade it interpolates comes from. The rasteriser takes it from `+0x0c` of
+each corner, which is the slot a textured polygon's u lives in, and nothing in
+the node's own record or its handler writes it.
 
 Whether the 256-unit texture space is a repeat or a scale, given the textures
 are 64 x 64. This port scales - see
