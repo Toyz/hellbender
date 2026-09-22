@@ -84,8 +84,10 @@ impl Flight {
     fn new(camera: Camera) -> Flight {
         let at = |v: i32| v as f32 / 65536.0;
         let mut ship = hb_sim::flight::Ship::new([at(camera.x), at(camera.y), at(camera.z)], camera.yaw.0 as f32);
-        // Start under way at half throttle rather than parked in the air.
-        ship.throttle = 0.5;
+        // Stopped, which is where the engine starts it: `0x512588` is 0 in
+        // the image's `.data` and nothing at the level start moves it, so the
+        // player gives it power.
+        ship.throttle = 0.0;
         let was = ship.position;
         let mut flight = Flight { ship, camera, collide: true, grounded: false, was };
         flight.sync_camera();

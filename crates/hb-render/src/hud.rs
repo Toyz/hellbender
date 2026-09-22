@@ -566,10 +566,32 @@ pub fn panel(target: &mut Target, font: &HudFont, lines: &[String]) {
     let (pw, ph) = (pw * w as isize / 640, ph * h as isize / 480);
     fill(&mut target.colour, w, h, x, y, pw, ph, 0);
     let rows = (ph / LINE as isize).max(1) as usize;
-    let from = lines.len().saturating_sub(rows);
-    for (i, line) in lines[from..].iter().enumerate() {
+    let wrapped = wrap(font, lines, (pw - 4).max(8) as usize);
+    let from = wrapped.len().saturating_sub(rows);
+    for (i, line) in wrapped[from..].iter().enumerate() {
         font.draw(&mut target.colour, w, h, x + 2, y + i as isize * LINE as isize, line, INK);
     }
+}
+
+/// Break lines to a pixel width, on spaces, the way the engine's own wrap does
+/// (`0x484920`): a word that does not fit starts the next line.
+pub fn wrap(font: &HudFont, lines: &[String], width: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in lines {
+        let mut row = String::new();
+        for word in line.split_whitespace() {
+            let candidate =
+                if row.is_empty() { word.to_string() } else { format!("{row} {word}") };
+            if font.width(&candidate) <= width || row.is_empty() {
+                row = candidate;
+            } else {
+                out.push(std::mem::take(&mut row));
+                row = word.to_string();
+            }
+        }
+        out.push(row);
+    }
+    out
 }
 
 /// A message, where `0x481030` puts one: word-wrapped to 240 pixels, centred
