@@ -640,6 +640,7 @@ fn main() -> Result<(), String> {
     let mut jumping: Option<(f32, bool)> = None;
     // And flying in, which is the port's own - see `entry`.
     let mut arriving: Option<f32> = if entry_camera { Some(0.0) } else { None };
+    let mut welcomed = false;
 
     // A line the mission flashes on the HUD, and for how much longer.
     let mut flash: Option<(String, f32)> = None;
@@ -808,7 +809,7 @@ fn main() -> Result<(), String> {
             level = Level::load(&game, Some(&startup), hb_formats::campaign::CAMPAIGN[index].stem)?;
             briefing = has_briefing(&game, &level.stem).then(|| level.stem.clone());
             typing = 0.0;
-            arriving = entry_camera.then_some(0.0);
+            arriving = None;
             if movies {
                 // The level being left says goodbye before the next one
                 // arrives - `HOTH3` names `snowout.smk`, `ROID4` `astrout.smk`.
@@ -903,12 +904,28 @@ fn main() -> Result<(), String> {
                 // Nothing flies: the ship waits where the start point put it
                 // and only the camera moves, so control begins exactly where
                 // the engine begins it.
-                let clock = arriving.as_mut().expect("checked");
-                *clock += dt;
-                if *clock > entry::SECONDS
-                    || window.get_keys_pressed(minifb::KeyRepeat::No).iter().any(|k| *k != quit)
-                {
-                    arriving = None;
+                // Nothing starts until the frame is really running: a movie
+                // or the briefing screen holds `dt` at zero, and Eve talking
+                // over either of them is what "too early" looks like.
+                if dt > 0.0 {
+                    let clock = arriving.as_mut().expect("checked");
+                    if !welcomed {
+                        welcomed = true;
+                        if let Some(eve) = hb_sim::phrases::phrase(entry::WELCOME) {
+                            say(&mut panel, &mut saying, eve.text);
+                            if let (Some(music), Some(s)) = (music.as_ref(), sound(eve.sound)) {
+                                music.effect(&s, 1.0);
+                            }
+                        }
+                    }
+                    *clock += dt;
+                    let skipped = window
+                        .get_keys_pressed(minifb::KeyRepeat::No)
+                        .iter()
+                        .any(|k| *k != quit);
+                    if *clock > entry::SECONDS || skipped {
+                        arriving = None;
+                    }
                 }
             }
             None => match jumping.as_mut() {
@@ -1832,22 +1849,30 @@ fn begin(
 /// December build. So the hook is there, the animation was cut, and there is
 /// nothing to restore - see worklog 107.
 ///
-/// This is the port's own, and its second deliberate departure. It borrows the
-/// jump-out's numbers and runs its first half backwards: the camera starts
-/// [`jump::PITCH`] above the ship looking down and a half turn round, and
-/// comes level over [`SECONDS`]. The ship does not move at all while it runs,
-/// so control begins exactly where `0x471333` puts it. No sound, since the
-/// engine has none to copy.
+/// What the game actually does is watchable under Wine, and it does do this:
+/// the camera swings round the ship while Eve says her piece. The routine that
+/// swings it is `0x45a2a0`, which [[105]] read as the way out; its one caller
+/// is gated on a flag whose setters are reached by jumps this port has not
+/// followed, so which of the two ends it is meant for is still open.
+///
+/// So the sequence is the engine's - its curve, its eight seconds, its
+/// phrase - and where it is hung is the port's. The ship does not move while
+/// it runs, so control begins exactly where `0x471333` puts it, and any key
+/// skips.
 mod entry {
-    /// Half of the jump-out's run, which is how long its camera takes to
-    /// climb before it starts coming back.
-    pub const SECONDS: f32 = 4.0;
+    /// The engine's own sequence is eight seconds and this runs the same one.
+    pub const SECONDS: f32 = super::jump::SECONDS;
 
-    /// Where the camera is looking, in turns, at `clock` seconds: the mirror
-    /// of `jump::look` over the first half.
+    /// Eve introducing herself, which is what plays over it: phrase 128 of the
+    /// table at `0x505c20`, two seconds of it.
+    pub const WELCOME: usize = 128;
+
+    /// Where the camera is looking, in turns, at `clock` seconds. The same
+    /// curve `0x45a2a0` drives: twice round, and the pitch up to
+    /// [`super::jump::PITCH`] over the first half and down through level to
+    /// the other side over the second.
     pub fn look(clock: f32) -> (f32, f32) {
-        let left = (1.0 - clock / SECONDS).clamp(0.0, 1.0);
-        (left * 0.5, left * super::jump::PITCH)
+        super::jump::look(clock)
     }
 }
 

@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-108 entries: audio 7, build 2, content 10, decomp 70, engine 26, flight 7, format 40, net 1, port 85, render 31, test 6, tooling 5, ui 9, video 6, world 11.
+109 entries: audio 7, build 2, content 10, decomp 71, engine 26, flight 7, format 40, net 1, port 86, render 31, test 6, tooling 5, ui 10, video 6, world 11.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -119,3 +119,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 106 | [Four films before the ground](worklog/0106-four-films-before-the-ground.md) | 2026-09-21 | decomp, port, video |
 | 107 | [The entry hook is empty](worklog/0107-the-entry-hook-is-empty.md) | 2026-09-21 | decomp, port |
 | 108 | [A camera for the empty hook](worklog/0108-a-camera-for-the-empty-hook.md) | 2026-09-21 | port, ui |
+| 109 | [Eve, and the spin she talks over](worklog/0109-eve-and-the-spin-she-talks-over.md) | 2026-09-21 | port, ui, decomp |
