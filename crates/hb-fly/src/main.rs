@@ -365,9 +365,11 @@ fn main() -> Result<(), String> {
         .ok()
         .and_then(|b| Image::parse_guessed(b).ok().flatten())
         .zip(startup.read("art", "brief.act").ok().and_then(|b| act::Palette::parse(b).ok()));
-    // What is on screen now, if a briefing is. Cleared by any key, and set
-    // whenever a level that starts a chapter is loaded.
-    let mut briefing: Option<Vec<u32>>;
+    // Which level's briefing is up, if one is, and how long it has been
+    // typing. Cleared by any key, and set whenever a level that starts a
+    // chapter is loaded.
+    let mut briefing: Option<String>;
+    let mut typing: f32;
 
     // The twelve weapon pictures, which the icon box shows one of.
     let icons: Vec<Option<Image>> = hb_render::hud::ICONS
@@ -510,7 +512,8 @@ fn main() -> Result<(), String> {
             })
             .clone()
     };
-    briefing = briefing_for(&game, briefing_screen.as_ref(), hud_font.as_ref(), &level.stem, w, h);
+    briefing = has_briefing(&game, &level.stem).then(|| level.stem.clone());
+    typing = 0.0;
 
     // A line the mission flashes on the HUD, and for how much longer.
     let mut flash: Option<(String, f32)> = None;
@@ -540,6 +543,7 @@ fn main() -> Result<(), String> {
         // A briefing holds everything until a key is pressed, the way a
         // briefing screen does. Nothing moves behind it.
         if briefing.is_some() {
+            typing += dt;
             dt = 0.0;
             if window.get_keys_pressed(minifb::KeyRepeat::No).iter().any(|k| *k != quit) {
                 briefing = None;
@@ -617,8 +621,8 @@ fn main() -> Result<(), String> {
                 index = (index + 1) % hb_formats::campaign::CAMPAIGN.len();
             }
             level = Level::load(&game, Some(&startup), hb_formats::campaign::CAMPAIGN[index].stem)?;
-            briefing =
-                briefing_for(&game, briefing_screen.as_ref(), hud_font.as_ref(), &level.stem, w, h);
+            briefing = has_briefing(&game, &level.stem).then(|| level.stem.clone());
+            typing = 0.0;
             describe(&level);
             play_music(&level);
             (flight, mission, followers, live, battle, colours) = begin(&level);
@@ -1336,7 +1340,18 @@ fn main() -> Result<(), String> {
 
         // The framebuffer is palette indices; minifb wants 0x00RRGGBB. A
         // briefing is already in that form and stands in front of it.
-        match &briefing {
+        let typed = briefing.as_ref().and_then(|stem| {
+            briefing_for(
+                &game,
+                briefing_screen.as_ref(),
+                hud_font.as_ref(),
+                stem,
+                w,
+                h,
+                (typing * hb_formats::brief::TYPED_A_SECOND) as usize,
+            )
+        });
+        match &typed {
             Some(screen) => buffer.copy_from_slice(screen),
             None => {
                 for (slot, &index) in buffer.iter_mut().zip(&target.colour) {
@@ -1567,6 +1582,41 @@ fn draw_brackets(pixels: &mut [u8], w: usize, h: usize, x: f32, y: f32, colour: 
 }
 
 
+/// Whether a level has a briefing at all - only the first of each chapter
+/// does.
+fn has_briefing(game: &Pod, stem: &str) -> bool {
+    game.read("data", &format!("{stem}.txt")).is_ok_and(|b| {
+        hb_formats::brief::Brief::parse(b).is_ok_and(|s| !s.lines.is_empty())
+    })
+}
+
+/// Break lines to a width in pixels, keeping the blank ones - they are the
+/// paragraph breaks and the briefing reads as prose without them.
+fn wrap(lines: &[String], font: &hb_formats::hud_font::HudFont, width: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in lines {
+        if line.trim().is_empty() {
+            out.push(String::new());
+            continue;
+        }
+        let mut row = String::new();
+        for word in line.split_whitespace() {
+            let candidate =
+                if row.is_empty() { word.to_string() } else { format!("{row} {word}") };
+            if font.width(&candidate) > width && !row.is_empty() {
+                out.push(std::mem::take(&mut row));
+                row = word.to_string();
+            } else {
+                row = candidate;
+            }
+        }
+        if !row.is_empty() {
+            out.push(row);
+        }
+    }
+    out
+}
+
 /// The alpha a window's pixel needs. minifb hands the buffer to a 32-bit
 /// visual, and a compositing window manager reads the top byte: leave it
 /// zero and the dark parts of the picture are a hole through to the desktop.
@@ -1582,6 +1632,7 @@ fn briefing_for(
     stem: &str,
     w: usize,
     h: usize,
+    revealed: usize,
 ) -> Option<Vec<u32>> {
     use hb_formats::hud_font::LINE;
     let (image, palette) = screen?;
@@ -1596,14 +1647,31 @@ fn briefing_for(
     let ink = (0..=255u8)
         .max_by_key(|&i| palette.rgb(i).iter().map(|&c| c as u32).sum::<u32>())
         .unwrap_or(255);
-    let top = ih.saturating_sub(brief.lines.len() * LINE) / 2;
-    for (i, line) in brief.lines.iter().enumerate() {
-        let y = top + i * LINE;
-        if y + LINE >= ih {
+    // Inside the panel, wrapped to it, and scrolled when there is more than
+    // it holds - the engine types the whole thing out and this is where it
+    // would have to go.
+    let [px, py, pw, ph] = hb_formats::brief::PANEL;
+    let wrapped = wrap(&brief.lines, font, pw);
+    // Only as much as has been typed so far, and once there is more than the
+    // panel holds it scrolls, so the last thing typed is always in view.
+    let mut left = revealed;
+    let mut shown: Vec<String> = Vec::new();
+    for line in &wrapped {
+        if left == 0 {
             break;
         }
-        font.draw(&mut pixels, iw, ih, 40, y as isize, line, ink);
+        let take = left.min(line.chars().count());
+        shown.push(line.chars().take(take).collect());
+        left -= take;
+        // A line break costs a character, so a blank line takes time too.
+        left = left.saturating_sub(1);
     }
+    let rows = ph / LINE;
+    let from = shown.len().saturating_sub(rows);
+    for (i, line) in shown[from..].iter().enumerate() {
+        font.draw(&mut pixels, iw, ih, px as isize, (py + i * LINE) as isize, line, ink);
+    }
+
     // The screen is 320x200 and the view may not be; scale it in.
     let mut out = vec![0u32; w * h];
     for y in 0..h {

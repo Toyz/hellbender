@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-84 entries: audio 4, build 2, content 7, decomp 53, engine 26, flight 5, format 32, port 69, render 26, test 3, tooling 4, ui 7, world 10.
+85 entries: audio 4, build 2, content 8, decomp 54, engine 26, flight 5, format 32, port 70, render 26, test 3, tooling 4, ui 7, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -95,3 +95,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 82 | [One register holds both halves of a shade lookup](worklog/0082-one-register-holds-both-halves-of-a-shade-lookup.md) | 2026-09-21 | decomp, render, format |
 | 83 | [A viewport is the same projection over a smaller rectangle](worklog/0083-a-viewport-is-the-same-projection-over-a-smaller-rectangle.md) | 2026-09-21 | decomp, render |
 | 84 | [A destroyed building is one square, not eleven](worklog/0084-a-destroyed-building-is-one-square-not-eleven.md) | 2026-09-21 | decomp, render, port |
+| 85 | [The briefing types itself out](worklog/0085-the-briefing-types-itself-out.md) | 2026-09-21 | decomp, content, port |

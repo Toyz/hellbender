@@ -21,6 +21,20 @@ use crate::{Error, Result};
 /// `Unable to open brief.raw`); the `.TXT` never mentions it.
 pub const BACKDROP: &str = "brief.raw";
 
+/// The dark panel in the upper half of that screen, in its own 320x200:
+/// x, y, width, height. Measured off the art - the frame is an oval and
+/// this is the rectangle inside it that has nothing drawn on it. There is a
+/// second, shorter panel below the two ornaments at y 115 to 140, which this
+/// does not use.
+pub const PANEL: [usize; 4] = [40, 26, 238, 86];
+
+/// The engine types the briefing out a character at a time: `0x45a034` takes
+/// one byte, draws it (`0x485da0`), measures it (`0x485a00`) and moves the
+/// pen on, with the loop bounded by how many characters have been reached so
+/// far. This is how many a second, which the port picks - the engine's rate
+/// comes from a clock this reading did not follow.
+pub const TYPED_A_SECOND: f32 = 40.0;
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Brief {
     /// The model the briefing screen turns, `globe.bin` in every level that

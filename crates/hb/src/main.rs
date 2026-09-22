@@ -787,19 +787,37 @@ fn cmd_brief(name: &str, out: &Path) -> Result<(), String> {
 
     let (w, h) = (image.shape.width, image.shape.height);
     let mut pixels = image.pixels.clone();
-    // The prose inside the frame the screen draws. Where the engine puts it
-    // is not read; this is inside the panel.
     let ink = (0..=255u8)
         .max_by_key(|&i| palette.rgb(i).iter().map(|&c| c as u32).sum::<u32>())
         .unwrap_or(255);
-    let top = (h - brief.lines.len() * LINE) / 2;
-    for (i, line) in brief.lines.iter().enumerate() {
-        let y = top + i * LINE;
-        if y + LINE >= h {
-            break;
+    // Inside the panel the frame leaves, wrapped to it.
+    let [px, py, pw, ph] = hb_formats::brief::PANEL;
+    let mut rows: Vec<String> = Vec::new();
+    for line in &brief.lines {
+        if line.trim().is_empty() {
+            rows.push(String::new());
+            continue;
         }
-        font.draw(&mut pixels, w, h, 40, y as isize, line, ink);
+        let mut row = String::new();
+        for word in line.split_whitespace() {
+            let candidate = if row.is_empty() { word.to_string() } else { format!("{row} {word}") };
+            if font.width(&candidate) > pw && !row.is_empty() {
+                rows.push(std::mem::take(&mut row));
+                row = word.to_string();
+            } else {
+                row = candidate;
+            }
+        }
+        if !row.is_empty() {
+            rows.push(row);
+        }
     }
+    // A still shows the top of it; the game types it out and scrolls.
+    let shown = (ph / LINE).min(rows.len());
+    for (i, line) in rows[..shown].iter().enumerate() {
+        font.draw(&mut pixels, w, h, px as isize, (py + i * LINE) as isize, line, ink);
+    }
+
     let mut rgb = Vec::with_capacity(pixels.len() * 3);
     for &i in &pixels {
         rgb.extend_from_slice(&palette.rgb(i));

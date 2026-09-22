@@ -287,6 +287,16 @@ The second name is **not** the backdrop. Every briefing is drawn on
 mentions. `Morbos00.Raw` is 64x64 - a texture, which the globe wears, so the
 planet you are about to fly to turns on the screen while you read about it.
 
+The screen it goes on has two dark panels, one above the ornaments at y 115
+and a shorter one below. The briefing uses the upper: x 40, y 26, 238 by 86,
+which is twelve lines of the small font. `0x459d40` draws it, and the text
+does not appear all at once - `0x45a034` takes **one character**, draws it
+with `0x485da0`, measures it with `0x485a00` and moves the pen on, with the
+loop bounded by a count that grows. It types itself out, over a scene that is
+still running: the same routine turns a camera with `0x42c9a0` from an angle
+it gets out of `fpatan`, and calls the actor loop (`0x406650`) every frame
+while it types. So the globe turns and the world ticks behind the words.
+
 **There are eight of them**, one for the first level of each
 [chapter](lvl.md#the-campaign) - `morbos`, `float`, `iowah`, `kreash`,
 `jurasic`, `roid`, `hoth`, `ship`. The other fifteen levels carry on from the
