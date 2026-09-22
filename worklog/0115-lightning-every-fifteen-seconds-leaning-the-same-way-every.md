@@ -54,5 +54,3 @@ the eye at or above the ground, and reports the strike, the thunder and the
 dark; `hb-fly` plays `lghtng.wav` and `thun-c.wav` with distance falloff,
 lights models at full ambient and swaps the sky while the flash lasts, and
 draws the bolt with a depth test. A render test draws a flash on `IOWAH`.
-
-**Still unknown:** how the remap at `0x606a20`, which every dot and line goes through, is built.
