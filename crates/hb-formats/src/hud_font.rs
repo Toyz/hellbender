@@ -50,6 +50,10 @@ pub struct HudFont {
 /// The whole table, 256 characters of [`STRIDE`] bytes.
 pub const TABLE_BYTES: usize = 256 * STRIDE;
 
+/// The table on its own, as `hb hudfont <file> --extract` writes it: what the
+/// port looks for beside the archives before it reads the executable.
+pub const FILE: &str = "hudfont.bin";
+
 impl HudFont {
     /// Read the table out of a PE image.
     pub fn read(exe: &[u8]) -> Result<HudFont> {

@@ -283,9 +283,6 @@ impl Flight {
 /// Every level in `GAME.POD`, for the demo check - the campaign's own order
 /// is [`hb_formats::campaign::CAMPAIGN`], which is what flying through them
 /// follows.
-/// The HUD font table, as `hb hudfont <file> --extract` writes it.
-const HUD_FONT_FILE: &str = "hudfont.bin";
-
 const LEVELS: [&str; 26] = [
     "float", "float2", "hoth", "hoth2", "hoth3", "iowah", "iowah2", "iowah3", "jurasic",
     "jurasic2", "jurasic3", "kreash", "kreash2", "kreash3", "morbos", "morbos2", "morbos3",
@@ -535,19 +532,9 @@ fn main() -> Result<(), String> {
     // `hb hudfont hudfont.bin --extract` writes the table out on its own, and
     // it is looked for first, so a directory with one in it needs no
     // executable at all.
-    let hud_font = std::fs::read(hb_pod::game_dir().join(HUD_FONT_FILE))
-        .ok()
-        .and_then(|table| hb_formats::hud_font::HudFont::parse(&table).ok())
-        .or_else(|| {
-            std::fs::read(hb_pod::game_dir().join("HELLBEND.EXE"))
-                .ok()
-                .and_then(|exe| hb_formats::hud_font::HudFont::read(&exe).ok())
-        });
-    if hud_font.is_none() {
-        println!(
-            "hud: neither {HUD_FONT_FILE} nor HELLBEND.EXE is beside the archives, so no HUD font"
-        );
-    }
+    let hud_font = hb_render::hud::font_from_disc()
+        .map_err(|why| println!("hud: {why}, so no HUD font"))
+        .ok();
     let mut show_hud = hud_font.is_some();
     // The engine's keyCockpitLabel, which names every element on the screen.
     let mut show_labels = false;
@@ -2246,7 +2233,6 @@ fn briefing_for(
     h: usize,
     revealed: usize,
 ) -> Option<Vec<u32>> {
-    use hb_formats::hud_font::LINE;
     let (image, palette) = screen?;
     let font = font?;
     let brief =
@@ -2256,33 +2242,10 @@ fn briefing_for(
     }
     let mut pixels = image.pixels.clone();
     let (iw, ih) = (image.shape.width, image.shape.height);
-    let ink = (0..=255u8)
-        .max_by_key(|&i| palette.rgb(i).iter().map(|&c| c as u32).sum::<u32>())
-        .unwrap_or(255);
-    // Inside the panel, wrapped to it, and scrolled when there is more than
-    // it holds - the engine types the whole thing out and this is where it
-    // would have to go.
-    let [px, py, pw, ph] = hb_formats::brief::PANEL;
-    let wrapped = hb_render::hud::wrap(font, &brief.lines, pw);
-    // Only as much as has been typed so far, and once there is more than the
-    // panel holds it scrolls, so the last thing typed is always in view.
-    let mut left = revealed;
-    let mut shown: Vec<String> = Vec::new();
-    for line in &wrapped {
-        if left == 0 {
-            break;
-        }
-        let take = left.min(line.chars().count());
-        shown.push(line.chars().take(take).collect());
-        left -= take;
-        // A line break costs a character, so a blank line takes time too.
-        left = left.saturating_sub(1);
-    }
-    let rows = ph / LINE;
-    let from = shown.len().saturating_sub(rows);
-    for (i, line) in shown[from..].iter().enumerate() {
-        font.draw(&mut pixels, iw, ih, px as isize, (py + i * LINE) as isize, line, ink);
-    }
+    // Only as much as has been typed so far, scrolled so the last thing typed
+    // is in view - the engine types the whole thing out.
+    let rows = hb_render::brief::typed(font, &brief.lines, revealed);
+    hb_render::brief::draw(&mut pixels, iw, ih, font, &rows, hb_render::brief::ink(palette));
 
     // The screen is 320x200 and the view may not be; scale it in.
     let mut out = vec![0u32; w * h];

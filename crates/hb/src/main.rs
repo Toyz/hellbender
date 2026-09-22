@@ -636,7 +636,7 @@ fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
     // numbers are a sample; what feeds them in flight is `hb-fly`.
     if !bare {
         {
-            if let Ok(font) = hud_font() {
+            if let Ok(font) = hb_render::hud::font_from_disc() {
                 // Every placement, as the radar would see it from here.
                 let heading = camera.yaw.0 as f32 * std::f32::consts::TAU / 65536.0;
                 let (sin, cos) = heading.sin_cos();
@@ -883,32 +883,14 @@ fn cmd_movie(name: &str, out: Option<&Path>, frame: usize) -> Result<(), String>
 ///
 /// The table is looked for first, so a directory with `hudfont.bin` in it
 /// needs no `HELLBEND.EXE` at all.
-fn hud_font() -> Result<hb_formats::hud_font::HudFont, String> {
-    use hb_formats::hud_font::HudFont;
-    let dir = hb_pod::game_dir();
-    if let Ok(table) = std::fs::read(dir.join(HUD_FONT_FILE)) {
-        return HudFont::parse(&table).map_err(|e| format!("{HUD_FONT_FILE}: {e}"));
-    }
-    let exe = std::fs::read(dir.join("HELLBEND.EXE")).map_err(|e| {
-        format!("neither {HUD_FONT_FILE} nor HELLBEND.EXE is in {}: {e}", dir.display())
-    })?;
-    HudFont::read(&exe).map_err(|e| e.to_string())
-}
-
-/// What `hb hudfont <file> --extract` writes and everything else looks for.
-pub const HUD_FONT_FILE: &str = "hudfont.bin";
-
 fn cmd_brief(name: &str, out: &Path) -> Result<(), String> {
     use hb_formats::brief::{Brief, BACKDROP};
-    use hb_formats::hud_font::LINE;
     let game = open_pod("game")?;
     let startup = open_pod("startup")?;
     let file = format!("{name}.txt");
     let brief = Brief::parse(game.read("data", &file).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())?;
 
-    // Every briefing is drawn on the same screen; the name in the file is
-    // the texture the globe wears, not the background.
     let art = startup.read("art", BACKDROP).map_err(|e| format!("{BACKDROP}: {e}"))?;
     let image = raw::Image::parse_guessed(art)
         .map_err(|e| e.to_string())?
@@ -917,43 +899,12 @@ fn cmd_brief(name: &str, out: &Path) -> Result<(), String> {
         act::Palette::parse(startup.read("art", "brief.act").map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
 
-    // `FONT.BIN` is 23 pixels a line and a briefing runs to seventeen
-    // lines, which does not fit a 200-line screen, so this is in the small
-    // font. Which font the engine uses here is not read.
-    let font = hud_font()?;
-
+    let font = hb_render::hud::font_from_disc()?;
     let (w, h) = (image.shape.width, image.shape.height);
     let mut pixels = image.pixels.clone();
-    let ink = (0..=255u8)
-        .max_by_key(|&i| palette.rgb(i).iter().map(|&c| c as u32).sum::<u32>())
-        .unwrap_or(255);
-    // Inside the panel the frame leaves, wrapped to it.
-    let [px, py, pw, ph] = hb_formats::brief::PANEL;
-    let mut rows: Vec<String> = Vec::new();
-    for line in &brief.lines {
-        if line.trim().is_empty() {
-            rows.push(String::new());
-            continue;
-        }
-        let mut row = String::new();
-        for word in line.split_whitespace() {
-            let candidate = if row.is_empty() { word.to_string() } else { format!("{row} {word}") };
-            if font.width(&candidate) > pw && !row.is_empty() {
-                rows.push(std::mem::take(&mut row));
-                row = word.to_string();
-            } else {
-                row = candidate;
-            }
-        }
-        if !row.is_empty() {
-            rows.push(row);
-        }
-    }
     // A still shows the top of it; the game types it out and scrolls.
-    let shown = (ph / LINE).min(rows.len());
-    for (i, line) in rows[..shown].iter().enumerate() {
-        font.draw(&mut pixels, w, h, px as isize, (py + i * LINE) as isize, line, ink);
-    }
+    let rows = hb_render::hud::wrap(&font, &brief.lines, hb_formats::brief::PANEL[2]);
+    hb_render::brief::draw(&mut pixels, w, h, &font, &rows, hb_render::brief::ink(&palette));
 
     let mut rgb = Vec::with_capacity(pixels.len() * 3);
     for &i in &pixels {
@@ -976,7 +927,7 @@ fn cmd_brief(name: &str, out: &Path) -> Result<(), String> {
 /// The HUD's own font, out of the executable.
 fn cmd_hud_font(out: &Path, rest: &[&str]) -> Result<(), String> {
     use hb_formats::hud_font::LINE;
-    let font = hud_font()?;
+    let font = hb_render::hud::font_from_disc()?;
     // `--extract` writes the table itself rather than a picture of it, so a
     // player can keep the port running without the executable beside it.
     if rest.contains(&"--extract") {

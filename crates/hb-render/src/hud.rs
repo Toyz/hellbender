@@ -681,3 +681,17 @@ pub fn health_bar(target: &mut Target, x: isize, y: isize, width: isize, now: f3
         target.line((x, y + row), (x + length, y + row), colour);
     }
 }
+
+/// The HUD's font off the disc: the table on its own
+/// ([`hb_formats::hud_font::FILE`]) if it is there, so the executable is not
+/// needed, and the executable's own otherwise.
+pub fn font_from_disc() -> Result<HudFont, String> {
+    use hb_formats::hud_font::FILE;
+    let dir = hb_pod::game_dir();
+    if let Ok(table) = std::fs::read(dir.join(FILE)) {
+        return HudFont::parse(&table).map_err(|e| format!("{FILE}: {e}"));
+    }
+    let exe = std::fs::read(dir.join("HELLBEND.EXE"))
+        .map_err(|e| format!("neither {FILE} nor HELLBEND.EXE is in {}: {e}", dir.display()))?;
+    HudFont::read(&exe).map_err(|e| e.to_string())
+}
