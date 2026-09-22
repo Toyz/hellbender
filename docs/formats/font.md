@@ -107,3 +107,21 @@ Reading the table means reading `HELLBEND.EXE`, which is on the disc beside
 the archives, so `hb_formats::hud_font` maps the virtual address through the
 PE section table and reads it from there. `hb hudfont <out.png>` draws a
 specimen.
+
+## Running without the executable
+
+The HUD font is the only thing the port reads out of `HELLBEND.EXE` at all -
+everything else it needs is in `GAME.POD` and `STARTUP.POD`. So it can be
+lifted out once:
+
+```
+hb hudfont hudfont.bin --extract
+```
+
+writes the table as it is, 12,288 bytes, 48 a character. `hb` and `hb-fly`
+both look for `hudfont.bin` beside the archives before they look for the
+executable, so a directory holding `system/GAME.POD`, `system/STARTUP.POD`,
+`system/Story/` and `hudfont.bin` is a complete game to this port.
+
+Nothing of the table is in this repository, and nothing needs to be: it comes
+off the player's own disc.

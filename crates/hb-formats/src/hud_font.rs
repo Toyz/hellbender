@@ -13,7 +13,9 @@
 //!
 //! Reading it means reading `HELLBEND.EXE`, which is on the disc beside the
 //! archives, so it is input like any other file. Nothing of it is copied into
-//! this repository.
+//! this repository. [`HudFont::table`] writes the table back out on its own,
+//! which is how a player can keep the port running from a directory with no
+//! executable in it.
 
 use crate::{Error, Result};
 
@@ -45,19 +47,35 @@ pub struct HudFont {
     pub glyphs: Vec<Glyph>,
 }
 
+/// The whole table, 256 characters of [`STRIDE`] bytes.
+pub const TABLE_BYTES: usize = 256 * STRIDE;
+
 impl HudFont {
     /// Read the table out of a PE image.
     pub fn read(exe: &[u8]) -> Result<HudFont> {
         let at = offset_of(exe, TABLE)?;
+        let table = exe.get(at..at + TABLE_BYTES).ok_or(Error::Truncated {
+            what: "HUD font table",
+            at,
+            need: TABLE_BYTES,
+            have: exe.len().saturating_sub(at),
+        })?;
+        HudFont::parse(table)
+    }
+
+    /// Read the table on its own, as [`HudFont::table`] writes it. This is
+    /// what lets a port run without the executable beside it.
+    pub fn parse(table: &[u8]) -> Result<HudFont> {
+        if table.len() < TABLE_BYTES {
+            return Err(Error::WrongSize {
+                what: "HUD font table",
+                want: format!("{TABLE_BYTES} bytes"),
+                have: table.len(),
+            });
+        }
         let mut glyphs = vec![Glyph::default(); 256];
         for (code, glyph) in glyphs.iter_mut().enumerate().skip(FIRST) {
-            let start = at + code * STRIDE;
-            let record = exe.get(start..start + STRIDE).ok_or(Error::Truncated {
-                what: "HUD font glyph",
-                at: start,
-                need: STRIDE,
-                have: exe.len(),
-            })?;
+            let record = &table[code * STRIDE..(code + 1) * STRIDE];
             let width = record[0] as usize;
             if width == 0 || width * ROWS > STRIDE - 1 {
                 continue;
@@ -66,6 +84,23 @@ impl HudFont {
             glyph.pixels = record[1..1 + width * ROWS].to_vec();
         }
         Ok(HudFont { glyphs })
+    }
+
+    /// The table again, byte for byte where a glyph is one the engine has.
+    ///
+    /// Round-tripping this is what `hb hudfont --extract` writes, so the game
+    /// data stays on the player's disc and out of this repository.
+    pub fn table(&self) -> Vec<u8> {
+        let mut out = vec![0u8; TABLE_BYTES];
+        for (code, glyph) in self.glyphs.iter().enumerate() {
+            if glyph.width == 0 {
+                continue;
+            }
+            let at = code * STRIDE;
+            out[at] = glyph.width as u8;
+            out[at + 1..at + 1 + glyph.pixels.len()].copy_from_slice(&glyph.pixels);
+        }
+        out
     }
 
     pub fn glyph(&self, c: char) -> Option<&Glyph> {

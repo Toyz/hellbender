@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-101 entries: audio 7, build 2, content 10, decomp 66, engine 26, flight 6, format 38, net 1, port 79, render 31, test 5, tooling 4, ui 8, video 4, world 10.
+102 entries: audio 7, build 2, content 10, decomp 66, engine 26, flight 6, format 39, net 1, port 80, render 31, test 5, tooling 5, ui 8, video 4, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -112,3 +112,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 99 | [The other half of a Smacker chunk](worklog/0099-the-other-half-of-a-smacker-chunk.md) | 2026-09-21 | format, video, audio, port |
 | 100 | [The movies, on the screen](worklog/0100-the-movies-on-the-screen.md) | 2026-09-21 | port, video, ui |
 | 101 | [Arriving and leaving](worklog/0101-arriving-and-leaving.md) | 2026-09-21 | port, video, format |
+| 102 | [The port without the executable](worklog/0102-the-port-without-the-executable.md) | 2026-09-21 | port, format, tooling |

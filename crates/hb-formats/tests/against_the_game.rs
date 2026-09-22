@@ -1679,3 +1679,32 @@ fn the_briefings_name_a_globe_and_a_mission() {
     assert_eq!(missing, later);
     assert_eq!(found, 8, "one briefing a chapter");
 }
+
+/// The HUD font written out on its own and read back is the same font, so a
+/// player can keep the port running without the executable in the directory.
+#[test]
+fn the_hud_font_survives_a_round_trip() {
+    use hb_formats::hud_font::{HudFont, TABLE_BYTES};
+    let path = game_dir().join("HELLBEND.EXE");
+    if !path.exists() {
+        eprintln!("skipping: {} is not there", path.display());
+        return;
+    }
+    let exe = std::fs::read(&path).unwrap();
+    let from_exe = HudFont::read(&exe).unwrap();
+    let table = from_exe.table();
+    assert_eq!(table.len(), TABLE_BYTES);
+    let again = HudFont::parse(&table).unwrap();
+    for code in 0..256u32 {
+        let c = char::from_u32(code).unwrap();
+        match (from_exe.glyph(c), again.glyph(c)) {
+            (None, None) => {}
+            (Some(a), Some(b)) => {
+                assert_eq!(a.width, b.width, "{c:?} is a different width");
+                assert_eq!(a.pixels, b.pixels, "{c:?} is a different shape");
+            }
+            _ => panic!("{c:?} is in one and not the other"),
+        }
+    }
+    assert_eq!(from_exe.width("Go Faster to Deploy Mine"), again.width("Go Faster to Deploy Mine"));
+}

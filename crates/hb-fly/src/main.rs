@@ -268,6 +268,9 @@ impl Flight {
 /// Every level in `GAME.POD`, for the demo check - the campaign's own order
 /// is [`hb_formats::campaign::CAMPAIGN`], which is what flying through them
 /// follows.
+/// The HUD font table, as `hb hudfont <file> --extract` writes it.
+const HUD_FONT_FILE: &str = "hudfont.bin";
+
 const LEVELS: [&str; 26] = [
     "float", "float2", "hoth", "hoth2", "hoth3", "iowah", "iowah2", "iowah3", "jurasic",
     "jurasic2", "jurasic3", "kreash", "kreash2", "kreash3", "morbos", "morbos2", "morbos3",
@@ -512,11 +515,21 @@ fn main() -> Result<(), String> {
     // archive: five pixels tall, which is what every line the game draws
     // over the cockpit is written in. The front end's `FONT.BIN` is the
     // 23-pixel one and is not this.
-    let hud_font = std::fs::read(game_dir().join("HELLBEND.EXE"))
+    // `hb hudfont hudfont.bin --extract` writes the table out on its own, and
+    // it is looked for first, so a directory with one in it needs no
+    // executable at all.
+    let hud_font = std::fs::read(game_dir().join(HUD_FONT_FILE))
         .ok()
-        .and_then(|exe| hb_formats::hud_font::HudFont::read(&exe).ok());
+        .and_then(|table| hb_formats::hud_font::HudFont::parse(&table).ok())
+        .or_else(|| {
+            std::fs::read(game_dir().join("HELLBEND.EXE"))
+                .ok()
+                .and_then(|exe| hb_formats::hud_font::HudFont::read(&exe).ok())
+        });
     if hud_font.is_none() {
-        println!("hud: HELLBEND.EXE is not beside the archives, so no HUD font");
+        println!(
+            "hud: neither {HUD_FONT_FILE} nor HELLBEND.EXE is beside the archives, so no HUD font"
+        );
     }
     let mut show_hud = hud_font.is_some();
     // The engine's keyCockpitLabel, which names every element on the screen.

@@ -39,7 +39,11 @@ hb - inspect Hellbender's data
                                     --blast draws explosion frame N there
   hb font <out.png> [text]          a specimen of the front end's typeface
   hb brief <level> <out.png>        a level's mission briefing, as a PNG
-  hb hudfont <out.png> [text]       a specimen of the HUD's font, from the EXE
+  hb hudfont <out.png> [text]       a specimen of the HUD's font
+  hb hudfont hudfont.bin --extract  the HUD font table, so the port can run
+                                    without HELLBEND.EXE beside the archives
+  hb movie <name.smk> [out] [frame] a cutscene's header; a frame as .png or
+                                    the whole soundtrack as .wav
   hb demo <n> <seconds> <out.png>   a frame of a recorded attract-mode flight
   hb check                          parse everything and report what fails
 
@@ -637,8 +641,8 @@ fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
     // The readout, so the layout can be looked at without a window. The
     // numbers are a sample; what feeds them in flight is `hb-fly`.
     if !bare {
-        if let Ok(exe) = std::fs::read(game_dir().join("HELLBEND.EXE")) {
-            if let Ok(font) = hb_formats::hud_font::HudFont::read(&exe) {
+        {
+            if let Ok(font) = hud_font() {
                 // Every placement, as the radar would see it from here.
                 let heading = camera.yaw.0 as f32 * std::f32::consts::TAU / 65536.0;
                 let (sin, cos) = heading.sin_cos();
@@ -858,9 +862,28 @@ fn cmd_movie(name: &str, out: Option<&Path>, frame: usize) -> Result<(), String>
     Ok(())
 }
 
+/// The HUD font, from the executable or from the table `--extract` wrote.
+///
+/// The table is looked for first, so a directory with `hudfont.bin` in it
+/// needs no `HELLBEND.EXE` at all.
+fn hud_font() -> Result<hb_formats::hud_font::HudFont, String> {
+    use hb_formats::hud_font::HudFont;
+    let dir = game_dir();
+    if let Ok(table) = std::fs::read(dir.join(HUD_FONT_FILE)) {
+        return HudFont::parse(&table).map_err(|e| format!("{HUD_FONT_FILE}: {e}"));
+    }
+    let exe = std::fs::read(dir.join("HELLBEND.EXE")).map_err(|e| {
+        format!("neither {HUD_FONT_FILE} nor HELLBEND.EXE is in {}: {e}", dir.display())
+    })?;
+    HudFont::read(&exe).map_err(|e| e.to_string())
+}
+
+/// What `hb hudfont <file> --extract` writes and everything else looks for.
+pub const HUD_FONT_FILE: &str = "hudfont.bin";
+
 fn cmd_brief(name: &str, out: &Path) -> Result<(), String> {
     use hb_formats::brief::{Brief, BACKDROP};
-    use hb_formats::hud_font::{HudFont, LINE};
+    use hb_formats::hud_font::LINE;
     let game = open_pod("game")?;
     let startup = open_pod("startup")?;
     let file = format!("{name}.txt");
@@ -880,9 +903,7 @@ fn cmd_brief(name: &str, out: &Path) -> Result<(), String> {
     // `FONT.BIN` is 23 pixels a line and a briefing runs to seventeen
     // lines, which does not fit a 200-line screen, so this is in the small
     // font. Which font the engine uses here is not read.
-    let exe = std::fs::read(game_dir().join("HELLBEND.EXE"))
-        .map_err(|e| format!("HELLBEND.EXE: {e}"))?;
-    let font = HudFont::read(&exe).map_err(|e| e.to_string())?;
+    let font = hud_font()?;
 
     let (w, h) = (image.shape.width, image.shape.height);
     let mut pixels = image.pixels.clone();
@@ -937,10 +958,16 @@ fn cmd_brief(name: &str, out: &Path) -> Result<(), String> {
 
 /// The HUD's own font, out of the executable.
 fn cmd_hud_font(out: &Path, rest: &[&str]) -> Result<(), String> {
-    use hb_formats::hud_font::{HudFont, LINE};
-    let exe = std::fs::read(game_dir().join("HELLBEND.EXE"))
-        .map_err(|e| format!("HELLBEND.EXE: {e}"))?;
-    let font = HudFont::read(&exe).map_err(|e| e.to_string())?;
+    use hb_formats::hud_font::LINE;
+    let font = hud_font()?;
+    // `--extract` writes the table itself rather than a picture of it, so a
+    // player can keep the port running without the executable beside it.
+    if rest.contains(&"--extract") {
+        let table = font.table();
+        std::fs::write(out, &table).map_err(|e| e.to_string())?;
+        println!("{} bytes -> {}", table.len(), out.display());
+        return Ok(());
+    }
     let startup = open_pod("startup")?;
     let palette =
         act::Palette::parse(startup.read("art", "vga.act").map_err(|e| e.to_string())?)
