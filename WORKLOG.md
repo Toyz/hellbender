@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-105 entries: audio 7, build 2, content 10, decomp 68, engine 26, flight 7, format 40, net 1, port 82, render 31, test 6, tooling 5, ui 8, video 5, world 11.
+106 entries: audio 7, build 2, content 10, decomp 69, engine 26, flight 7, format 40, net 1, port 83, render 31, test 6, tooling 5, ui 8, video 6, world 11.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -116,3 +116,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 103 | [The cache is emptied every frame](worklog/0103-the-cache-is-emptied-every-frame.md) | 2026-09-21 | format, video, test |
 | 104 | [How a level starts](worklog/0104-how-a-level-starts.md) | 2026-09-21 | decomp, world, port |
 | 105 | [Flying out of a level](worklog/0105-flying-out-of-a-level.md) | 2026-09-21 | decomp, port, flight |
+| 106 | [Four films before the ground](worklog/0106-four-films-before-the-ground.md) | 2026-09-21 | decomp, port, video |

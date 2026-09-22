@@ -14,10 +14,12 @@ use hb_formats::smk::Player;
 /// Where the movies live on the disc.
 pub const STORY: &str = "system/Story";
 
-/// The four the engine plays before a game, in the order its three routines
-/// name them (`0x45bbc9`, `0x45bbf9`, `0x45bc19`): Terminal Reality, the
-/// title, Microsoft, and then the story.
-pub const OPENING: [&str; 4] = ["tri.smk", "hell.smk", "mslogo.smk", "intro.smk"];
+/// The four the engine plays before a game, in the order it calls for them.
+///
+/// `0x4835a3`, `0x4835a8` and `0x4835ad` are three calls in a row: the first
+/// routine plays Microsoft's logo, the second Terminal Reality's and then the
+/// title, and the third the story. Each is gated on `0x512650`.
+pub const OPENING: [&str; 4] = ["mslogo.smk", "tri.smk", "hell.smk", "intro.smk"];
 
 pub struct Show {
     data: Vec<u8>,

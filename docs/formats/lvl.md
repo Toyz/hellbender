@@ -100,11 +100,21 @@ Every level with a slot 1 is the first of its chapter and every one with a
 slot 2 is the last, so slot 1 is arriving and slot 2 is leaving. Slot 3 is the
 chapter's own film, one a planet. Slots 4 and 5 are `null` in all 26.
 
-The engine plays them from five short routines around `0x45b9f0`, each one
-comparing a name against `"null"` before handing it to the player at
-`0x49f920`, and all of them gated on `0x512650`. Which routine runs when has
-not been read; the port plays slot 1 as a level opens and slot 2 as it is
-left.
+The engine plays them from short routines around `0x45b9f0`, each comparing a
+name against `"null"` before handing it to the player at `0x49f920`, all gated
+on `0x512650`. The buffers the names live in are 40 bytes apart from
+`0x666f58`, which is what puts them in slot order, and that says which routine
+plays what:
+
+- `0x45b9f0`, called as a level starts (`0x481627`), plays `0x666fa8` and then
+  `0x666f58` - **slot 3 and then slot 1**, the chapter's film and then the
+  arrival.
+- `0x45ba50`, called from the level-end sequence (`0x4824dc`), plays
+  `0x666f80` - slot 2, the departure.
+
+So `MORBOS` opens on `morbos1.smk` and then `morbin.smk`, which with the
+briefing movie in front of them is three films between the title and the
+ground.
 ## Fields
 
 `null` in any filename slot means the slot is unused.

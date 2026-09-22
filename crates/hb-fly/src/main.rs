@@ -25,15 +25,15 @@ const USAGE: &str = "\
 hb-fly - fly around a Hellbender level
 
   hb-fly [level] [--mode 200|400|480] [--scale N] [--demo 1|2|3]
-         [--intro] [--movie NAME] [--no-movies]
+         [--no-intro] [--movie NAME] [--no-movies]
 
   level    a level stem, default `hoth`
   --mode   the game's three screen sizes, default 200 (320x200)
   --scale  integer upscale of the window, default 3
   --demo   replay one of the game's recorded attract-mode flights
-  --intro  play the four opening cutscenes first, as the engine does
-  --movie  play one cutscene by name, e.g. --movie Intro.smk
-  --no-movies  skip the chapter briefing movies
+  --no-intro   skip the four cutscenes the game opens on
+  --movie      play one cutscene by name, e.g. --movie Intro.smk
+  --no-movies  skip every cutscene
 
   The keys are the game's own, from `[Control]` of system/hellbend.ini if
   there is one and the engine's defaults if not:
@@ -314,6 +314,7 @@ fn main() -> Result<(), String> {
     // ends or a key skips it.
     let mut pending: Vec<String> = Vec::new();
     let mut movies = true;
+    let mut opening = true;
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         match arg.as_str() {
@@ -323,8 +324,9 @@ fn main() -> Result<(), String> {
             "--movie" => {
                 pending.extend(it.next().cloned());
                 movies = false;
+                opening = false;
             }
-            "--intro" => pending.extend(movie::OPENING.iter().map(|s| s.to_string())),
+            "--no-intro" => opening = false,
             "--no-movies" => movies = false,
             other if !other.starts_with('-') => level_name = other.to_string(),
             other => return Err(format!("unknown option {other}\n\n{USAGE}")),
@@ -614,10 +616,17 @@ fn main() -> Result<(), String> {
     // A chapter's briefing is a movie before it is a screen, and the `.LVL`
     // names it on line 36. The arrival follows it.
     if movies {
+        // The game opens on four of them before it opens on anything else.
+        if opening && demo.is_none() {
+            let mut first: Vec<String> =
+                movie::OPENING.iter().map(|s| s.to_string()).collect();
+            first.append(&mut pending);
+            pending = first;
+        }
         if briefing.is_some() {
             pending.extend(level.manifest.briefing_movie.clone());
         }
-        pending.extend(arrival(&level));
+        pending.extend(opening_of(&level));
     }
     // The one that is playing, its clock, and the buffer it draws into -
     // which is the movie's size, not the game's.
@@ -801,7 +810,7 @@ fn main() -> Result<(), String> {
                 if briefing.is_some() {
                     pending.extend(level.manifest.briefing_movie.clone());
                 }
-                pending.extend(arrival(&level));
+                pending.extend(opening_of(&level));
             }
             describe(&level);
             play_music(&level);
@@ -1437,7 +1446,9 @@ fn main() -> Result<(), String> {
             let mut c = flight.camera;
             let mut turn = hb_render::cockpit::VIEWS[view].0;
             if let Some((clock, _)) = jumping {
-                turn = turn.wrapping_add((clock * jump::SPIN * 65536.0) as i32 as u16);
+                let (yaw, pitch) = jump::look(clock);
+                turn = turn.wrapping_add((yaw * 65536.0) as i32 as u16);
+                c.pitch = Angle(c.pitch.0.wrapping_add((pitch * 65536.0) as i32 as u16));
             }
             c.yaw = Angle(c.yaw.0.wrapping_add(turn));
             c
@@ -1788,6 +1799,26 @@ mod jump {
     pub const SOUND: f32 = 7.0;
     /// Turns a second, for both the ship's pitch and the camera's swing.
     pub const SPIN: f32 = 0.25;
+    /// The camera's pitch rises at half that for the first half of the run.
+    pub const RISE: f32 = 0.125;
+
+    /// Where the camera is looking, in turns, at `clock` seconds: the yaw goes
+    /// round twice, and the pitch climbs to [`PITCH`] and then swings all the
+    /// way past level to the other side (`0x45a374` and `0x45a39b`).
+    ///
+    /// The engine also puts the camera off the ship for this - `0x512568` goes
+    /// to 2 and the view is built at `0x47ffc8` from these two angles alone,
+    /// around a distance this port has not read. Here the eye stays on the
+    /// ship and only the look turns.
+    pub fn look(clock: f32) -> (f32, f32) {
+        let half = SECONDS / 2.0;
+        let pitch = if clock < half {
+            (clock * RISE).min(PITCH)
+        } else {
+            ((half * RISE).min(PITCH) - (clock - half) * SPIN).max(-PITCH)
+        };
+        (clock * SPIN, pitch)
+    }
     /// How far the nose comes up: `0xffffc100` of the circle.
     pub const PITCH: f32 = 0x3f00 as f32 / 65536.0;
     pub const BLAST: &str = "blast4.wav";
@@ -1899,16 +1930,22 @@ fn say(panel: &mut Vec<String>, saying: &mut f32, text: &str) {
     *saying = 4.0;
 }
 
-/// The movie a level arrives on, which is the first of its five story slots.
+/// The movies a level opens with, in the order the engine plays them.
 ///
-/// The names say what the slots are: slot 1 is `snowin.smk` in `HOTH`,
+/// `0x45b9f0` is the routine, called as a level starts (`0x481627`). It plays
+/// two of the five story slots and it plays them in this order: the third,
+/// then the first. Each is compared against `"null"` first, and the buffers
+/// they live in are 40 bytes apart from `0x666f58`, which is what puts them in
+/// slot order.
+///
+/// The names say what the slots are for. Slot 1 is `snowin.smk` in `HOTH`,
 /// `morbin.smk` in `MORBOS`, `astrin.smk` in `ROID` and `shiv1in.smk` in
-/// `SHIP`, and all four are the first level of a chapter. Slot 2 is the
-/// matching `snowout`, `astrout`, `shiv1out` and `shiv2out`, on the last level
-/// of one. The engine's own triggers are five little routines around
-/// `0x45b9f0`, each comparing a name against `"null"` before playing it.
-fn arrival(level: &Level) -> Option<String> {
-    level.manifest.story_movies[0].clone()
+/// `SHIP`, all first levels of a chapter - the arrival. Slot 3 is
+/// `morbos1.smk`, `eyrie1.smk`, `chimera1.smk` and so on, one a planet - the
+/// chapter's own film. So a level opens on its film and then its arrival.
+fn opening_of(level: &Level) -> Vec<String> {
+    let story = &level.manifest.story_movies;
+    [story[2].clone(), story[0].clone()].into_iter().flatten().collect()
 }
 
 /// And the one it leaves on, the second slot.
