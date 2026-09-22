@@ -61,21 +61,10 @@ fn a_corner_between_two_boxes_settles_outside_both() {
     }
 }
 
-fn game_dir() -> std::path::PathBuf {
-    std::env::var_os("HB_GAME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original"))
-}
-
 /// A real level: flying at a box from outside ends up outside it.
 #[test]
 fn the_boxes_of_a_level_stop_a_ship() {
-    let path = game_dir().join("system/GAME.POD");
-    if !path.exists() {
-        eprintln!("skipping: {} is not there", path.display());
-        return;
-    }
-    let pod = hb_pod::Pod::open(&path).unwrap();
+    let Some(pod) = hb_pod::game_pod("GAME.POD") else { return };
     let terrain = hb_formats::terrain::Terrain::load(|ext| {
         pod.read("data", &format!("float.{ext}")).ok().map(<[u8]>::to_vec)
     })

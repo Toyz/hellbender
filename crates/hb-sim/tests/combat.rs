@@ -181,16 +181,7 @@ fn cube_means_nothing_is_left_and_anything_else_is_a_wreck() {
 
 #[test]
 fn shooting_a_real_placement_destroys_it() {
-    use std::path::PathBuf;
-    let dir = std::env::var_os("HB_GAME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original"));
-    let path = dir.join("system/GAME.POD");
-    if !path.exists() {
-        eprintln!("skipping: {} is not there", path.display());
-        return;
-    }
-    let pod = hb_pod::Pod::open(path).unwrap();
+    let Some(pod) = hb_pod::game_pod("GAME.POD") else { return };
     let def = pod.read("data", "float.def").unwrap();
     let kinds = hb_formats::text::enemy_defs(def).unwrap();
     let placed = hb_formats::text::placements(def).unwrap();

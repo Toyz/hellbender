@@ -1,28 +1,11 @@
 //! The audio formats, checked against the archives.
 
-use std::path::PathBuf;
 
 use hb_audio::{Mixer, Module, Wav};
-use hb_pod::Pod;
-
-fn game_dir() -> PathBuf {
-    std::env::var_os("HB_GAME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original"))
-}
-
-fn pod(name: &str) -> Option<Pod> {
-    let path = game_dir().join("system").join(name);
-    if !path.exists() {
-        eprintln!("skipping: {} is not there", path.display());
-        return None;
-    }
-    Some(Pod::open(&path).expect("the archive should open"))
-}
 
 macro_rules! archive {
     ($name:expr) => {
-        match pod($name) {
+        match hb_pod::game_pod($name) {
             Some(pod) => pod,
             None => return,
         }

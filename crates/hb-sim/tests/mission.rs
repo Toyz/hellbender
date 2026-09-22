@@ -290,23 +290,12 @@ fn three_friendlies_lost_fail_the_mission() {
     assert_eq!(m.outcome, Some(Outcome::Failed));
 }
 
-fn game_dir() -> std::path::PathBuf {
-    std::env::var_os("HB_GAME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original"))
-}
-
 /// Every shipped mission loads within the engine's 50 records, starts at its
 /// start, and every sync point the loader adds lands where the files already
 /// put one - the editor wrote "Sync point: auto added" into them.
 #[test]
 fn every_shipped_mission_already_carries_its_sync_points() {
-    let path = game_dir().join("system/GAME.POD");
-    if !path.exists() {
-        eprintln!("skipping: {} is not there", path.display());
-        return;
-    }
-    let pod = hb_pod::Pod::open(&path).unwrap();
+    let Some(pod) = hb_pod::game_pod("GAME.POD") else { return };
     let mut levels = 0;
     for e in pod.entries().iter().filter(|e| e.ext() == "lvl") {
         let level = hb_formats::lvl::Level::parse(pod.bytes(e)).unwrap();
@@ -370,12 +359,7 @@ fn the_phrase_table_is_three_hundred_lines_that_all_have_a_sound() {
 /// Every sound the phrase table names is in the archive.
 #[test]
 fn every_phrase_names_a_sound_that_ships() {
-    let path = game_dir().join("system/STARTUP.POD");
-    if !path.exists() {
-        eprintln!("skipping: {} is not there", path.display());
-        return;
-    }
-    let pod = hb_pod::Pod::open(&path).unwrap();
+    let Some(pod) = hb_pod::game_pod("STARTUP.POD") else { return };
     let mut missing: Vec<String> = Vec::new();
     for p in hb_sim::phrases::PHRASES {
         for name in [p.sound, p.also] {
@@ -408,12 +392,7 @@ fn the_level_datas_sounds_have_words_in_the_table() {
 /// And every sound the shipped missions name is in there - all 432 of them.
 #[test]
 fn everything_the_missions_name_has_words() {
-    let path = game_dir().join("system/GAME.POD");
-    if !path.exists() {
-        eprintln!("skipping: {} is not there", path.display());
-        return;
-    }
-    let pod = hb_pod::Pod::open(&path).unwrap();
+    let Some(pod) = hb_pod::game_pod("GAME.POD") else { return };
     let (mut named, mut spoken) = (0, 0);
     for e in pod.entries().iter().filter(|e| e.ext() == "nav") {
         for n in nav::navs(pod.bytes(e)).unwrap() {

@@ -213,22 +213,11 @@ fn picking_up_a_message_pod_finishes_its_mission_point() {
     assert_eq!(m.nav(m.current).kind, Kind::Checkpoint);
 }
 
-fn game_dir() -> std::path::PathBuf {
-    std::env::var_os("HB_GAME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original"))
-}
-
 /// Every kind's model is in `STARTUP.POD`, carries its unit, and comes out
 /// a couple of units across.
 #[test]
 fn every_powerup_model_is_shipped_and_small() {
-    let path = game_dir().join("system/STARTUP.POD");
-    if !path.exists() {
-        eprintln!("skipping: {} is not there", path.display());
-        return;
-    }
-    let pod = hb_pod::Pod::open(&path).unwrap();
+    let Some(pod) = hb_pod::game_pod("STARTUP.POD") else { return };
     let mut sizes = Vec::new();
     for (name, model) in KINDS {
         let bytes = pod.read("models", model).unwrap_or_else(|e| panic!("{name}: {model}: {e}"));

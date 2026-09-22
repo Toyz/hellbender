@@ -3,11 +3,7 @@
 use hb_formats::smk::{Movie, Player, Trees};
 
 fn story() -> Option<std::path::PathBuf> {
-    let dir = std::env::var_os("HB_GAME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original")
-        })
+    let dir = hb_pod::game_dir()
         .join("system/Story");
     if !dir.is_dir() {
         eprintln!("skipping: {} is not there", dir.display());

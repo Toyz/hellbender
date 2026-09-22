@@ -6,6 +6,33 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+/// Where the game disc is: `HB_GAME` if it is set, otherwise `original`, the
+/// symlink at the top of the repository - found from the working directory
+/// when a tool runs there, and from the workspace when a test runs in its
+/// own crate's directory.
+pub fn game_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("HB_GAME") {
+        return PathBuf::from(dir);
+    }
+    let here = PathBuf::from("original");
+    if here.exists() {
+        return here;
+    }
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original")
+}
+
+/// One of the disc's archives, `system/<name>`, or `None` with a note on
+/// stderr when the disc is not there - which is how every test that reads
+/// the game skips without it.
+pub fn game_pod(name: &str) -> Option<Pod> {
+    let path = game_dir().join("system").join(name);
+    if !path.exists() {
+        eprintln!("skipping: {} is not there", path.display());
+        return None;
+    }
+    Some(Pod::open(&path).expect("the archive should open"))
+}
+
 const DIR_OFFSET: usize = 0x54;
 const ENTRY_SIZE: usize = 40;
 const NAME_LEN: usize = 32;

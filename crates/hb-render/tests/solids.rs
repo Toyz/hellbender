@@ -3,20 +3,6 @@
 use hb_sim::collide::{self, Solid};
 use hb_sim::combat::{self, HitVolume};
 
-fn level(stem: &str) -> Option<hb_render::Level> {
-    let dir = std::env::var_os("HB_GAME").map(std::path::PathBuf::from).unwrap_or_else(|| {
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original")
-    });
-    let game = dir.join("system/GAME.POD");
-    if !game.exists() {
-        eprintln!("skipping: {} is not there", game.display());
-        return None;
-    }
-    let game = hb_pod::Pod::open(game).unwrap();
-    let startup = hb_pod::Pod::open(dir.join("system/STARTUP.POD")).ok();
-    Some(hb_render::Level::load(&game, startup.as_ref(), stem).unwrap())
-}
-
 fn scenery(level: &hb_render::Level) -> Vec<Solid> {
     level
         .placements
@@ -37,7 +23,7 @@ fn scenery(level: &hb_render::Level) -> Vec<Solid> {
 #[test]
 fn scenery_becomes_solid() {
     for stem in ["morbos", "hoth", "float"] {
-        let Some(level) = level(stem) else { return };
+        let Some(level) = hb_render::Level::from_disc(stem) else { return };
         let solids = scenery(&level);
         assert!(!solids.is_empty(), "{stem} has no solid scenery");
         for s in &solids {
@@ -55,7 +41,7 @@ fn scenery_becomes_solid() {
 #[test]
 fn the_start_is_not_inside_anything() {
     for stem in ["morbos", "hoth", "float"] {
-        let Some(level) = level(stem) else { return };
+        let Some(level) = hb_render::Level::from_disc(stem) else { return };
         let solids = scenery(&level);
         let grid = hb_world::Grid::new(&level.terrain);
         let middle = 64.0 * 8.0;
@@ -74,7 +60,7 @@ fn the_start_is_not_inside_anything() {
 #[test]
 fn nothing_is_absurdly_big() {
     for stem in ["morbos", "hoth", "float"] {
-        let Some(level) = level(stem) else { return };
+        let Some(level) = hb_render::Level::from_disc(stem) else { return };
         let mut widest = 0.0f32;
         for s in scenery(&level) {
             for k in 0..3 {
@@ -91,7 +77,7 @@ fn nothing_is_absurdly_big() {
 #[test]
 fn a_shot_starts_a_switch() {
     use hb_sim::quake::{Layer, Quakes, Trigger};
-    let Some(level) = level("morbos") else { return };
+    let Some(level) = hb_render::Level::from_disc("morbos") else { return };
     let mut doors = Quakes::new(&level.quake, |layer, (x, z)| match layer {
         Layer::BoxA => (level.terrain.boxes_a.bottom.at(x, z), level.terrain.boxes_a.top.at(x, z)),
         Layer::BoxB => (level.terrain.boxes_b.bottom.at(x, z), level.terrain.boxes_b.top.at(x, z)),
@@ -193,7 +179,7 @@ fn a_shot_starts_a_switch() {
 /// and nothing about being under the ground should hide what is in one.
 #[test]
 fn a_chamber_draws_what_is_in_it() {
-    let Some(level) = level("morbos") else { return };
+    let Some(level) = hb_render::Level::from_disc("morbos") else { return };
     let grid = hb_world::Grid::new(&level.terrain);
     // Somewhere with a chamber under it, and something placed down there.
     let under: Vec<usize> = level

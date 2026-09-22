@@ -6,25 +6,8 @@
 //! the archives are not there the tests skip rather than fail, so the
 //! workspace still builds and tests for someone without the disc.
 
-use std::path::PathBuf;
 
 use hb_formats::{act, anim, colour, course, font, glt, lvl, mrgl, nav, raw, terrain, text};
-use hb_pod::Pod;
-
-fn game_dir() -> PathBuf {
-    std::env::var_os("HB_GAME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original"))
-}
-
-fn pod(name: &str) -> Option<Pod> {
-    let path = game_dir().join("system").join(name);
-    if !path.exists() {
-        eprintln!("skipping: {} is not there", path.display());
-        return None;
-    }
-    Some(Pod::open(&path).expect("the archive should open"))
-}
 
 /// The indexed polygons - [`mrgl::INDEXED_POLYGON`] and
 /// [`mrgl::FLAT_POLYGON`] - have tests of their own.
@@ -37,7 +20,7 @@ fn indexed(p: &mrgl::Polygon) -> bool {
 
 macro_rules! archive {
     ($name:expr) => {
-        match pod($name) {
+        match hb_pod::game_pod($name) {
             Some(pod) => pod,
             None => return,
         }
@@ -1515,7 +1498,7 @@ fn every_animated_model_stays_in_one_piece_through_its_animation() {
 /// (worklog 67).
 #[test]
 fn the_hud_font_reads_as_letters() {
-    let path = game_dir().join("HELLBEND.EXE");
+    let path = hb_pod::game_dir().join("HELLBEND.EXE");
     if !path.exists() {
         eprintln!("skipping: {} is not there", path.display());
         return;
@@ -1685,7 +1668,7 @@ fn the_briefings_name_a_globe_and_a_mission() {
 #[test]
 fn the_hud_font_survives_a_round_trip() {
     use hb_formats::hud_font::{HudFont, TABLE_BYTES};
-    let path = game_dir().join("HELLBEND.EXE");
+    let path = hb_pod::game_dir().join("HELLBEND.EXE");
     if !path.exists() {
         eprintln!("skipping: {} is not there", path.display());
         return;

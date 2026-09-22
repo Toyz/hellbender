@@ -257,12 +257,6 @@ fn a_patch_covers_every_cell_of_its_rectangle_and_wraps() {
     assert_eq!(quakes.patches[0].cells().collect::<Vec<_>>(), vec![(127, 40), (0, 40), (1, 40)]);
 }
 
-fn game_dir() -> std::path::PathBuf {
-    std::env::var_os("HB_GAME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original"))
-}
-
 /// Against the game: every live box entry names a cell that has a box, and
 /// that box is parked at one end of the entry's two heights - its bottom at
 /// the second, so it opens upward, or its top already at the first, so it
@@ -271,12 +265,7 @@ fn game_dir() -> std::path::PathBuf {
 /// is computed from.
 #[test]
 fn the_shipped_doors_rest_where_their_second_height_says() {
-    let path = game_dir().join("system/GAME.POD");
-    if !path.exists() {
-        eprintln!("skipping: {} is not there", path.display());
-        return;
-    }
-    let pod = hb_pod::Pod::open(&path).unwrap();
+    let Some(pod) = hb_pod::game_pod("GAME.POD") else { return };
     let (mut entries, mut resting, mut boxed, mut shot_open) = (0, 0, 0, 0);
     for stem in ["float", "hoth", "iowah", "jurasic", "kreash", "morbos", "roid", "ship"] {
         let terrain = hb_formats::terrain::Terrain::load(|ext| {

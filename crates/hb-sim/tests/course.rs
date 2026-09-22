@@ -1,7 +1,6 @@
 //! Following a course - class 47, `0x421240` - with a synthetic course and
 //! then the game's own.
 
-use std::path::PathBuf;
 
 use hb_formats::course::{self, Course, Point};
 use hb_formats::text::{EnemyDef, Placement};
@@ -133,15 +132,7 @@ fn a_course_with_no_points_is_refused() {
 
 #[test]
 fn every_shipped_follower_follows() {
-    let dir = std::env::var_os("HB_GAME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original"));
-    let path = dir.join("system/GAME.POD");
-    if !path.exists() {
-        eprintln!("skipping: {} is not there", path.display());
-        return;
-    }
-    let pod = hb_pod::Pod::open(path).unwrap();
+    let Some(pod) = hb_pod::game_pod("GAME.POD") else { return };
     let (mut followed, mut named, mut ignored) = (0usize, 0usize, 0usize);
     for e in pod.entries().iter().filter(|e| e.ext() == "lvl") {
         let level = hb_formats::lvl::Level::parse(pod.bytes(e)).unwrap();

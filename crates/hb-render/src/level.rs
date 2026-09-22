@@ -230,6 +230,14 @@ impl Level {
     /// `game` holds the level; `startup` is consulted for art a level names but
     /// does not carry, which happens because the front end and the levels share
     /// some textures.
+    /// A level straight off the disc (`hb_pod::game_pod`), or `None` when
+    /// the disc is not there. For the tests and tools that only need one.
+    pub fn from_disc(name: &str) -> Option<Level> {
+        let game = hb_pod::game_pod("GAME.POD")?;
+        let startup = hb_pod::game_pod("STARTUP.POD");
+        Some(Level::load(&game, startup.as_ref(), name).unwrap_or_else(|e| panic!("{name}: {e}")))
+    }
+
     pub fn load(game: &Pod, startup: Option<&Pod>, name: &str) -> Result<Level, String> {
         let read = |dir: &str, file: &str| -> Option<Vec<u8>> {
             game.read(dir, file)

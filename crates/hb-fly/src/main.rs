@@ -4,7 +4,6 @@
 //! the game's - `hb-sim` will be, when the original's is read - it is enough to
 //! move an eye through the world and see whether the world is right.
 
-use std::path::PathBuf;
 use std::time::Instant;
 
 use hb_formats::terrain::CELL_SIZE;
@@ -62,12 +61,6 @@ hb-fly - fly around a Hellbender level
   Flying into the jump zone, or finishing every objective, moves on to the
   next level; failing starts the level again.
 ";
-
-fn game_dir() -> PathBuf {
-    std::env::var_os("HB_GAME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("original"))
-}
 
 /// The player's ship and the eye that rides in it.
 struct Flight {
@@ -335,9 +328,9 @@ fn main() -> Result<(), String> {
         }
     }
 
-    let game = Pod::open(game_dir().join("system/GAME.POD")).map_err(|e| e.to_string())?;
+    let game = Pod::open(hb_pod::game_dir().join("system/GAME.POD")).map_err(|e| e.to_string())?;
     let startup =
-        Pod::open(game_dir().join("system/STARTUP.POD")).map_err(|e| e.to_string())?;
+        Pod::open(hb_pod::game_dir().join("system/STARTUP.POD")).map_err(|e| e.to_string())?;
 
     let (w, h) = match mode {
         400 => Target::MODE_400,
@@ -420,14 +413,14 @@ fn main() -> Result<(), String> {
                 .and_then(|b| Image::parse_guessed(b).ok().flatten())
         })
         .collect();
-    let show_hand = hb_formats::ini::Ini::read(&game_dir().join("system/hellbend.ini"))
+    let show_hand = hb_formats::ini::Ini::read(&hb_pod::game_dir().join("system/hellbend.ini"))
         .and_then(|ini| ini.int("Game", "cockpitHandFlag"))
         .unwrap_or(1)
         == 1
         && hands.iter().any(Option::is_some);
     // The game's own key bindings. Without an .INI they are the engine's
     // defaults, which is what a fresh install plays on.
-    let (binds, from_ini) = keys::Bindings::load(&game_dir());
+    let (binds, from_ini) = keys::Bindings::load(&hb_pod::game_dir());
     println!(
         "keys: {}",
         if from_ini { "system/hellbend.ini" } else { "the engine's defaults" }
@@ -493,7 +486,7 @@ fn main() -> Result<(), String> {
             // The engine's two volumes, 16.16 in the `.INI` and 1.0 by
             // default. HB_VOLUME scales both on top, for a machine where
             // 1.0 is too much.
-            let ini = hb_formats::ini::Ini::read(&game_dir().join("system").join("hellbend.ini"))
+            let ini = hb_formats::ini::Ini::read(&hb_pod::game_dir().join("system").join("hellbend.ini"))
                 .unwrap_or_default();
             let setting = |name: &str| {
                 ini.int("Sound", name).map_or(1.0, |v| v as f32 / 65536.0).clamp(0.0, 1.0)
@@ -544,11 +537,11 @@ fn main() -> Result<(), String> {
     // `hb hudfont hudfont.bin --extract` writes the table out on its own, and
     // it is looked for first, so a directory with one in it needs no
     // executable at all.
-    let hud_font = std::fs::read(game_dir().join(HUD_FONT_FILE))
+    let hud_font = std::fs::read(hb_pod::game_dir().join(HUD_FONT_FILE))
         .ok()
         .and_then(|table| hb_formats::hud_font::HudFont::parse(&table).ok())
         .or_else(|| {
-            std::fs::read(game_dir().join("HELLBEND.EXE"))
+            std::fs::read(hb_pod::game_dir().join("HELLBEND.EXE"))
                 .ok()
                 .and_then(|exe| hb_formats::hud_font::HudFont::read(&exe).ok())
         });
@@ -686,7 +679,7 @@ fn main() -> Result<(), String> {
         // its own soundtrack over the music and any key cuts it short.
         if show.is_none() && !pending.is_empty() {
             let name = pending.remove(0);
-            match movie::Show::open(&game_dir(), &name) {
+            match movie::Show::open(&hb_pod::game_dir(), &name) {
                 Some(mut opened) => {
                     println!("movie: {}", opened.name);
                     if let (Some(track), Some(music)) = (opened.sound(), music.as_ref()) {

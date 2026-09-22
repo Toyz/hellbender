@@ -2,24 +2,10 @@
 
 use hb_render::cockpit;
 
-fn startup() -> Option<hb_pod::Pod> {
-    let dir = std::env::var_os("HB_GAME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original")
-        });
-    let pod = dir.join("system/STARTUP.POD");
-    if !pod.exists() {
-        eprintln!("skipping: {} is not there", pod.display());
-        return None;
-    }
-    hb_pod::Pod::open(pod).ok()
-}
-
 /// Four views and 27 hands, in every one of the three modes.
 #[test]
 fn every_picture_the_engine_names_is_there() {
-    let Some(pod) = startup() else { return };
+    let Some(pod) = hb_pod::game_pod("STARTUP.POD") else { return };
     for mode in [200, 400, 480] {
         for which in 0..4 {
             let name = cockpit::view(which, mode);
@@ -38,7 +24,7 @@ fn every_picture_the_engine_names_is_there() {
 /// engine's own divide loses: 110 * 200 / 480 is 45 where the picture is 46.
 #[test]
 fn the_hand_is_the_size_its_box_says() {
-    let Some(pod) = startup() else { return };
+    let Some(pod) = hb_pod::game_pod("STARTUP.POD") else { return };
     for (mode, w, h) in [(200, 320, 200), (400, 320, 400), (480, 640, 480)] {
         let [_, _, bw, bh] = cockpit::hand_box(w, h);
         let bytes = pod.read("art", &cockpit::hand(cockpit::REST, 4, mode)).unwrap();
@@ -63,17 +49,7 @@ fn the_cell_moves_at_a_quarter_push() {
 /// The player's own ship is in `STARTUP.POD` and loads with the level.
 #[test]
 fn the_players_ship_is_there() {
-    let dir = std::env::var_os("HB_GAME").map(std::path::PathBuf::from).unwrap_or_else(|| {
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original")
-    });
-    let game = dir.join("system/GAME.POD");
-    if !game.exists() {
-        eprintln!("skipping: {} is not there", game.display());
-        return;
-    }
-    let game = hb_pod::Pod::open(game).unwrap();
-    let startup = hb_pod::Pod::open(dir.join("system/STARTUP.POD")).ok();
-    let level = hb_render::Level::load(&game, startup.as_ref(), "morbos").unwrap();
+    let Some(level) = hb_render::Level::from_disc("morbos") else { return };
     let mesh = level.ship_mesh.expect("no ship.bin");
     let model = level.meshes[mesh].as_ref().expect("the slot is empty");
     assert!(!model.vertices.is_empty(), "the ship has no vertices");
@@ -84,9 +60,7 @@ fn the_players_ship_is_there() {
 #[test]
 fn the_panel_wraps_a_long_line() {
     use hb_formats::hud_font::HudFont;
-    let dir = std::env::var_os("HB_GAME").map(std::path::PathBuf::from).unwrap_or_else(|| {
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original")
-    });
+    let dir = hb_pod::game_dir();
     let Ok(exe) = std::fs::read(dir.join("HELLBEND.EXE")) else {
         eprintln!("skipping: no executable");
         return;

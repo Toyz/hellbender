@@ -5,32 +5,11 @@
 //! right, none of those poses is underground. If any of them is wrong, poses
 //! sink - and the controls below show by how many, so a pass means something.
 
-use std::path::PathBuf;
 
 use hb_formats::demo::Demo;
 use hb_formats::terrain::{Layer, Terrain};
 use hb_pod::Pod;
 use hb_world::Grid;
-
-fn game() -> Option<Pod> {
-    let dir = std::env::var_os("HB_GAME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original"));
-    let path = dir.join("system/GAME.POD");
-    if !path.exists() {
-        eprintln!("skipping: {} is not there", path.display());
-        return None;
-    }
-    Some(Pod::open(path).unwrap())
-}
-
-fn startup() -> Option<Pod> {
-    let dir = std::env::var_os("HB_GAME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original"));
-    let path = dir.join("system/STARTUP.POD");
-    path.exists().then(|| Pod::open(path).unwrap())
-}
 
 fn terrain(pod: &Pod, stem: &str) -> Terrain {
     Terrain::load(|ext| pod.read("data", &format!("{stem}.{ext}")).ok().map(<[u8]>::to_vec))
@@ -39,7 +18,7 @@ fn terrain(pod: &Pod, stem: &str) -> Terrain {
 
 #[test]
 fn every_demo_parses_to_the_last_line() {
-    let Some(startup) = startup() else { return };
+    let Some(startup) = hb_pod::game_pod("STARTUP.POD") else { return };
     let mut seen = Vec::new();
     for e in startup.entries().iter().filter(|e| e.ext() == "dmo") {
         let demo = Demo::parse(startup.bytes(e)).unwrap_or_else(|w| panic!("{}: {w}", e.name));
@@ -72,7 +51,7 @@ fn every_demo_parses_to_the_last_line() {
 
 #[test]
 fn two_demos_were_recorded_on_levels_that_did_not_ship() {
-    let (Some(game), Some(startup)) = (game(), startup()) else { return };
+    let (Some(game), Some(startup)) = (hb_pod::game_pod("GAME.POD"), hb_pod::game_pod("STARTUP.POD")) else { return };
     let mut missing = Vec::new();
     for e in startup.entries().iter().filter(|e| e.ext() == "dmo") {
         let demo = Demo::parse(startup.bytes(e)).unwrap();
@@ -86,7 +65,7 @@ fn two_demos_were_recorded_on_levels_that_did_not_ship() {
 
 #[test]
 fn the_recorded_flight_never_goes_underground() {
-    let (Some(game), Some(startup)) = (game(), startup()) else { return };
+    let (Some(game), Some(startup)) = (hb_pod::game_pod("GAME.POD"), hb_pod::game_pod("STARTUP.POD")) else { return };
     let demo = Demo::parse(startup.read("demo", "demo1.dmo").unwrap()).unwrap();
     assert_eq!(demo.level, "iowah2.lvl");
     let terrain = terrain(&game, "iowah2");
@@ -116,7 +95,7 @@ fn the_recorded_flight_never_goes_underground() {
 fn the_ground_truth_test_can_fail() {
     // The same check against deliberately wrong terrain. If these passed, the
     // test above would be proving nothing.
-    let (Some(game), Some(startup)) = (game(), startup()) else { return };
+    let (Some(game), Some(startup)) = (hb_pod::game_pod("GAME.POD"), hb_pod::game_pod("STARTUP.POD")) else { return };
     let demo = Demo::parse(startup.read("demo", "demo1.dmo").unwrap()).unwrap();
     let raw = game.read("data", "iowah2.raw").unwrap();
     let hoth = game.read("data", "hoth.raw").unwrap();

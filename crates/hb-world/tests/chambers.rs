@@ -5,18 +5,6 @@ use hb_formats::terrain::{Layer, Terrain};
 use hb_pod::Pod;
 use hb_world::{Cell, Grid};
 
-fn game() -> Option<Pod> {
-    let dir = std::env::var_os("HB_GAME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original"));
-    let path = dir.join("system/GAME.POD");
-    if !path.exists() {
-        eprintln!("skipping: {} is not there", path.display());
-        return None;
-    }
-    Some(Pod::open(path).unwrap())
-}
-
 fn terrain(pod: &Pod, stem: &str) -> Terrain {
     Terrain::load(|ext| pod.read("data", &format!("{stem}.{ext}")).ok().map(<[u8]>::to_vec)).unwrap()
 }
@@ -26,7 +14,7 @@ fn terrain(pod: &Pod, stem: &str) -> Terrain {
 /// which is the rock the collision backs out of.
 #[test]
 fn a_chamber_is_a_floor_under_a_ceiling_below_zero() {
-    let Some(pod) = game() else { return };
+    let Some(pod) = hb_pod::game_pod("GAME.POD") else { return };
     let terrain = terrain(&pod, "hoth");
     let grid = Grid::new(&terrain);
     let (mut chambers, mut open, mut solid) = (0, 0, 0);
@@ -65,7 +53,7 @@ fn a_chamber_is_a_floor_under_a_ceiling_below_zero() {
 /// them under ground that is above them.
 #[test]
 fn levels_with_chambers_keep_them_under_the_ground() {
-    let Some(pod) = game() else { return };
+    let Some(pod) = hb_pod::game_pod("GAME.POD") else { return };
     let mut with = 0;
     for e in pod.entries().iter().filter(|e| e.ext() == "lvl") {
         let level = hb_formats::lvl::Level::parse(pod.bytes(e)).unwrap();

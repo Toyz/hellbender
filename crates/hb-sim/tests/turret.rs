@@ -135,22 +135,10 @@ fn a_missile_gives_up_after_six_seconds() {
     assert!(m.speed <= Missile::TOP_SPEED);
 }
 
-fn game() -> Option<hb_pod::Pod> {
-    let dir = std::env::var_os("HB_GAME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original"));
-    let path = dir.join("system/GAME.POD");
-    if !path.exists() {
-        eprintln!("skipping: {} is not there", path.display());
-        return None;
-    }
-    Some(hb_pod::Pod::open(path).unwrap())
-}
-
 /// Hover near a real turret and see what it does to you.
 fn stand_by(level: &str, which: &str, offset: [f32; 3], seconds: f32) -> Option<(usize, usize, hb_sim::combat::Pilot)> {
     use hb_sim::combat::{step_shot, Pilot, Stop};
-    let pod = game()?;
+    let pod = hb_pod::game_pod("GAME.POD")?;
     let def = pod.read("data", &format!("{level}.def")).unwrap();
     let kinds = hb_formats::text::enemy_defs(def).unwrap();
     let placed = hb_formats::text::placements(def).unwrap();

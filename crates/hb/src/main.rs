@@ -51,16 +51,10 @@ hb - inspect Hellbender's data
 `original`). <name> is a level stem such as `float`.
 ";
 
-fn game_dir() -> PathBuf {
-    std::env::var_os("HB_GAME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("original"))
-}
-
 fn open_pod(spec: &str) -> Result<Pod, String> {
     let path = match spec {
-        "game" => game_dir().join("system/GAME.POD"),
-        "startup" => game_dir().join("system/STARTUP.POD"),
+        "game" => hb_pod::game_dir().join("system/GAME.POD"),
+        "startup" => hb_pod::game_dir().join("system/STARTUP.POD"),
         other => PathBuf::from(other),
     };
     Pod::open(&path).map_err(|e| format!("{}: {e}", path.display()))
@@ -787,7 +781,7 @@ fn cmd_font(out: &Path, rest: &[&str]) -> Result<(), String> {
 /// A cutscene: what its header says, and one frame as a PNG.
 fn cmd_movie(name: &str, out: Option<&Path>, frame: usize) -> Result<(), String> {
     use hb_formats::smk::Player;
-    let path = game_dir().join("system/Story").join(name);
+    let path = hb_pod::game_dir().join("system/Story").join(name);
     let data = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut player = Player::new(&data).map_err(|e| e.to_string())?;
     let m = &player.movie;
@@ -891,7 +885,7 @@ fn cmd_movie(name: &str, out: Option<&Path>, frame: usize) -> Result<(), String>
 /// needs no `HELLBEND.EXE` at all.
 fn hud_font() -> Result<hb_formats::hud_font::HudFont, String> {
     use hb_formats::hud_font::HudFont;
-    let dir = game_dir();
+    let dir = hb_pod::game_dir();
     if let Ok(table) = std::fs::read(dir.join(HUD_FONT_FILE)) {
         return HudFont::parse(&table).map_err(|e| format!("{HUD_FONT_FILE}: {e}"));
     }

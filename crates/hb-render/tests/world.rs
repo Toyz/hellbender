@@ -3,20 +3,6 @@
 use hb_formats::Angle;
 use hb_render::{Camera, Level, Target};
 
-fn level(stem: &str) -> Option<Level> {
-    let dir = std::env::var_os("HB_GAME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original"));
-    let game = dir.join("system/GAME.POD");
-    if !game.exists() {
-        eprintln!("skipping: {} is not there", game.display());
-        return None;
-    }
-    let game = hb_pod::Pod::open(game).unwrap();
-    let startup = hb_pod::Pod::open(dir.join("system/STARTUP.POD")).ok();
-    Some(Level::load(&game, startup.as_ref(), stem).unwrap())
-}
-
 fn frame(level: &Level, x: i32, y: i32, z: i32) -> (Vec<u8>, hb_render::scene::Drawn) {
     let (w, h) = Target::MODE_200;
     let mut target = Target::new(w, h);
@@ -32,7 +18,7 @@ fn frame(level: &Level, x: i32, y: i32, z: i32) -> (Vec<u8>, hb_render::scene::D
 /// negative coordinate drew the terrain 1,024 units away and saw nothing.
 #[test]
 fn a_view_is_the_same_from_either_side_of_the_wrap() {
-    let Some(level) = level("hoth") else { return };
+    let Some(level) = Level::from_disc("hoth") else { return };
     // The HOTH radar base's spike gun, from 40 units south and 13 above:
     // negative in both x and z.
     let (x, y, z) = (-172 << 16, 113 << 16, -260 << 16);
@@ -109,7 +95,7 @@ fn untouched_seams(level: &Level, uv: [(f32, f32); 4]) -> f64 {
 #[test]
 fn untouched_tiles_meet_best_the_engines_way_round() {
     for stem in ["hoth", "kreash", "jurasic"] {
-        let Some(level) = level(stem) else { return };
+        let Some(level) = Level::from_disc(stem) else { return };
         let scores: Vec<f64> =
             symmetries(0.5, 255.5).into_iter().map(|uv| untouched_seams(&level, uv)).collect();
         let others = scores[1..].iter().copied().fold(f64::MAX, f64::min);
@@ -122,7 +108,7 @@ fn untouched_tiles_meet_best_the_engines_way_round() {
 /// its three muzzle flashes, and a shot in front of the eye is drawn.
 #[test]
 fn shots_are_drawn_as_their_models() {
-    let Some(level) = level("hoth") else { return };
+    let Some(level) = Level::from_disc("hoth") else { return };
     for w in hb_sim::weapons::PORTED {
         let row = hb_sim::weapons::ROWS[w];
         if row.draw <= 1 && !row.model.is_empty() {
@@ -160,7 +146,7 @@ fn shots_are_drawn_as_their_models() {
 
 #[test]
 fn an_explosion_puff_draws() {
-    let Some(level) = level("hoth") else { return };
+    let Some(level) = Level::from_disc("hoth") else { return };
     let texture = level.blast[2].as_ref().expect("blast3.raw");
     let (w, h) = Target::MODE_200;
     let mut target = Target::new(w, h);
@@ -186,7 +172,7 @@ fn an_explosion_puff_draws() {
 /// black. The near-plane clip keeps the part in front (worklog 61).
 #[test]
 fn the_ground_survives_a_camera_that_touches_it() {
-    let Some(level) = level("float") else { return };
+    let Some(level) = Level::from_disc("float") else { return };
     let (w, h) = Target::MODE_200;
     let grid = hb_world::Grid::new(&level.terrain);
     // Half a cell in, so the camera is inside a cell rather than on its edge.
