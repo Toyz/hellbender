@@ -126,7 +126,19 @@ Multiplayer is out of scope until everything above works.
 
 ## Where the port departs on purpose
 
-One place, and this is it: the engine lets the ship fly through a radar dish, a
+Two places.
+
+**A level opens on a camera the engine does not have.** `0x481631` calls
+`0x45a290` as a level starts, right after the opening movies, and `0x45a290` is
+a single `ret` - in the disc's executable and in the December one both, byte
+for byte. The hook is there and the animation was cut. The port fills it with
+four seconds borrowed from the jump-out the engine does have: the eye two units
+off the ship, `0x3f00` above it looking down and half a turn round, coming
+level and back into the cockpit. The ship does not move while it runs, so
+control begins exactly where `0x471333` puts it, and any key skips it.
+`--no-entry` turns it off.
+
+**Scenery is solid.** The engine lets the ship fly through a radar dish, a
 reactor or a bunker - classes 0 and 9 - without a scratch, because its actor
 test skips those two classes and its own collision is cells only. The port
 gives each of them a box and pushes the ship out. Everything else keeps the

@@ -25,13 +25,14 @@ const USAGE: &str = "\
 hb-fly - fly around a Hellbender level
 
   hb-fly [level] [--mode 200|400|480] [--scale N] [--demo 1|2|3]
-         [--no-intro] [--movie NAME] [--no-movies]
+         [--no-intro] [--no-entry] [--movie NAME] [--no-movies]
 
   level    a level stem, default `hoth`
   --mode   the game's three screen sizes, default 200 (320x200)
   --scale  integer upscale of the window, default 3
   --demo   replay one of the game's recorded attract-mode flights
   --no-intro   skip the four cutscenes the game opens on
+  --no-entry   skip the fly-in camera, which is the port's own
   --movie      play one cutscene by name, e.g. --movie Intro.smk
   --no-movies  skip every cutscene
 
@@ -315,6 +316,7 @@ fn main() -> Result<(), String> {
     let mut pending: Vec<String> = Vec::new();
     let mut movies = true;
     let mut opening = true;
+    let mut entry_camera = true;
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         match arg.as_str() {
@@ -327,6 +329,7 @@ fn main() -> Result<(), String> {
                 opening = false;
             }
             "--no-intro" => opening = false,
+            "--no-entry" => entry_camera = false,
             "--no-movies" => movies = false,
             other if !other.starts_with('-') => level_name = other.to_string(),
             other => return Err(format!("unknown option {other}\n\n{USAGE}")),
@@ -635,6 +638,8 @@ fn main() -> Result<(), String> {
     // The jump-out: how long it has been running, and whether its one sound
     // has gone off. See `jump_out`.
     let mut jumping: Option<(f32, bool)> = None;
+    // And flying in, which is the port's own - see `entry`.
+    let mut arriving: Option<f32> = if entry_camera { Some(0.0) } else { None };
 
     // A line the mission flashes on the HUD, and for how much longer.
     let mut flash: Option<(String, f32)> = None;
@@ -803,6 +808,7 @@ fn main() -> Result<(), String> {
             level = Level::load(&game, Some(&startup), hb_formats::campaign::CAMPAIGN[index].stem)?;
             briefing = has_briefing(&game, &level.stem).then(|| level.stem.clone());
             typing = 0.0;
+            arriving = entry_camera.then_some(0.0);
             if movies {
                 // The level being left says goodbye before the next one
                 // arrives - `HOTH3` names `snowout.smk`, `ROID4` `astrout.smk`.
@@ -891,6 +897,18 @@ fn main() -> Result<(), String> {
                     flight.camera.pitch = Angle(pose.angles[0] as u16);
                     flight.camera.roll = Angle(pose.angles[1] as u16);
                     flight.camera.yaw = Angle(pose.angles[2] as u16);
+                }
+            }
+            None if arriving.is_some() => {
+                // Nothing flies: the ship waits where the start point put it
+                // and only the camera moves, so control begins exactly where
+                // the engine begins it.
+                let clock = arriving.as_mut().expect("checked");
+                *clock += dt;
+                if *clock > entry::SECONDS
+                    || window.get_keys_pressed(minifb::KeyRepeat::No).iter().any(|k| *k != quit)
+                {
+                    arriving = None;
                 }
             }
             None => match jumping.as_mut() {
@@ -1445,6 +1463,19 @@ fn main() -> Result<(), String> {
         let seen = {
             let mut c = flight.camera;
             let mut turn = hb_render::cockpit::VIEWS[view].0;
+            if let Some(clock) = arriving {
+                let (yaw, pitch) = entry::look(clock);
+                turn = turn.wrapping_add((yaw * 65536.0) as i32 as u16);
+                c.pitch = Angle(c.pitch.0.wrapping_add((pitch * 65536.0) as i32 as u16));
+                let (a, b) = (
+                    (c.yaw.0.wrapping_add(turn) as f32 / 65536.0) * std::f32::consts::TAU,
+                    (c.pitch.0 as i16 as f32 / 65536.0) * std::f32::consts::TAU,
+                );
+                let back = jump::BACK * 65536.0;
+                c.x -= (a.sin() * b.cos() * back) as i32;
+                c.y += (b.sin() * back) as i32;
+                c.z -= (a.cos() * b.cos() * back) as i32;
+            }
             if let Some((clock, _)) = jumping {
                 let (yaw, pitch) = jump::look(clock);
                 turn = turn.wrapping_add((yaw * 65536.0) as i32 as u16);
@@ -1498,7 +1529,9 @@ fn main() -> Result<(), String> {
                 }
             }
         }
-        if show_cockpit {
+        // The cockpit is not drawn while the eye is off the ship, which is
+        // what the engine's own outside view must do too.
+        if show_cockpit && arriving.is_none() && jumping.is_none() {
             if let Some(Some(art)) = cockpits.get(view) {
                 target.overlay(art);
             }
@@ -1790,6 +1823,32 @@ fn begin(
         battle,
         ShotColours::for_palette(&level.palette),
     )
+}
+
+/// Flying *in*, which the engine does not do.
+///
+/// `0x481631` calls `0x45a290` as a level starts, right after the opening
+/// movies, and `0x45a290` is one byte: `ret`. Byte for byte the same in the
+/// December build. So the hook is there, the animation was cut, and there is
+/// nothing to restore - see worklog 107.
+///
+/// This is the port's own, and its second deliberate departure. It borrows the
+/// jump-out's numbers and runs its first half backwards: the camera starts
+/// [`jump::PITCH`] above the ship looking down and a half turn round, and
+/// comes level over [`SECONDS`]. The ship does not move at all while it runs,
+/// so control begins exactly where `0x471333` puts it. No sound, since the
+/// engine has none to copy.
+mod entry {
+    /// Half of the jump-out's run, which is how long its camera takes to
+    /// climb before it starts coming back.
+    pub const SECONDS: f32 = 4.0;
+
+    /// Where the camera is looking, in turns, at `clock` seconds: the mirror
+    /// of `jump::look` over the first half.
+    pub fn look(clock: f32) -> (f32, f32) {
+        let left = (1.0 - clock / SECONDS).clamp(0.0, 1.0);
+        (left * 0.5, left * super::jump::PITCH)
+    }
 }
 
 /// Flying out of a jump zone, which is what ends a level (`0x45a2a0`).
