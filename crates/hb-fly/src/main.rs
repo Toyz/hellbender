@@ -577,9 +577,12 @@ fn main() -> Result<(), String> {
     briefing = has_briefing(&game, &level.stem).then(|| level.stem.clone());
     typing = 0.0;
     // A chapter's briefing is a movie before it is a screen, and the `.LVL`
-    // names it on line 36.
-    if movies && briefing.is_some() {
-        pending.extend(level.manifest.briefing_movie.clone());
+    // names it on line 36. The arrival follows it.
+    if movies {
+        if briefing.is_some() {
+            pending.extend(level.manifest.briefing_movie.clone());
+        }
+        pending.extend(arrival(&level));
     }
     // The one that is playing, its clock, and the buffer it draws into -
     // which is the movie's size, not the game's.
@@ -735,11 +738,18 @@ fn main() -> Result<(), String> {
             if next != Some(false) {
                 index = (index + 1) % hb_formats::campaign::CAMPAIGN.len();
             }
+            let leaving = level.manifest.story_movies.clone();
             level = Level::load(&game, Some(&startup), hb_formats::campaign::CAMPAIGN[index].stem)?;
             briefing = has_briefing(&game, &level.stem).then(|| level.stem.clone());
             typing = 0.0;
-            if movies && briefing.is_some() {
-                pending.extend(level.manifest.briefing_movie.clone());
+            if movies {
+                // The level being left says goodbye before the next one
+                // arrives - `HOTH3` names `snowout.smk`, `ROID4` `astrout.smk`.
+                pending.extend(departure(&leaving));
+                if briefing.is_some() {
+                    pending.extend(level.manifest.briefing_movie.clone());
+                }
+                pending.extend(arrival(&level));
             }
             describe(&level);
             play_music(&level);
@@ -1796,6 +1806,23 @@ fn say(panel: &mut Vec<String>, saying: &mut f32, text: &str) {
     // The phrase table's own durations are two to five seconds; four is the
     // middle of them and what this uses until a line carries its own.
     *saying = 4.0;
+}
+
+/// The movie a level arrives on, which is the first of its five story slots.
+///
+/// The names say what the slots are: slot 1 is `snowin.smk` in `HOTH`,
+/// `morbin.smk` in `MORBOS`, `astrin.smk` in `ROID` and `shiv1in.smk` in
+/// `SHIP`, and all four are the first level of a chapter. Slot 2 is the
+/// matching `snowout`, `astrout`, `shiv1out` and `shiv2out`, on the last level
+/// of one. The engine's own triggers are five little routines around
+/// `0x45b9f0`, each comparing a name against `"null"` before playing it.
+fn arrival(level: &Level) -> Option<String> {
+    level.manifest.story_movies[0].clone()
+}
+
+/// And the one it leaves on, the second slot.
+fn departure(story: &[Option<String>; 5]) -> Option<String> {
+    story[1].clone()
 }
 
 /// Whether a level has a briefing at all - only the first of each chapter

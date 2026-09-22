@@ -62,11 +62,11 @@ line  value                     slot
   21  32768                     chamber ambient light
   22  255                       fog colour, a palette index
   23  ;New story stuff          sentinel
-  24  null                      in-level story movie 1      Story\
-  25  null                      in-level story movie 2
-  26  eyrie1.smk                in-level story movie 3
-  27  null                      in-level story movie 4
-  28  null                      in-level story movie 5
+  24  null                      the arrival movie           Story\
+  25  null                      the departure movie
+  26  eyrie1.smk                the chapter's story movie
+  27  null                      story movie 4
+  28  null                      story movie 5
   29  !New ground additions     sentinel
   30  255                       sky layer altitude
   31  float.crs                 course data                 DATA\
@@ -84,6 +84,27 @@ line  value                     slot
   43  (empty)                   trailing newline
 ```
 
+
+### The five story slots
+
+Only eleven of the 26 levels name a movie at all, and what they name says what
+each slot is for:
+
+| slot | levels | what they are called |
+| --- | --- | --- |
+| 1 | `HOTH`, `MORBOS`, `ROID`, `SHIP` | `snowin`, `morbin`, `astrin`, `shiv1in` |
+| 2 | `HOTH3`, `ROID4`, `SHIP`, `SHIP2` | `snowout`, `astrout`, `shiv1out`, `shiv2out` |
+| 3 | `FLOAT`, `IOWAH`, `JURASIC`, `KREASH`, `MORBOS`, `ROID` | `eyrie1`, `iowah1`, `chimera1`, `kresh1`, `morbos1`, `astroid1` |
+
+Every level with a slot 1 is the first of its chapter and every one with a
+slot 2 is the last, so slot 1 is arriving and slot 2 is leaving. Slot 3 is the
+chapter's own film, one a planet. Slots 4 and 5 are `null` in all 26.
+
+The engine plays them from five short routines around `0x45b9f0`, each one
+comparing a name against `"null"` before handing it to the player at
+`0x49f920`, and all of them gated on `0x512650`. Which routine runs when has
+not been read; the port plays slot 1 as a level opens and slot 2 as it is
+left.
 ## Fields
 
 `null` in any filename slot means the slot is unused.
