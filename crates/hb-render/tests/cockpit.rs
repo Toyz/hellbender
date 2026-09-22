@@ -59,3 +59,23 @@ fn the_cell_moves_at_a_quarter_push() {
     assert_eq!(cockpit::CELLS[cockpit::cell(0.0, -0.3)], "bm");
     assert_eq!(cockpit::CELLS[cockpit::cell(-1.0, 1.0)], "fl");
 }
+
+/// The player's own ship is in `STARTUP.POD` and loads with the level.
+#[test]
+fn the_players_ship_is_there() {
+    let dir = std::env::var_os("HB_GAME").map(std::path::PathBuf::from).unwrap_or_else(|| {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original")
+    });
+    let game = dir.join("system/GAME.POD");
+    if !game.exists() {
+        eprintln!("skipping: {} is not there", game.display());
+        return;
+    }
+    let game = hb_pod::Pod::open(game).unwrap();
+    let startup = hb_pod::Pod::open(dir.join("system/STARTUP.POD")).ok();
+    let level = hb_render::Level::load(&game, startup.as_ref(), "morbos").unwrap();
+    let mesh = level.ship_mesh.expect("no ship.bin");
+    let model = level.meshes[mesh].as_ref().expect("the slot is empty");
+    assert!(!model.vertices.is_empty(), "the ship has no vertices");
+    assert!(!model.polygons.is_empty(), "the ship has no polygons");
+}

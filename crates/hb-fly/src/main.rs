@@ -723,6 +723,7 @@ fn main() -> Result<(), String> {
 
         // The opening camera is armed on the first running frame, over the
         // ship, and Eve waits for it to land.
+        let mut held = false;
         if !welcomed && arriving.is_none() && dt > 0.0 && show.is_none() && briefing.is_none() {
             let at = flight.ship.position;
             let ground = floor_of(&level)(at);
@@ -735,6 +736,9 @@ fn main() -> Result<(), String> {
         // new-game routine armed at `0x4834e3`.
         if let Some((height, spin)) = arriving.as_mut() {
             if dt > 0.0 {
+                // The engine's loop only draws: nothing flies, nothing ticks,
+                // so the eye stays over the ship instead of chasing it.
+                held = true;
                 *height -= entry::FALL * dt;
                 *spin += entry::SPIN * dt;
                 let skipped =
@@ -751,6 +755,10 @@ fn main() -> Result<(), String> {
                     music.effect(&s, 1.0);
                 }
             }
+        }
+
+        if held {
+            dt = 0.0;
         }
 
         // The doors, before anything borrows the terrain to read it: a moved
@@ -1476,6 +1484,23 @@ fn main() -> Result<(), String> {
                 None => sparks.push((at, colours.missile)),
             }
         }
+        // The player's own ship, which is only ever seen while the eye is off
+        // it - the opening camera and the jump-out.
+        if arriving.is_some() || jumping.is_some() {
+            if let Some(mesh) = level.ship_mesh {
+                let [pitch, roll, heading] = flight.ship.angles();
+                drawn.push(hb_formats::text::Placement {
+                    kind: mesh,
+                    hit_points: 0,
+                    x: fixed(flight.ship.position[0]),
+                    y: fixed(flight.ship.position[1]),
+                    z: fixed(flight.ship.position[2]),
+                    pitch: pitch as i32,
+                    roll: roll as i32,
+                    heading: heading as u16,
+                });
+            }
+        }
         scene.placements = &drawn;
         // The view the frame is drawn from: the ship's, turned by whichever
         // quarter `keyChangeViews` has left it on.
@@ -1526,8 +1551,9 @@ fn main() -> Result<(), String> {
             }
         }
         // Brackets on the locked target. The engine's lock display is not
-        // read; this only shows what is locked.
-        if let Some(i) = battle.guns.lock {
+        // read; this only shows what is locked. Not while the eye is off the
+        // ship - nothing of the cockpit is.
+        if let Some(i) = battle.guns.lock.filter(|_| arriving.is_none()) {
             if let Some(p) = live.get(i) {
                 let at = hb_sim::combat::position_of(p);
                 let fixed = |v: f32| (v * 65536.0) as i32;
@@ -1574,7 +1600,9 @@ fn main() -> Result<(), String> {
                 }
             }
         }
-        if show_reticle {
+        // Nothing of the cockpit while the eye is off the ship: no picture, no
+        // readouts, no crosshair.
+        if show_reticle && arriving.is_none() {
             if let Some(model) = &reticle {
                 pulse += pulse_step;
                 if pulse >= 63 || pulse <= 32 {
@@ -1583,7 +1611,7 @@ fn main() -> Result<(), String> {
                 hb_render::hud::reticle(&mut target, model, pulse as u8);
             }
         }
-        if show_hud {
+        if show_hud && arriving.is_none() {
             if let Some(font) = &hud_font {
                 // The radar, which the engine fills from every object that is
                 // alive and not hidden, turned so the nose points up
@@ -1659,7 +1687,9 @@ fn main() -> Result<(), String> {
                     }
                 }
                 if let Some((text, _)) = &flash {
-                    hb_render::hud::message(&mut target, font, text);
+                    if arriving.is_none() {
+                        hb_render::hud::message(&mut target, font, text);
+                    }
                 }
                 if mission.outcome.is_none() && demo.is_none() {
                     // On the radar, which is where the engine puts it.

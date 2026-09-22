@@ -111,6 +111,10 @@ pub struct Level {
     /// For each weapon kind, the index in `meshes` of the model its shots
     /// are drawn with.
     pub shot_mesh: Vec<Option<usize>>,
+    /// The player's own ship, `MODELS\SHIP.BIN` out of `STARTUP.POD`. The
+    /// engine names it first in the table at `0x503c30`, ahead of the eight
+    /// multiplayer ones, and shows it whenever the eye is off the cockpit.
+    pub ship_mesh: Option<usize>,
     /// The Valkyrie Cannon's three muzzle flashes.
     pub muzzle_mesh: [Option<usize>; 3],
     /// The explosion's frames, `blast1.raw` upward.
@@ -502,6 +506,7 @@ impl Level {
                 .flatten();
             shot_mesh.push(slot);
         }
+        let ship_mesh = load_shot("ship.bin", &mut meshes, &mut mesh_textures, &mut mesh_radius);
         let muzzle_mesh = hb_sim::weapons::MUZZLE
             .map(|name| load_shot(name, &mut meshes, &mut mesh_textures, &mut mesh_radius));
 
@@ -579,6 +584,7 @@ impl Level {
         Ok(Level {
             blast,
             shot_mesh,
+            ship_mesh,
             muzzle_mesh,
             mesh_flipbooks,
             navs,
