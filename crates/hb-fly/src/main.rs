@@ -637,6 +637,9 @@ fn main() -> Result<(), String> {
     let mut jumping: Option<(f32, bool)> = None;
     // And flying in, which is the port's own - see `entry`.
     let mut welcomed = false;
+    // Whether the opening camera has had its turn. It is armed once, not once
+    // a frame - without this it re-arms the moment it lands and never ends.
+    let mut opened = false;
     // The opening camera: how far it still has to fall, and where it has spun
     // to. `None` once it has landed.
     let mut arriving: Option<(f32, f32)> = None;
@@ -724,7 +727,8 @@ fn main() -> Result<(), String> {
         // The opening camera is armed on the first running frame, over the
         // ship, and Eve waits for it to land.
         let mut held = false;
-        if !welcomed && arriving.is_none() && dt > 0.0 && show.is_none() && briefing.is_none() {
+        if !opened && dt > 0.0 && show.is_none() && briefing.is_none() {
+            opened = true;
             let at = flight.ship.position;
             let ground = floor_of(&level)(at);
             arriving = Some(((ground + entry::ABOVE).max(at[1] + entry::STOP), 0.0));
