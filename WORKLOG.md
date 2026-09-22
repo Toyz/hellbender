@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-89 entries: audio 6, build 2, content 9, decomp 58, engine 26, flight 6, format 32, port 73, render 27, test 3, tooling 4, ui 7, world 10.
+90 entries: audio 6, build 2, content 9, decomp 59, engine 26, flight 6, format 32, net 1, port 73, render 27, test 3, tooling 4, ui 7, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -100,3 +100,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 87 | [What the port was not missing](worklog/0087-what-the-port-was-not-missing.md) | 2026-09-21 | decomp, port, render |
 | 88 | [Every mission line has its words](worklog/0088-every-mission-line-has-its-words.md) | 2026-09-21 | decomp, audio, port |
 | 89 | [Flying into something costs you both](worklog/0089-flying-into-something-costs-you-both.md) | 2026-09-21 | decomp, port, flight |
+| 90 | [Twenty four packet types](worklog/0090-twenty-four-packet-types.md) | 2026-09-21 | decomp, net |
