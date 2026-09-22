@@ -581,8 +581,10 @@ fn main() -> Result<(), String> {
     if movies && briefing.is_some() {
         pending.extend(level.manifest.briefing_movie.clone());
     }
-    // The one that is playing, and its clock.
+    // The one that is playing, its clock, and the buffer it draws into -
+    // which is the movie's size, not the game's.
     let mut show: Option<movie::Show> = None;
+    let mut reel: Vec<u32> = Vec::new();
 
     // A line the mission flashes on the HUD, and for how much longer.
     let mut flash: Option<(String, f32)> = None;
@@ -637,8 +639,11 @@ fn main() -> Result<(), String> {
             let more = playing.step();
             // Nothing else in the frame: the world behind a movie is work
             // nobody sees, and at 640x480 it is enough to make it stutter.
-            playing.draw(&mut buffer, w, h);
-            window.update_with_buffer(&buffer, w, h).map_err(|e| e.to_string())?;
+            // The movie keeps its own 320x240 and the window stretches it.
+            let (mw, mh) = playing.size();
+            reel.resize(mw * mh, 0);
+            playing.draw(&mut reel, mw, mh);
+            window.update_with_buffer(&reel, mw, mh).map_err(|e| e.to_string())?;
             if !more || skipped {
                 show = None;
                 if let Some(music) = music.as_ref() {

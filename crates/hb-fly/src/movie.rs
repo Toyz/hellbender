@@ -1,7 +1,7 @@
 //! Playing a cutscene in the window.
 //!
-//! `hb-formats`'s `smk` does the decoding; this is the clock, the letterbox
-//! and the handoff of a whole soundtrack to the mixer. A movie holds
+//! `hb-formats`'s `smk` does the decoding; this is the clock and the handoff
+//! of a whole soundtrack to the mixer. A movie holds
 //! everything behind it, the way the briefing screen does, and any key skips
 //! it - which is what the engine's own player does.
 
@@ -59,6 +59,11 @@ impl Show {
         (!samples.is_empty()).then(|| Wav { rate, channels: 1, samples })
     }
 
+    /// The movie's own size, which is the buffer to draw it into.
+    pub fn size(&self) -> (usize, usize) {
+        (self.player.movie.width, self.player.movie.height)
+    }
+
     /// Start the clock. Call once, beside starting the sound.
     pub fn begin(&mut self) {
         self.started = Instant::now();
@@ -75,13 +80,14 @@ impl Show {
         self.player.frame() < self.player.movie.frames
     }
 
-    /// The picture across the whole frame.
+    /// The picture.
     ///
-    /// No letterbox, on purpose. A movie is 320x240 and the game's own screen
-    /// is 320x200, and both were shown on the same 4:3 monitor - which is what
-    /// `hb-fly` presents its window as - so filling the frame is what puts the
-    /// picture back in the shape it was made in. Letterboxing it inside a
-    /// window that is already 4:3 would squash it twice.
+    /// A movie is drawn at its own size and the window stretches it, so no
+    /// row is ever dropped. It matters: 240 rows into the game's 200 loses one
+    /// in six, and one row is a whole stroke of the small text a briefing
+    /// movie is full of - "DOWNLOAD COMPLETE." came out as "UUWNLUHU
+    /// LUMPLETE.". Where the sizes do differ this averages over the source
+    /// pixels each destination one covers rather than sampling at a point.
     pub fn draw(&self, buffer: &mut [u32], width: usize, height: usize) {
         let (mw, mh) = (self.player.movie.width, self.player.movie.height);
         if mw == 0 || mh == 0 || width == 0 || height == 0 {
@@ -89,12 +95,24 @@ impl Show {
             return;
         }
         for y in 0..height {
-            let sy = y * mh / height;
+            // The rows of the movie this row of the frame stands for.
+            let (top, bottom) = (y * mh / height, ((y + 1) * mh).div_ceil(height).min(mh));
+            let bottom = bottom.max(top + 1);
             for x in 0..width {
-                let sx = x * mw / width;
-                let [r, g, b] = self.player.palette[self.player.picture[sy * mw + sx] as usize];
+                let (left, right) = (x * mw / width, ((x + 1) * mw).div_ceil(width).min(mw));
+                let right = right.max(left + 1);
+                let (mut r, mut g, mut b, mut n) = (0u32, 0u32, 0u32, 0u32);
+                for sy in top..bottom {
+                    for sx in left..right {
+                        let rgb = self.player.palette[self.player.picture[sy * mw + sx] as usize];
+                        r += rgb[0] as u32;
+                        g += rgb[1] as u32;
+                        b += rgb[2] as u32;
+                        n += 1;
+                    }
+                }
                 buffer[y * width + x] =
-                    0xff00_0000 | ((r as u32) << 16) | ((g as u32) << 8) | b as u32;
+                    0xff00_0000 | (r / n) << 16 | (g / n) << 8 | (b / n);
             }
         }
     }
