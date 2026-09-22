@@ -355,6 +355,68 @@ impl Trees {
     }
 }
 
+/// One audio chunk, decoded to 16-bit samples.
+///
+/// The chunk is an unpacked size, then a bit that says whether what follows is
+/// packed at all, then two bits for stereo and sixteen-bit. Then one byte tree
+/// a channel for eight-bit sound, or two - low half and high - for sixteen.
+/// The samples are differences: the first is stored outright and every one
+/// after it is added to the last, wrapping.
+pub fn sound(chunk: &[u8]) -> Vec<i16> {
+    if chunk.len() < 4 {
+        return Vec::new();
+    }
+    let unpacked = u32::from_le_bytes(chunk[0..4].try_into().unwrap()) as usize;
+    let mut bits = Bits::new(&chunk[4..]);
+    if !bits.read() {
+        return Vec::new();
+    }
+    let stereo = bits.read() as usize;
+    let wide = bits.read() as usize;
+    let trees: Vec<ByteTree> =
+        (0..1 << (wide + stereo)).map(|_| ByteTree::parse(&mut bits)).collect();
+    let channels = stereo + 1;
+    let mut out = Vec::with_capacity(if wide == 1 { unpacked / 2 } else { unpacked });
+    if wide == 1 {
+        // The first sample of each channel is stored whole, high byte first.
+        let mut last = [0i32; 2];
+        for c in (0..channels).rev() {
+            last[c] = (bits.take(16) as u16).swap_bytes() as i16 as i32;
+        }
+        for c in 0..channels {
+            out.push(last[c] as i16);
+        }
+        while out.len() < unpacked / 2 && !bits.past_end() {
+            let c = out.len() & stereo;
+            let low = trees[c * 2].decode(&mut bits);
+            let high = trees[c * 2 + 1].decode(&mut bits);
+            let step = (low | high << 8) as u16 as i16 as i32;
+            last[c] = (last[c] + step) as i16 as i32;
+            out.push(last[c] as i16);
+        }
+    } else {
+        let mut last = [0i32; 2];
+        for c in (0..channels).rev() {
+            last[c] = bits.take(8) as i32;
+        }
+        for c in 0..channels {
+            out.push(eight(last[c]));
+        }
+        while out.len() < unpacked && !bits.past_end() {
+            let c = out.len() & stereo;
+            let step = trees[c].decode(&mut bits) as u8 as i8 as i32;
+            last[c] = (last[c] + step) as u8 as i32;
+            out.push(eight(last[c]));
+        }
+    }
+    out
+}
+
+/// An unsigned eight-bit sample as a signed sixteen-bit one.
+fn eight(value: i32) -> i16 {
+    ((value as u8 as i32 - 128) * 256) as i16
+}
+
 /// A movie being played: the trees, the palette and the picture, all of which
 /// carry from frame to frame.
 pub struct Player {
@@ -364,6 +426,8 @@ pub struct Player {
     pub palette: Vec<[u8; 3]>,
     /// One byte a pixel, `width * height`.
     pub picture: Vec<u8>,
+    /// Track 0's samples for the frame just decoded.
+    pub sound: Vec<i16>,
     next: usize,
 }
 
@@ -372,7 +436,7 @@ impl Player {
         let movie = Movie::parse(data)?;
         let trees = Trees::parse(&movie.trees);
         let picture = vec![0; movie.width * movie.height];
-        Ok(Player { movie, trees, palette: vec![[0; 3]; 256], picture, next: 0 })
+        Ok(Player { movie, trees, palette: vec![[0; 3]; 256], picture, sound: Vec::new(), next: 0 })
     }
 
     /// Which frame comes next.
@@ -388,6 +452,7 @@ impl Player {
             return false;
         }
         let kind = self.movie.kinds.get(self.next).copied().unwrap_or(0);
+        self.sound.clear();
         let mut chunk = &data[at..at + size];
         if kind & 1 != 0 {
             let length = chunk.first().map_or(0, |&n| n as usize * 4);
@@ -406,6 +471,9 @@ impl Player {
             let length =
                 u32::from_le_bytes(chunk[0..4].try_into().unwrap()) as usize;
             let length = length.clamp(4, chunk.len());
+            if track == 0 {
+                self.sound = sound(&chunk[4..length]);
+            }
             chunk = &chunk[length..];
         }
         self.video(chunk);

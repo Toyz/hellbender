@@ -171,6 +171,26 @@ for a fill the colour in the rest. The run is the code itself up to 59, then
 - **2, skip.** The run's blocks keep what the last frame left there.
 - **3, fill.** The whole run is one colour, the type code's top bits.
 
+### A sound chunk
+
+A `u32` of the unpacked size in bytes, then a bit stream of its own. The first
+bit says whether what follows is packed at all, then one bit for stereo and one
+for sixteen-bit sound - every shipped track is mono and sixteen-bit.
+
+Then a byte tree a channel for eight-bit sound, or two a channel for sixteen -
+the low half and the high - written exactly like the video's byte trees,
+presence bit and all.
+
+The samples are differences. The first of each channel is stored whole, the
+channels in reverse order, sixteen bits big-endian; every one after it is a
+code from each of its channel's trees, put together low half first and added to
+the last sample, wrapping rather than clipping. Which is the format's own
+choice: `MSLOGO.SMK` reaches full scale and wraps.
+
+Each track is exactly as long as its movie - 40.0 seconds of sound for 600
+frames at 15, 126.1 for 1892 - and the samples correlate with their neighbours
+at 0.96 and up, which is what says this is sound and not noise.
+
 ## .VOX - the sky that is not there
 
 `ART\SPACE.VOX` and `ART\STARS.VOX` are both zero bytes. Line 11 of a `.LVL`
@@ -180,9 +200,6 @@ texture" - the engine draws stars instead. Nothing has to be decoded.
 
 ## Unknown
 
-The audio. A track's chunk is a Huffman-coded difference stream of its own and
-nothing here reads it yet.
-
-Nothing else in the formats. Which of the 332 effects the engine binds to which
+Nothing in the formats. Which of the 332 effects the engine binds to which
 event is a separate question, answerable from the `.data` string tables - the
 weapon and destruction sounds are named there in blocks.

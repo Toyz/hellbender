@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-98 entries: audio 6, build 2, content 10, decomp 66, engine 26, flight 6, format 36, net 1, port 76, render 31, test 5, tooling 4, ui 7, video 1, world 10.
+99 entries: audio 7, build 2, content 10, decomp 66, engine 26, flight 6, format 37, net 1, port 77, render 31, test 5, tooling 4, ui 7, video 2, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -109,3 +109,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 96 | [The hand on the stick, and three more cockpits](worklog/0096-the-hand-on-the-stick-and-three-more-cockpits.md) | 2026-09-21 | decomp, render, port, content |
 | 97 | [What the ship can fly through](worklog/0097-what-the-ship-can-fly-through.md) | 2026-09-21 | decomp, port, test |
 | 98 | [Smacker, written out by hand](worklog/0098-smacker-written-out-by-hand.md) | 2026-09-21 | format, video, port, test |
+| 99 | [The other half of a Smacker chunk](worklog/0099-the-other-half-of-a-smacker-chunk.md) | 2026-09-21 | format, video, audio, port |

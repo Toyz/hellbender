@@ -810,6 +810,39 @@ fn cmd_movie(name: &str, out: Option<&Path>, frame: usize) -> Result<(), String>
         m.trees.len()
     );
     let Some(out) = out else { return Ok(()) };
+    // A `.wav` asks for the whole soundtrack instead of a frame.
+    if out.extension().is_some_and(|e| e.eq_ignore_ascii_case("wav")) {
+        let rate = player.movie.audio_rate[0] & 0xff_ffff;
+        let mut samples = Vec::new();
+        while player.step(&data) {
+            samples.extend_from_slice(&player.sound);
+        }
+        let mut wav = Vec::new();
+        let bytes = samples.len() * 2;
+        wav.extend_from_slice(b"RIFF");
+        wav.extend_from_slice(&(36 + bytes as u32).to_le_bytes());
+        wav.extend_from_slice(b"WAVEfmt ");
+        wav.extend_from_slice(&16u32.to_le_bytes());
+        wav.extend_from_slice(&1u16.to_le_bytes());
+        wav.extend_from_slice(&1u16.to_le_bytes());
+        wav.extend_from_slice(&rate.to_le_bytes());
+        wav.extend_from_slice(&(rate * 2).to_le_bytes());
+        wav.extend_from_slice(&2u16.to_le_bytes());
+        wav.extend_from_slice(&16u16.to_le_bytes());
+        wav.extend_from_slice(b"data");
+        wav.extend_from_slice(&(bytes as u32).to_le_bytes());
+        for s in &samples {
+            wav.extend_from_slice(&s.to_le_bytes());
+        }
+        std::fs::write(out, wav).map_err(|e| e.to_string())?;
+        println!(
+            "{} samples, {:.1} seconds -> {}",
+            samples.len(),
+            samples.len() as f32 / rate as f32,
+            out.display()
+        );
+        return Ok(());
+    }
     for _ in 0..=frame {
         if !player.step(&data) {
             return Err(format!("{name} has no frame {frame}"));

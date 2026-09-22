@@ -75,3 +75,28 @@ fn every_frame_decodes() {
         assert!(!player.step(&data), "{name}: a frame past the end");
     }
 }
+
+/// Every audio chunk unpacks to exactly the size it declares.
+#[test]
+fn the_sound_is_the_length_it_says() {
+    for (name, data) in movies() {
+        let mut player = Player::new(&data).unwrap();
+        let frames = player.movie.frames;
+        let (mut chunks, mut samples) = (0usize, 0usize);
+        for _ in 0..frames {
+            player.step(&data);
+            if !player.sound.is_empty() {
+                chunks += 1;
+                samples += player.sound.len();
+            }
+        }
+        let rate = (player.movie.audio_rate[0] & 0xff_ffff) as f32;
+        let seconds = samples as f32 / rate;
+        let runtime = frames as f32 / player.movie.fps();
+        assert!(chunks > 0, "{name} has no sound");
+        assert!(
+            (seconds - runtime).abs() < 0.5,
+            "{name}: {seconds:.2}s of sound against {runtime:.2}s of picture"
+        );
+    }
+}
