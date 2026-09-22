@@ -112,7 +112,7 @@ The smallest model reads cleanly and says what the common types are:
 ```
 
 Eight vertices, one texture, six quads: a cube. The vertices are `i32` triples
-at +12, values `±2595` and `±2662`. A polygon record is 24 bytes of header and
+at +12, values `+/-2595` and `+/-2662`. A polygon record is 24 bytes of header and
 then 12 bytes per corner, and those 12 bytes are three `i32`: a vertex index
 and a `u`, `v` pair in 16.16 fixed point, so corner 0 of the first face is
 index 2 at `(1.0, 1.0)`.

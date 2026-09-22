@@ -86,7 +86,7 @@ The scale field made no sense until I measured the models. 235 of the 238
 units. A vertex reaches the world as `(vertex * scale) >> 14`.
 
 The three exceptions are two empty models and `CUBE.BIN`, whose components are
-±2595 and ±2662 - a test model that never went through the exporter's
++/-2595 and +/-2662 - a test model that never went through the exporter's
 normalisation, which is exactly why it was such a legible first example back in
 [5](0005-mrgl-the-node-stream-inside-a-model-and-its-size-table-as-a.md).
 

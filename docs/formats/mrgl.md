@@ -173,7 +173,7 @@ maximum absolute vertex component of exactly 16,383 or 16,384, and none exceeds
 units: a vertex becomes a 16.16 world offset as `(vertex * scale) >> 14`.
 
 The three exceptions are two empty models and `CUBE.BIN`, whose components are
-±2595 and ±2662 - a test model that was never run through the exporter's
++/-2595 and +/-2662 - a test model that was never run through the exporter's
 normalisation, which is why it was such a legible first example.
 
 ### 0x0d, material
@@ -322,8 +322,8 @@ children when drawing has not been read; the port draws the first.
 0x00023c  type 0x00 end         size 4
 ```
 
-Eight vertices, one texture, six quads - the vertex components are `±2595` in
-x and z and `±2662` in y. Its first polygon reads:
+Eight vertices, one texture, six quads - the vertex components are `+/-2595` in
+x and z and `+/-2662` in y. Its first polygon reads:
 
 ```
 +0x00  0x0000000e   type
