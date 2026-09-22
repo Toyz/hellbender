@@ -2,7 +2,7 @@
 title: The HUD
 status: partial
 covers: HELLBEND.EXE:0x44e5e0, crates/hb-render/src/hud.rs
-worklog: 67, 68
+worklog: 67, 68, 117
 ---
 
 # The HUD
@@ -204,6 +204,41 @@ drawn in.
 
 The key bound to `keyCrosshair` turns it off and on (`0x512584`).
 
+## The targeting marks
+
+Every frame, after the weather and before the cockpit, `0x47b700` marks two
+things in the view: what the missiles are locked on, and the current
+objective's target. Both go through `0x47c2d0`, which draws nothing for an
+actor that did not run this frame (`+0x84`) or is cloaked (`+0x14c`), and
+otherwise projects the actor's position - plus the type's `+0x8c` offset, which
+nothing ever writes - and draws a **box** if `0x40dc00` counts its class as a
+target, the same test as the radar's blip colour, and a **diamond** if not.
+
+The **lock** (`[0x50e6fc]`) is marked in `0x97` at size 17. The **objective**
+is `0x472ae0`, which switches on the current nav point's kind: a Destroy
+point marks the first target in its list still standing (hit points above
+zero and not in the dying phase `0x12d`), a single-target Destroy marks its
+target, both in `0x8f`, and an Escort point marks the ship being escorted in
+colour ramp 2 at `0x6000`, palette index 43. Every other kind marks nothing.
+The objective's mark is size 20 and carries a health bar. It is drawn after
+the lock, so over it.
+
+`drawTargetingBox3d` (`0x47c4b0`) and `drawTargetingDiamond3d` (`0x47c910`)
+are the same routine with different corners. The mark is dropped if the
+point is behind the eye or outside ninety degrees each way. Its half-size is
+half the size given at 320 across or 200 down and all of it at 640 or 400 -
+so 8 by 8 pixels for the lock at 320x200 and 17 by 17 at 640x480. Each is three
+outlines one inside the next: black, the colour, black. A box's corners are
+square; a diamond's points are straight above, below and to either side.
+
+The health bar (`0x47c820`) sits two rows under the mark, as wide as it: three
+rows of black, then three rows as long as the hit points now are of the
+hit points at the start (`+0x1c` over `+0x24`), in colour ramp 2's green at
+half or more, `0x8f` at a quarter or more, `0x97` below that.
+
+In a network game `0x47bda0` marks the other ships instead, and the mark can
+carry the player's name above it (`0x485da0`); that path is not in the port.
+
 ## Drawing a string
 
 Two routines put text on the screen and they are not the same. `0x484ad0`
@@ -220,7 +255,7 @@ so the last row is always clear.
 ## What the port has
 
 `crates/hb-render/src/hud.rs` is all of the above except the leader lines for
-the five labels that do not name a gauge. `hb fly
+the five labels that do not name a gauge, and the network game's marks. `hb fly
 <level> <out.png>` draws the HUD over its frame, and `--labels` turns the
 cockpit labels on, which is how the layout is checked without a window.
 `hb-fly` binds L to the labels and G to the reticle.

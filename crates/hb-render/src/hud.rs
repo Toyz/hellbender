@@ -605,3 +605,91 @@ pub fn message(target: &mut Target, font: &HudFont, text: &str) {
     fill(&mut target.colour, w, h, x - 3, y - 2, width + 5, LINE as isize + 3, 0);
     font.draw(&mut target.colour, w, h, x, y, text, INK);
 }
+
+/// The lock's mark: palette index 0x97, size 17 (`0x47ba13`).
+pub const LOCK_COLOUR: u8 = 0x97;
+pub const LOCK_SIZE: isize = 17;
+
+/// The current objective's mark (`0x472ae0`): 0x8f, or for the ship being
+/// escorted colour ramp 2 at `0x6000`, index 43; size 20, with the health bar.
+pub const OBJECTIVE_COLOUR: u8 = 0x8f;
+pub const ESCORT_COLOUR: u8 = 43;
+pub const OBJECTIVE_SIZE: isize = 20;
+
+/// Half a targeting mark's width and height in this mode (`0x47c5b7`): half
+/// its size at 320 across or 200 down, the whole of it at 640 or 400.
+pub fn mark_half(size: isize, width: usize, height: usize) -> (isize, isize) {
+    let w = if width >= 640 { size } else { size / 2 };
+    let h = if height >= 400 { size } else { size / 2 };
+    (w, h)
+}
+
+/// A line in the frame, clipped to it (`0x4871c0`).
+fn hud_line(target: &mut Target, (x0, y0): (isize, isize), (x1, y1): (isize, isize), colour: u8) {
+    let steps = (x1 - x0).abs().max((y1 - y0).abs()).max(1);
+    for i in 0..=steps {
+        let x = x0 + (x1 - x0) * i / steps;
+        let y = y0 + (y1 - y0) * i / steps;
+        if x >= 0 && y >= 0 && (x as usize) < target.width && (y as usize) < target.height {
+            target.colour[y as usize * target.width + x as usize] = colour;
+        }
+    }
+}
+
+/// A ground target's mark, `drawTargetingBox3d` (`0x47c4b0`): three boxes
+/// one inside the next, black, the colour, black, around `(x, y)`. With
+/// `health` - hit points now and at the start - a bar under it
+/// (`0x47c820`).
+pub fn target_box(target: &mut Target, x: isize, y: isize, size: isize, colour: u8, health: Option<(f32, f32)>) {
+    let (w, h) = mark_half(size, target.width, target.height);
+    for (inset, c) in [(0, 0), (1, colour), (2, 0)] {
+        let (l, r, t, b) = (x - w + inset, x + w - inset, y - h + inset, y + h - inset);
+        hud_line(target, (l, t), (r, t), c);
+        hud_line(target, (l, b), (r, b), c);
+        hud_line(target, (l, t), (l, b), c);
+        hud_line(target, (r, t), (r, b), c);
+    }
+    if let Some((now, full)) = health {
+        health_bar(target, x - w, y + h + 2, 2 * w, now, full);
+    }
+}
+
+/// Anything else's mark, `drawTargetingDiamond3d` (`0x47c910`): the same
+/// three outlines as a diamond, its corners straight above, below and to
+/// either side.
+pub fn target_diamond(target: &mut Target, x: isize, y: isize, size: isize, colour: u8, health: Option<(f32, f32)>) {
+    let (w, h) = mark_half(size, target.width, target.height);
+    for (inset, c) in [(0, 0), (1, colour), (2, 0)] {
+        let (l, r, t, b) = (x - w + inset, x + w - inset, y - h + inset, y + h - inset);
+        hud_line(target, (x, t), (r, y), c);
+        hud_line(target, (x, t), (l, y), c);
+        hud_line(target, (x, b), (r, y), c);
+        hud_line(target, (x, b), (l, y), c);
+    }
+    if let Some((now, full)) = health {
+        health_bar(target, x - w, y + h + 2, 2 * w, now, full);
+    }
+}
+
+/// `0x47c820`: three rows of black `width` long, then three rows as long as
+/// the hit points left are of the whole - ramp 2 green at half or more,
+/// 0x8f at a quarter or more, 0x97 below that.
+pub fn health_bar(target: &mut Target, x: isize, y: isize, width: isize, now: f32, full: f32) {
+    for row in 0..3 {
+        hud_line(target, (x, y + row), (x + width, y + row), 0);
+    }
+    if full <= 0.0 {
+        return;
+    }
+    let colour = if now >= full / 2.0 {
+        ESCORT_COLOUR
+    } else if now >= full / 4.0 {
+        0x8f
+    } else {
+        0x97
+    };
+    let length = (width as f32 * now / full) as isize;
+    for row in 0..3 {
+        hud_line(target, (x, y + row), (x + length, y + row), colour);
+    }
+}

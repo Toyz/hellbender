@@ -1664,22 +1664,58 @@ fn main() -> Result<(), String> {
             }
         }
         hb_render::scene::draw_bolt(&mut target, &seen, &bolt);
-        // Brackets on the locked target. The engine's lock display is not
-        // read; this only shows what is locked. Not while the eye is off the
-        // ship - nothing of the cockpit is.
-        if let Some(i) = battle.guns.lock.filter(|_| arriving.is_none()) {
-            if let Some(p) = live.get(i) {
+        // The targeting marks (`0x47b700`): the current objective's target
+        // (`0x472ae0`) and the lock. Not while the eye is off the ship -
+        // nothing of the cockpit is.
+        if arriving.is_none() {
+            let mut mark = |i: usize, size: isize, colour: u8, bar: bool| {
+                let (Some(p), Some(health)) = (live.get(i), battle.health.get(i)) else { return };
+                // Only an actor that ran this frame: standing, and within the
+                // 80-unit box (`+0x84`).
                 let at = hb_sim::combat::position_of(p);
+                if health.destroyed || !hb_sim::combat::in_range(eye, at) {
+                    return;
+                }
                 let fixed = |v: f32| (v * 65536.0) as i32;
                 let v = seen.to_view(
                     fixed(eye[0] + hb_sim::combat::wrapped(at[0] - eye[0])),
                     fixed(at[1]),
                     fixed(eye[2] + hb_sim::combat::wrapped(at[2] - eye[2])),
                 );
-                if v[2] > 0.5 {
-                    let ([kx, ky], [cx, cy]) = Camera::screen(w, h);
-                    let (sx, sy) = (cx + v[0] / v[2] * kx, cy - v[1] / v[2] * ky);
-                    draw_brackets(&mut target.colour, w, h, sx, sy, colours.enemy);
+                // In front, and inside ninety degrees each way.
+                if v[2] <= 0.0 || v[0].abs() > v[2] || v[1].abs() > v[2] {
+                    return;
+                }
+                let ([kx, ky], [cx, cy]) = Camera::screen(w, h);
+                let (sx, sy) = ((cx + v[0] / v[2] * kx) as isize, (cy - v[1] / v[2] * ky) as isize);
+                let full = level.placements[i].hit_points as f32 / 65536.0;
+                let bar = bar.then_some((health.hit_points, full));
+                if hb_render::hud::is_target(level.kinds[p.kind].class()) {
+                    hb_render::hud::target_box(&mut target, sx, sy, size, colour, bar);
+                } else {
+                    hb_render::hud::target_diamond(&mut target, sx, sy, size, colour, bar);
+                }
+            };
+            // The lock first, and the objective over it.
+            if let Some(i) = battle.guns.lock {
+                mark(i, hb_render::hud::LOCK_SIZE, hb_render::hud::LOCK_COLOUR, false);
+            }
+            use hb_formats::nav::{Data, Kind};
+            if mission.current < mission.len() {
+                let nav = mission.nav(mission.current);
+                let objective = match (nav.kind, &nav.data) {
+                    // The first of the list still standing (`0x472b0d`).
+                    (Kind::Destroy, Data::Targets(list)) => list
+                        .iter()
+                        .copied()
+                        .find(|&t| battle.health.get(t).is_some_and(|h| !h.destroyed))
+                        .map(|t| (t, hb_render::hud::OBJECTIVE_COLOUR)),
+                    (Kind::Kill, Data::Actor(t)) => Some((*t, hb_render::hud::OBJECTIVE_COLOUR)),
+                    (Kind::Escort, Data::Actor(t)) => Some((*t, hb_render::hud::ESCORT_COLOUR)),
+                    _ => None,
+                };
+                if let Some((t, colour)) = objective {
+                    mark(t, hb_render::hud::OBJECTIVE_SIZE, colour, true);
                 }
             }
         }
@@ -2151,22 +2187,6 @@ fn start_camera(level: &Level, mission: &hb_sim::mission::Mission) -> Camera {
     }
 }
 
-/// Four corner brackets around a point on the screen.
-fn draw_brackets(pixels: &mut [u8], w: usize, h: usize, x: f32, y: f32, colour: u8) {
-    let (x, y) = (x.round() as isize, y.round() as isize);
-    let mut plot = |px: isize, py: isize| {
-        if px >= 0 && py >= 0 && (px as usize) < w && (py as usize) < h {
-            pixels[py as usize * w + px as usize] = colour;
-        }
-    };
-    let (r, arm) = (8isize, 3isize);
-    for (sx, sy) in [(-1, -1), (1, -1), (-1, 1), (1, 1)] {
-        for k in 0..=arm {
-            plot(x + sx * r - sx * k, y + sy * r);
-            plot(x + sx * r, y + sy * r - sy * k);
-        }
-    }
-}
 
 
 /// Put a line in the top-left panel, keeping the last few and starting the
