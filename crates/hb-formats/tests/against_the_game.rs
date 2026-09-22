@@ -32,6 +32,7 @@ fn indexed(p: &mrgl::Polygon) -> bool {
     p.kind == mrgl::INDEXED_POLYGON
         || p.kind == mrgl::FLAT_POLYGON
         || p.kind == mrgl::SOLID_POLYGON
+        || p.kind == mrgl::SHADED_POLYGON
 }
 
 macro_rules! archive {

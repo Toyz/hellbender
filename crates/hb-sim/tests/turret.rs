@@ -184,6 +184,7 @@ fn stand_by(level: &str, which: &str, offset: [f32; 3], seconds: f32) -> Option<
                 fired += 1;
                 missiles.push(m)
             }
+            Some(Launch::Mine { .. }) => fired += 1,
             None => {}
         }
         shots.retain_mut(|s| {

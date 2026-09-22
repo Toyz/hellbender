@@ -103,6 +103,20 @@ when the normal is zero; they differ in how they fill.
 - **0x05** (`0x456810`) is the same fill as 0x19 - the same light, the same
   ramp tables - written a word at a time from a colour replicated into all
   four bytes. 41 polygons, among them the four of the reticle.
+- **0x06** (`0x456930`) is the same routine as 0x05 - same header, same
+  back-face test, same corner list - minus the light and the band lookup: it
+  never reads the current shade colour. What it changes is two words it leaves
+  for the rasteriser, the span routine at `0x59d10c` and a number at
+  `0x667100`. Node 5 leaves `0x4a76ac` and 16; node 6 leaves `0x4a723f` and 4.
+  `0x4a76ac` takes one colour through the remap at `0x606a20`, replicates it
+  into a dword and `rep stos` it. `0x4a723f` reads `+0x18` of the span's two
+  corners, steps between them by the difference times `0xffffffff / length` -
+  the 1024-entry reciprocal table `0x484811` builds at `0x603070` - and indexes
+  the same remap with the top byte of the running value, a pixel at a time. So
+  0x05 is flat and 0x06 is gouraud, and the shade it interpolates is per
+  vertex: `+0x18` of the 0x24-byte transformed vertex records at `0x59d378`
+  that `0x40f7b0` gathers the corners from. 24 polygons; this port draws them
+  flat.
 - **0x19** is flat: the normal's light (`0x48a6a0`) picks a shade in the
   colour set by the last 0x0a record - a ramp index into the tables at
   `0x50c4e8` (low) and `0x50c528` (high), or a palette index when negative
@@ -361,8 +375,11 @@ What colour the 118 polygons in `FANBODY`, `JAW1`, `JAW2` and `SHELL` are, since
 the stream does not say.
 
 Record types that appear in the data with no semantics yet: 0x0c, 0x12 and
-0x1f, and the fill mode of indexed polygon 0x06; and the `i32` at +4 of the
-material record.
+0x1f; and the `i32` at +4 of the material record. Two more on node 0x06: what
+fills `+0x18` of a transformed vertex, which is the shade it interpolates -
+all eight writers of the `0x59d378` array are indexed, so none of them names
+the field - and what `0x667100`, 16 for node 5 and 4 for node 6, tells the
+rasteriser. All 34 references to `0x667100` in the image are stores.
 
 Whether the 256-unit texture space is a repeat or a scale, given the textures
 are 64 x 64. This port scales - see
