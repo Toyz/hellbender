@@ -277,8 +277,12 @@ impl Mission {
             boss_music: false,
             clock: 0.0,
         };
-        // Start on the ground plus 16 units, facing as told; the start point
-        // is done and the next is current.
+        // Start on the ground plus 16 units, facing as told, which is
+        // `0x471333`: the engine writes the point's own position into the
+        // ship, then overwrites the height with the ground under it
+        // (`0x41c300`) plus `0x100000`, and takes pitch, roll and heading from
+        // `+0xb0` of the record. The start point is done and the next is
+        // current.
         if let Some(first) = mission.points.first_mut() {
             if let (Kind::Start, Data::Start { angles }) = (first.nav.kind, &first.nav.data) {
                 let mut position = first.position;
