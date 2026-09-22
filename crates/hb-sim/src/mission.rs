@@ -366,7 +366,6 @@ impl Mission {
     /// The beacon key (`0x471eb1`): a beacon where the player is, as a point
     /// of its own at the end of the list.
     pub fn drop_beacon(&mut self, player: [f32; 3]) -> Vec<Event> {
-        let fixed = |v: f32| (v * 65536.0) as i32;
         let beacons = self.points.iter().filter(|p| p.nav.kind == Kind::Beacon).count();
         let mut slot = self.points.len();
         if beacons >= MAX_BEACONS {
@@ -381,7 +380,7 @@ impl Mission {
         let point = Point {
             nav: Nav {
                 kind: Kind::Beacon,
-                position: player.map(fixed),
+                position: player.map(hb_formats::fixed::from_units),
                 priority: 1,
                 time: 0,
                 completion_sound: None,

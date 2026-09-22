@@ -186,7 +186,7 @@ fn every_shipped_follower_follows() {
 /// the world's wrap.
 fn off_leg(at: [i32; 3], a: Point, b: Point) -> f32 {
     let rel = |q: Point| {
-        let d = |u: i32, v: i32| hb_sim::course::wrap(u.wrapping_sub(v)) as f32 / 65536.0;
+        let d = |u: i32, v: i32| hb_formats::fixed::wrap(u.wrapping_sub(v)) as f32 / 65536.0;
         [d(q.x, at[0]), d(q.z, at[2])]
     };
     let (a, b) = (rel(a), rel(b));

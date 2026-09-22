@@ -28,6 +28,8 @@
 //! when it flies: the drop's motion as the eye sees it. Colour ramp 1 at
 //! `0x6000`, palette index 5.
 
+use hb_formats::fixed::{distance, mul, unit, wrap};
+
 use crate::turret::Rng;
 
 /// The pool sizes.
@@ -68,23 +70,6 @@ pub struct Weather {
     pub rain: Vec<Particle>,
 }
 
-fn wrap(v: i32) -> i32 {
-    v.wrapping_shl(6) >> 6
-}
-
-fn mul(a: i32, b: i32) -> i32 {
-    ((a as i64 * b as i64) >> 16) as i32
-}
-
-/// A vector scaled to unit length in 16.16 (`0x42bb80`).
-pub fn unit(v: [i32; 3]) -> [i32; 3] {
-    let f = v.map(|c| c as f64);
-    let len = (f[0] * f[0] + f[1] * f[1] + f[2] * f[2]).sqrt();
-    if len == 0.0 {
-        return [0; 3];
-    }
-    f.map(|c| (c / len * 65536.0) as i32)
-}
 
 /// One particle somewhere in the cube around `eye`, falling at `fall`.
 fn scatter(eye: [i32; 3], fall: i32, rng: &mut Rng) -> Particle {
@@ -233,10 +218,7 @@ impl Lightning {
                 let x = near(eye[0], rng);
                 let z = near(eye[2], rng);
                 s.at = [x, sky, z];
-                let far = {
-                    let d = |a: i32, b: i32| wrap(a - b) as f64;
-                    (d(eye[0], x).powi(2) + d(eye[1], sky).powi(2) + d(eye[2], z).powi(2)).sqrt() as i32
-                };
+                let far = distance(eye, [x, sky, z]);
                 s.thunder = ((far as f32 * THUNDER_PER_UNIT) as i32) << 16;
                 s.flash = FLASH;
                 out.push(Flash::Struck { at: [x, eye[1], z] });

@@ -153,11 +153,10 @@ impl Flight {
 
     fn sync_camera(&mut self) {
         let [x, y, z] = self.ship.position;
-        let fixed = |v: f32| (v * 65536.0) as i32;
         let [pitch, roll, heading] = self.ship.angles();
-        self.camera.x = fixed(x);
-        self.camera.y = fixed(y);
-        self.camera.z = fixed(z);
+        self.camera.x = hb_formats::fixed::from_units(x);
+        self.camera.y = hb_formats::fixed::from_units(y);
+        self.camera.z = hb_formats::fixed::from_units(z);
         self.camera.pitch = Angle(pitch as i32 as u16);
         self.camera.roll = Angle(roll as i32 as u16);
         self.camera.yaw = Angle(heading as i32 as u16);
@@ -212,10 +211,9 @@ impl Flight {
         scenery: &[hb_sim::collide::Solid],
         position: [f32; 3],
     ) -> ([f32; 3], bool) {
-        let fixed = |v: f32| (v * 65536.0) as i32;
         let unit = hb_sim::collide::SHIP;
         let mut solids: Vec<hb_sim::collide::Solid> = grid
-            .boxes_near(fixed(position[0]), fixed(position[2]), (unit * 65536.0) as i32)
+            .boxes_near(hb_formats::fixed::from_units(position[0]), hb_formats::fixed::from_units(position[2]), (unit * 65536.0) as i32)
             .into_iter()
             .map(hb_sim::collide::Solid::of)
             .collect();
@@ -239,11 +237,11 @@ impl Flight {
         }
         let corners = [(0.0, 0.0), (-unit, -unit), (unit, -unit), (-unit, unit), (unit, unit)];
         let sample = |layer, at: [f32; 3], dx: f32, dz: f32| {
-            grid.height_at(layer, fixed(at[0] + dx), fixed(at[2] + dz)).map(|h| h as f32 / 65536.0)
+            grid.height_at(layer, hb_formats::fixed::from_units(at[0] + dx), hb_formats::fixed::from_units(at[2] + dz)).map(|h| h as f32 / 65536.0)
         };
         // Underground the chamber holds the ship, not the ground: two
         // heightfields with rock where they meet (`0x4290f0`).
-        let cell = hb_world::Cell::containing(fixed(at[0]), fixed(at[2]));
+        let cell = hb_world::Cell::containing(hb_formats::fixed::from_units(at[0]), hb_formats::fixed::from_units(at[2]));
         if at[1] < 0.0 && grid.has_chamber(cell) {
             let roof = corners
                 .into_iter()
@@ -569,33 +567,18 @@ fn main() -> Result<(), String> {
     window.set_target_fps(60);
 
     let mut buffer = vec![0u32; w * h];
-    // Everything that starts again with a level: the ship, the mission, the
-    // placements that follow a course (`live` is the copy the renderer draws,
-    // rewritten from them each frame), and the fight.
-    let (mut flight, mut mission, mut followers, mut live, mut battle, mut colours) = begin(&level);
-    let mut scenery = scenery_of(&level);
-    let mut doors = doors_of(&level);
-    let mut hoverers = hoverers_for(&level);
-    // The actors that have left the level: class 17 ships, once they are
-    // high enough. Not destroyed - simply no longer here.
-    let mut gone = vec![false; live.len()];
     // The scatter an asteroid starts with, and anything else the loop needs
     // a number for.
     let mut rng = hb_sim::turret::Rng::new(0x5eed);
-    // Snow and rain, and where the ship was when they last moved.
-    let mut weather = hb_sim::weather::Weather::new(camera_at(&flight.camera), &mut rng);
-    let mut weather_eye = camera_at(&flight.camera);
-    let mut lightning = lightning_for(&level, &mut rng);
+    // Everything that starts again with a level (`Round`).
+    let Round {
+        mut flight, mut mission, mut followers, mut live, mut battle, mut colours, mut scenery,
+        mut doors, mut hoverers, mut gone, mut last_eye, mut weather, mut weather_eye,
+        mut lightning
+    } = begin(&level, &mut rng);
     // The missile warning and the afterburner's note, while they are held.
     let mut warning: Option<u64> = None;
     let (mut burner, mut burning) = (None, false);
-    println!(
-        "sim: {} of {} objects follow a course, {} doors, {} moving patches of ground",
-        followers.len(),
-        live.len(),
-        doors.doors.len(),
-        doors.patches.len()
-    );
 
     // Combat. The laser sound is the one the engine names; a destroyed
     // object plays its type's own destroy sound, falling back to a blast.
@@ -657,10 +640,6 @@ fn main() -> Result<(), String> {
     let mut ended = 0.0f32;
     // The ship's last few seconds, while it is being one.
     let mut dying: Option<hb_sim::death::Wreck> = None;
-    // The ship's velocity, from how far the eye moved last frame; turrets
-    // lead with it and the laser adds its magnitude.
-    let mut last_eye = eye_of(&flight.camera);
-    println!("sim: {} turrets, {} flyers", battle.turret_count(), battle.flyer_count());
 
     let started = Instant::now();
     let mut last = Instant::now();
@@ -883,25 +862,13 @@ fn main() -> Result<(), String> {
             }
             describe(&level);
             play_music(&level);
-            (flight, mission, followers, live, battle, colours) = begin(&level);
-            scenery = scenery_of(&level);
-            doors = doors_of(&level);
-            hoverers = hoverers_for(&level);
-            gone = vec![false; live.len()];
-            last_eye = eye_of(&flight.camera);
-            weather = hb_sim::weather::Weather::new(camera_at(&flight.camera), &mut rng);
-            weather_eye = camera_at(&flight.camera);
-            lightning = lightning_for(&level, &mut rng);
+            Round {
+                flight, mission, followers, live, battle, colours, scenery, doors, hoverers,
+                gone, last_eye, weather, weather_eye, lightning
+            } = begin(&level, &mut rng);
             ended = 0.0;
             dying = None;
             flash = None;
-            println!(
-                "sim: {} of {} objects follow a course, {} turrets, {} flyers",
-                followers.len(),
-                live.len(),
-                battle.turret_count(),
-                battle.flyer_count()
-            );
         }
         tab_was_down = tab;
 
@@ -1018,7 +985,6 @@ fn main() -> Result<(), String> {
                 .enumerate()
                 .map(|(i, p)| {
                     let at = hb_sim::combat::position_of(p);
-                    let fixed = |v: f32| (v * 65536.0) as i32;
                     let near = [
                         eye[0] + hb_sim::combat::wrapped(at[0] - eye[0]),
                         at[1],
@@ -1030,7 +996,7 @@ fn main() -> Result<(), String> {
                         friendly: kind.friendly,
                         alive: !battle.health[i].destroyed && battle.health[i].hit_points > 0.0,
                         near: hb_sim::combat::in_range(eye, at),
-                        view: flight.camera.to_view(fixed(near[0]), fixed(near[1]), fixed(near[2])),
+                        view: flight.camera.to_view(hb_formats::fixed::from_units(near[0]), hb_formats::fixed::from_units(near[1]), hb_formats::fixed::from_units(near[2])),
                     }
                 })
                 .collect();
@@ -1093,7 +1059,7 @@ fn main() -> Result<(), String> {
             y <= grid.ceiling_of_solid(x, z)
         };
         // In a demo the recorded flight cannot dodge, so nothing shoots back.
-        let ground = |x: f32, z: f32| grid.ceiling_of_solid((x * 65536.0) as i32, (z * 65536.0) as i32) as f32 / 65536.0;
+        let ground = |x: f32, z: f32| grid.solid_top(x, z);
         let axes = [flight.ship.right, flight.ship.up, flight.ship.forward];
         let noises = if demo.is_none() {
             battle.step(&level, &mut live, eye, velocity, Some((&axes, flight.ship.speed())), dt, &solid, &ground)
@@ -1211,9 +1177,7 @@ fn main() -> Result<(), String> {
             let [pitch, roll, heading] = flight.ship.angles();
             let wreck = dying.get_or_insert_with(|| hb_sim::death::Wreck::new(pitch, roll, heading));
             let grid = hb_world::Grid::new(&level.terrain);
-            let under = |p: [f32; 3]| {
-                grid.ceiling_of_solid((p[0] * 65536.0) as i32, (p[2] * 65536.0) as i32) as f32 / 65536.0
-            };
+            let under = |p: [f32; 3]| grid.solid_top(p[0], p[2]);
             let mut at = flight.ship.position;
             let ground = under(at);
             let wants = wreck.step(&mut at, dt, ground);
@@ -1236,12 +1200,10 @@ fn main() -> Result<(), String> {
                 // this starts it again, which is the port's own choice.
                 Some(hb_sim::death::Wants::Over) => {
                     println!("shot down ({} so far) - starting again", battle.deaths);
-                    (flight, mission, followers, live, battle, colours) = begin(&level);
-                    scenery = scenery_of(&level);
-                    doors = doors_of(&level);
-                    hoverers = hoverers_for(&level);
-                    gone = vec![false; live.len()];
-                    last_eye = eye_of(&flight.camera);
+                    Round {
+                        flight, mission, followers, live, battle, colours, scenery, doors,
+                        hoverers, gone, last_eye, weather, weather_eye, lightning
+                    } = begin(&level, &mut rng);
                     dying = None;
                     ended = 0.0;
                 }
@@ -1455,13 +1417,12 @@ fn main() -> Result<(), String> {
             .collect();
         for item in battle.field.items.iter().filter(|p| !p.taken) {
             if let Some(Some(mesh)) = level.powerup_mesh.get(item.kind) {
-                let fixed = |v: f32| (v * 65536.0) as i32;
                 drawn.push(hb_formats::text::Placement {
                     kind: *mesh,
                     hit_points: 0,
-                    x: fixed(item.position[0]),
-                    y: fixed(item.position[1]),
-                    z: fixed(item.position[2]),
+                    x: hb_formats::fixed::from_units(item.position[0]),
+                    y: hb_formats::fixed::from_units(item.position[1]),
+                    z: hb_formats::fixed::from_units(item.position[2]),
                     pitch: 0,
                     roll: 0,
                     heading: flight.camera.yaw.0,
@@ -1479,14 +1440,13 @@ fn main() -> Result<(), String> {
                 eye[2] + hb_sim::combat::wrapped(p[2] - eye[2]),
             ]
         };
-        let fixed = |v: f32| (v * 65536.0) as i32;
         let shot_at = |drawn: &mut Vec<hb_formats::text::Placement>, mesh, at: [f32; 3], angles: (u16, u16)| {
             drawn.push(hb_formats::text::Placement {
                 kind: mesh,
                 hit_points: 0,
-                x: fixed(at[0]),
-                y: fixed(at[1]),
-                z: fixed(at[2]),
+                x: hb_formats::fixed::from_units(at[0]),
+                y: hb_formats::fixed::from_units(at[1]),
+                z: hb_formats::fixed::from_units(at[2]),
                 pitch: angles.1 as i32,
                 roll: 0,
                 heading: angles.0,
@@ -1566,9 +1526,9 @@ fn main() -> Result<(), String> {
                 drawn.push(hb_formats::text::Placement {
                     kind: mesh,
                     hit_points: 0,
-                    x: fixed(flight.ship.position[0]),
-                    y: fixed(flight.ship.position[1]),
-                    z: fixed(flight.ship.position[2]),
+                    x: hb_formats::fixed::from_units(flight.ship.position[0]),
+                    y: hb_formats::fixed::from_units(flight.ship.position[1]),
+                    z: hb_formats::fixed::from_units(flight.ship.position[2]),
                     pitch: pitch as i32,
                     roll: roll as i32,
                     heading: heading as u16,
@@ -1638,7 +1598,7 @@ fn main() -> Result<(), String> {
                 .filter(|&bottom| at[1] < bottom);
             let sky = (level.sky_height() * 65536.0) as i32;
             let ship = camera_at(&flight.camera);
-            let moved: [i32; 3] = std::array::from_fn(|k| hb_sim::course::wrap(ship[k] - weather_eye[k]));
+            let moved: [i32; 3] = std::array::from_fn(|k| hb_formats::fixed::wrap(ship[k] - weather_eye[k]));
             weather_eye = ship;
             if Weather::falls(at[1], sky, over) {
                 if level.manifest.has_snow() {
@@ -1669,18 +1629,17 @@ fn main() -> Result<(), String> {
                 if health.destroyed || !hb_sim::combat::in_range(eye, at) {
                     return;
                 }
-                let fixed = |v: f32| (v * 65536.0) as i32;
                 let v = seen.to_view(
-                    fixed(eye[0] + hb_sim::combat::wrapped(at[0] - eye[0])),
-                    fixed(at[1]),
-                    fixed(eye[2] + hb_sim::combat::wrapped(at[2] - eye[2])),
+                    hb_formats::fixed::from_units(eye[0] + hb_sim::combat::wrapped(at[0] - eye[0])),
+                    hb_formats::fixed::from_units(at[1]),
+                    hb_formats::fixed::from_units(eye[2] + hb_sim::combat::wrapped(at[2] - eye[2])),
                 );
                 // In front, and inside ninety degrees each way.
                 if v[2] <= 0.0 || v[0].abs() > v[2] || v[1].abs() > v[2] {
                     return;
                 }
-                let ([kx, ky], [cx, cy]) = Camera::screen(w, h);
-                let (sx, sy) = ((cx + v[0] / v[2] * kx) as isize, (cy - v[1] / v[2] * ky) as isize);
+                let (sx, sy) = Camera::to_screen(v, w, h);
+                let (sx, sy) = (sx as isize, sy as isize);
                 let full = level.placements[i].hit_points as f32 / 65536.0;
                 let bar = bar.then_some((health.hit_points, full));
                 if hb_render::hud::is_target(level.kinds[p.kind].class()) {
@@ -1998,15 +1957,38 @@ impl ShotColours {
     }
 }
 
-/// A level's opening state: the ship at the mission's start, the mission,
-/// the course followers, the placements as drawn, the fight, and the shot
-/// colours for its palette.
-fn begin(
-    level: &Level,
-) -> (Flight, hb_sim::mission::Mission, Vec<(usize, hb_sim::Follower)>, Vec<hb_formats::text::Placement>, battle::Battle, ShotColours) {
-    let mut rng = hb_sim::turret::Rng::new(0x1996);
+/// Everything that starts again with a level, whether it is a new one or
+/// the same one after the ship went down.
+struct Round {
+    /// The ship, at the mission's start.
+    flight: Flight,
+    mission: hb_sim::mission::Mission,
+    /// The placements that follow a course. `live` is the copy the renderer
+    /// draws, rewritten from them and the fight each frame.
+    followers: Vec<(usize, hb_sim::Follower)>,
+    live: Vec<hb_formats::text::Placement>,
+    battle: battle::Battle,
+    colours: ShotColours,
+    scenery: Vec<hb_sim::collide::Solid>,
+    doors: hb_sim::quake::Quakes,
+    hoverers: Vec<(usize, hb_sim::behaviour::Motion, f32)>,
+    /// The actors that have left the level: class 17 ships, once they are
+    /// high enough. Not destroyed - simply no longer here.
+    gone: Vec<bool>,
+    /// Where the eye was last frame, for the ship's velocity.
+    last_eye: [f32; 3],
+    /// Snow and rain, and where the ship was when they last moved.
+    weather: hb_sim::weather::Weather,
+    weather_eye: [i32; 3],
+    lightning: hb_sim::weather::Lightning,
+}
+
+/// A level's opening state.
+fn begin(level: &Level, rng: &mut hb_sim::turret::Rng) -> Round {
+    // The mission's optional points are chosen the same way every time.
+    let mut seeded = hb_sim::turret::Rng::new(0x1996);
     let mut mission =
-        hb_sim::mission::Mission::new(level.navs.clone(), &level.placements, floor_of(level), &mut rng);
+        hb_sim::mission::Mission::new(level.navs.clone(), &level.placements, floor_of(level), &mut seeded);
     if !mission.is_empty() {
         println!("mission: {} points - {}", mission.len(), mission.objective());
     }
@@ -2021,14 +2003,35 @@ fn begin(
     }
     let pods: Vec<[f32; 3]> = battle.field.items.iter().map(|p| p.position).collect();
     mission.place_pods(&pods);
-    (
-        Flight::new(start_camera(level, &mission)),
+    let flight = Flight::new(start_camera(level, &mission));
+    let at = camera_at(&flight.camera);
+    let followers = followers_for(level);
+    let doors = doors_of(level);
+    println!(
+        "sim: {} of {} objects follow a course, {} turrets, {} flyers, {} doors, {} moving patches of ground",
+        followers.len(),
+        level.placements.len(),
+        battle.turret_count(),
+        battle.flyer_count(),
+        doors.doors.len(),
+        doors.patches.len()
+    );
+    Round {
+        last_eye: eye_of(&flight.camera),
+        weather: hb_sim::weather::Weather::new(at, rng),
+        weather_eye: at,
+        lightning: lightning_for(level, rng),
+        followers,
+        live: level.placements.clone(),
+        gone: vec![false; level.placements.len()],
+        colours: ShotColours::for_palette(&level.palette),
+        scenery: scenery_of(level),
+        doors,
+        hoverers: hoverers_for(level),
+        flight,
         mission,
-        followers_for(level),
-        level.placements.clone(),
         battle,
-        ShotColours::for_palette(&level.palette),
-    )
+    }
 }
 
 /// The camera a level opens on, which is `0x45a740`.
@@ -2160,8 +2163,7 @@ fn floor_of(level: &Level) -> impl Fn([f32; 3]) -> f32 + '_ {
         if p[1] < 0.0 {
             return p[1];
         }
-        let grid = hb_world::Grid::new(&level.terrain);
-        grid.ceiling_of_solid((p[0] * 65536.0) as i32, (p[2] * 65536.0) as i32) as f32 / 65536.0
+        hb_world::Grid::new(&level.terrain).solid_top(p[0], p[2])
     }
 }
 
@@ -2170,8 +2172,7 @@ fn floor_of(level: &Level) -> impl Fn([f32; 3]) -> f32 + '_ {
 fn start_camera(level: &Level, mission: &hb_sim::mission::Mission) -> Camera {
     match mission.start {
         Some(start) => {
-            let fixed = |v: f32| (v * 65536.0) as i32;
-            let [x, y, z] = start.position.map(fixed);
+            let [x, y, z] = start.position.map(hb_formats::fixed::from_units);
             let mut camera = Camera::looking_at(x, y, z, Angle(start.angles[2]));
             camera.pitch = Angle(start.angles[0]);
             camera
@@ -2228,33 +2229,6 @@ fn has_briefing(game: &Pod, stem: &str) -> bool {
     })
 }
 
-/// Break lines to a width in pixels, keeping the blank ones - they are the
-/// paragraph breaks and the briefing reads as prose without them.
-fn wrap(lines: &[String], font: &hb_formats::hud_font::HudFont, width: usize) -> Vec<String> {
-    let mut out = Vec::new();
-    for line in lines {
-        if line.trim().is_empty() {
-            out.push(String::new());
-            continue;
-        }
-        let mut row = String::new();
-        for word in line.split_whitespace() {
-            let candidate =
-                if row.is_empty() { word.to_string() } else { format!("{row} {word}") };
-            if font.width(&candidate) > width && !row.is_empty() {
-                out.push(std::mem::take(&mut row));
-                row = word.to_string();
-            } else {
-                row = candidate;
-            }
-        }
-        if !row.is_empty() {
-            out.push(row);
-        }
-    }
-    out
-}
-
 /// The alpha a window's pixel needs. minifb hands the buffer to a 32-bit
 /// visual, and a compositing window manager reads the top byte: leave it
 /// zero and the dark parts of the picture are a hole through to the desktop.
@@ -2289,7 +2263,7 @@ fn briefing_for(
     // it holds - the engine types the whole thing out and this is where it
     // would have to go.
     let [px, py, pw, ph] = hb_formats::brief::PANEL;
-    let wrapped = wrap(&brief.lines, font, pw);
+    let wrapped = hb_render::hud::wrap(font, &brief.lines, pw);
     // Only as much as has been typed so far, and once there is more than the
     // panel holds it scrolls, so the last thing typed is always in view.
     let mut left = revealed;

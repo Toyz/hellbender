@@ -88,6 +88,14 @@ impl Camera {
         ([sx, sy], [sx + 1.0, half(height)])
     }
 
+    /// Where a view-space point lands on a screen of this size:
+    /// `x * sx / z + cx`, `cy - y * sy / z`, with the scales of
+    /// [`Camera::screen`]. The caller has already made sure `z` is ahead.
+    pub fn to_screen(view: [f32; 3], width: usize, height: usize) -> (f32, f32) {
+        let ([sx, sy], [cx, cy]) = Camera::screen(width, height);
+        (cx + view[0] * sx / view[2], cy - view[1] * sy / view[2])
+    }
+
     /// A view-space direction turned back into world space: the inverse of
     /// [`Camera::to_view`]'s rotation, without the translation.
     pub fn to_world_direction(&self, view: [f32; 3]) -> [f32; 3] {

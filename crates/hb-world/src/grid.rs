@@ -429,6 +429,13 @@ impl<'a> Grid<'a> {
         top
     }
 
+    /// [`Grid::ceiling_of_solid`] in world units, for callers that work in
+    /// floats.
+    pub fn solid_top(&self, x: f32, z: f32) -> f32 {
+        let fixed = |v: f32| (v * 65536.0) as i32;
+        self.ceiling_of_solid(fixed(x), fixed(z)) as f32 / 65536.0
+    }
+
     /// Whether a cell carries a box in the given set.
     ///
     /// A box is absent when its bottom and top are equal, not when either is

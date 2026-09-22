@@ -313,11 +313,10 @@ impl Battle {
                     }
                     None => {}
                 }
-                let fixed = |v: f32| (v * 65536.0) as i32;
                 let placed = &mut live[*i];
-                placed.x = fixed(flyer.position[0]);
-                placed.y = fixed(flyer.position[1]);
-                placed.z = fixed(flyer.position[2]);
+                placed.x = hb_formats::fixed::from_units(flyer.position[0]);
+                placed.y = hb_formats::fixed::from_units(flyer.position[1]);
+                placed.z = hb_formats::fixed::from_units(flyer.position[2]);
                 placed.heading = flyer.heading as u16;
                 placed.pitch = flyer.pitch as i32;
                 placed.roll = flyer.roll as i32;
@@ -337,11 +336,10 @@ impl Battle {
                     }
                     None => {}
                 }
-                let fixed = |v: f32| (v * 65536.0) as i32;
                 let placed = &mut live[*i];
-                placed.x = fixed(hover.body.position[0]);
-                placed.y = fixed(hover.body.position[1]);
-                placed.z = fixed(hover.body.position[2]);
+                placed.x = hb_formats::fixed::from_units(hover.body.position[0]);
+                placed.y = hb_formats::fixed::from_units(hover.body.position[1]);
+                placed.z = hb_formats::fixed::from_units(hover.body.position[2]);
                 placed.heading = hover.body.heading as u16;
                 placed.pitch = hover.body.pitch as i32;
                 placed.roll = hover.body.roll as i32;

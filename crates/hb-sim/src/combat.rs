@@ -331,14 +331,12 @@ pub fn to_world(local: [f32; 3], origin: [f32; 3], heading: f32) -> [f32; 3] {
 
 /// A 16.16 placement position in world units.
 pub fn position_of(p: &Placement) -> [f32; 3] {
-    [p.x as f32 / 65536.0, p.y as f32 / 65536.0, p.z as f32 / 65536.0]
+    [p.x, p.y, p.z].map(hb_formats::fixed::to_units)
 }
 
 /// The shortest signed difference between two positions in the wrapping
 /// world, as the engine takes it with `shl 6; sar 6` on 16.16 values.
-pub fn wrapped(d: f32) -> f32 {
-    (d + 512.0).rem_euclid(1024.0) - 512.0
-}
+pub use hb_formats::fixed::wrapped;
 
 /// What stopped a shot this frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

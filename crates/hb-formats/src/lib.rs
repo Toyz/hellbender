@@ -15,6 +15,7 @@ pub mod hud_font;
 pub mod ini;
 pub mod course;
 pub mod demo;
+pub mod fixed;
 pub mod lvl;
 pub mod mrgl;
 pub mod nav;

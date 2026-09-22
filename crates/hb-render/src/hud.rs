@@ -624,18 +624,6 @@ pub fn mark_half(size: isize, width: usize, height: usize) -> (isize, isize) {
     (w, h)
 }
 
-/// A line in the frame, clipped to it (`0x4871c0`).
-fn hud_line(target: &mut Target, (x0, y0): (isize, isize), (x1, y1): (isize, isize), colour: u8) {
-    let steps = (x1 - x0).abs().max((y1 - y0).abs()).max(1);
-    for i in 0..=steps {
-        let x = x0 + (x1 - x0) * i / steps;
-        let y = y0 + (y1 - y0) * i / steps;
-        if x >= 0 && y >= 0 && (x as usize) < target.width && (y as usize) < target.height {
-            target.colour[y as usize * target.width + x as usize] = colour;
-        }
-    }
-}
-
 /// A ground target's mark, `drawTargetingBox3d` (`0x47c4b0`): three boxes
 /// one inside the next, black, the colour, black, around `(x, y)`. With
 /// `health` - hit points now and at the start - a bar under it
@@ -644,10 +632,10 @@ pub fn target_box(target: &mut Target, x: isize, y: isize, size: isize, colour: 
     let (w, h) = mark_half(size, target.width, target.height);
     for (inset, c) in [(0, 0), (1, colour), (2, 0)] {
         let (l, r, t, b) = (x - w + inset, x + w - inset, y - h + inset, y + h - inset);
-        hud_line(target, (l, t), (r, t), c);
-        hud_line(target, (l, b), (r, b), c);
-        hud_line(target, (l, t), (l, b), c);
-        hud_line(target, (r, t), (r, b), c);
+        target.line((l, t), (r, t), c);
+        target.line((l, b), (r, b), c);
+        target.line((l, t), (l, b), c);
+        target.line((r, t), (r, b), c);
     }
     if let Some((now, full)) = health {
         health_bar(target, x - w, y + h + 2, 2 * w, now, full);
@@ -661,10 +649,10 @@ pub fn target_diamond(target: &mut Target, x: isize, y: isize, size: isize, colo
     let (w, h) = mark_half(size, target.width, target.height);
     for (inset, c) in [(0, 0), (1, colour), (2, 0)] {
         let (l, r, t, b) = (x - w + inset, x + w - inset, y - h + inset, y + h - inset);
-        hud_line(target, (x, t), (r, y), c);
-        hud_line(target, (x, t), (l, y), c);
-        hud_line(target, (x, b), (r, y), c);
-        hud_line(target, (x, b), (l, y), c);
+        target.line((x, t), (r, y), c);
+        target.line((x, t), (l, y), c);
+        target.line((x, b), (r, y), c);
+        target.line((x, b), (l, y), c);
     }
     if let Some((now, full)) = health {
         health_bar(target, x - w, y + h + 2, 2 * w, now, full);
@@ -676,7 +664,7 @@ pub fn target_diamond(target: &mut Target, x: isize, y: isize, size: isize, colo
 /// 0x8f at a quarter or more, 0x97 below that.
 pub fn health_bar(target: &mut Target, x: isize, y: isize, width: isize, now: f32, full: f32) {
     for row in 0..3 {
-        hud_line(target, (x, y + row), (x + width, y + row), 0);
+        target.line((x, y + row), (x + width, y + row), 0);
     }
     if full <= 0.0 {
         return;
@@ -690,6 +678,6 @@ pub fn health_bar(target: &mut Target, x: isize, y: isize, width: isize, now: f3
     };
     let length = (width as f32 * now / full) as isize;
     for row in 0..3 {
-        hud_line(target, (x, y + row), (x + length, y + row), colour);
+        target.line((x, y + row), (x + length, y + row), colour);
     }
 }

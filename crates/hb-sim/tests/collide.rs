@@ -72,7 +72,6 @@ fn the_boxes_of_a_level_stop_a_ship() {
     let grid = hb_world::Grid::new(&terrain);
 
     // Find a cell with a box and walk into it from outside.
-    let fixed = |v: f32| (v * 65536.0) as i32;
     let mut tried = 0;
     for cx in 0..128i32 {
         for cz in 0..128i32 {
@@ -89,7 +88,7 @@ fn the_boxes_of_a_level_stop_a_ship() {
             ];
             let reach = (SHIP * 65536.0) as i32;
             let solids: Vec<Solid> = grid
-                .boxes_near(fixed(middle[0]), fixed(middle[2]), reach)
+                .boxes_near(hb_formats::fixed::from_units(middle[0]), hb_formats::fixed::from_units(middle[2]), reach)
                 .into_iter()
                 .map(Solid::of)
                 .collect();

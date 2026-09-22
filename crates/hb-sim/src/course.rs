@@ -37,6 +37,7 @@
 //! The arithmetic is the engine's 16.16 throughout.
 
 use hb_formats::course::Course;
+use hb_formats::fixed::{cos, distance, mul, sin, wrap};
 use hb_formats::text::{EnemyDef, Placement};
 
 /// The classes whose routines read a course.
@@ -84,32 +85,6 @@ pub struct Follower {
     pub turn: i32,
     /// The type's `+0x14`, added to the floor.
     pub height: i32,
-}
-
-/// A difference in world coordinates, wrapped the way the engine wraps every
-/// one: the world is 2^26 in 16.16, 1024 units, and the top six bits go.
-pub fn wrap(v: i32) -> i32 {
-    v.wrapping_shl(6) >> 6
-}
-
-/// A 16.16 product, `imul` then `shrd 16`.
-fn mul(a: i32, b: i32) -> i32 {
-    ((a as i64 * b as i64) >> 16) as i32
-}
-
-/// `0x42b960`: the straight-line distance, world-wrapped, truncated.
-fn distance(a: [i32; 3], b: [i32; 3]) -> i32 {
-    let d = |i: usize| wrap(a[i].wrapping_sub(b[i])) as f64;
-    (d(0) * d(0) + d(1) * d(1) + d(2) * d(2)).sqrt() as i32
-}
-
-/// The engine's sine and cosine (`0x429ea0`, `0x429ed0`) in 16.16.
-fn sin16(angle: i32) -> i32 {
-    ((angle as f64 * std::f64::consts::TAU / 65536.0).sin() * 65536.0).round() as i32
-}
-
-fn cos16(angle: i32) -> i32 {
-    ((angle as f64 * std::f64::consts::TAU / 65536.0).cos() * 65536.0).round() as i32
 }
 
 /// The speed and turn bias `0x404e90` gives the actor at `index` in the level:
@@ -226,8 +201,8 @@ impl Follower {
         let step = mul(self.speed, dt);
         // The step goes along the heading the actor had at the start of the
         // frame; the turn applies after.
-        let across = mul(sin16(self.heading), cos16(self.pitch));
-        let along = mul(cos16(self.heading), cos16(self.pitch));
+        let across = mul(sin(self.heading), cos(self.pitch));
+        let along = mul(cos(self.heading), cos(self.pitch));
         let error = ((self.wanted - self.heading) << 16) >> 16;
         self.heading = (self.heading + mul(error, turn)) & 0xffff;
 

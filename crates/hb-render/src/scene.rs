@@ -147,8 +147,8 @@ fn draw_sky(target: &mut Target, scene: &Scene, camera: &Camera) {
     // The plane is centred on the world's origin and the engine's positions
     // are always in the signed world (`shl 6; sar 6`), so the eye is wrapped
     // into it first.
-    let wrap = |v: i32| ((v << 6) >> 6) as f32 / 65536.0;
-    let eye = [wrap(camera.x), camera.y as f32 / 65536.0, wrap(camera.z)];
+    use hb_formats::fixed::{to_units, wrap};
+    let eye = [to_units(wrap(camera.x)), to_units(camera.y), to_units(wrap(camera.z))];
     if w == 0 || h == 0 || eye[1] >= height - LAYER {
         return;
     }
@@ -461,9 +461,9 @@ impl Near {
 /// A point already in view space, projected. The caller has to have put it in
 /// front of the near plane.
 fn project_view(view: [f32; 3], width: usize, height: usize) -> (f32, f32, f32) {
-    let ([sx, sy], [cx, cy]) = Camera::screen(width, height);
     let z = view[2].max(NEAR);
-    (cx + view[0] * sx / z, cy - view[1] * sy / z, z)
+    let (x, y) = Camera::to_screen([view[0], view[1], z], width, height);
+    (x, y, z)
 }
 
 /// Clip a convex face against the near plane and project what is left.
@@ -826,8 +826,7 @@ pub fn draw_sprite(
     let corner = |sx: f32, sy: f32| -> Option<Vertex> {
         let at: [f32; 3] =
             std::array::from_fn(|k| position[k] + right[k] * sx * half + up[k] * sy * half);
-        let fixed = |v: f32| (v * 65536.0) as i32;
-        let (x, y, depth) = project_onto(camera, target.width, target.height, fixed(at[0]), fixed(at[1]), fixed(at[2]))?;
+        let (x, y, depth) = project_onto(camera, target.width, target.height, hb_formats::fixed::from_units(at[0]), hb_formats::fixed::from_units(at[1]), hb_formats::fixed::from_units(at[2]))?;
         let (u, v) = ((sx * 0.5 + 0.5) * (UV_HI - UV_LO) + UV_LO, (0.5 - sy * 0.5) * (UV_HI - UV_LO) + UV_LO);
         Some(Vertex { x, y, depth, u, v, light: 255.0 })
     };
@@ -873,7 +872,7 @@ const WEATHER_NEAR: f32 = 0.05;
 
 fn weather_view(camera: &Camera, at: [i32; 3]) -> [f32; 3] {
     // The particle nearest the eye across the world's edge.
-    let wrap = |v: i32| v.wrapping_shl(6) >> 6;
+    use hb_formats::fixed::wrap;
     camera.to_view(
         camera.x + wrap(at[0] - camera.x),
         at[1],
@@ -888,15 +887,12 @@ pub fn draw_flake(target: &mut Target, camera: &Camera, at: [i32; 3], index: u8)
     if view[2] <= WEATHER_NEAR {
         return;
     }
-    let ([kx, ky], [cx, cy]) = Camera::screen(target.width, target.height);
-    let (sx, sy) = (cx + view[0] * kx / view[2], cy - view[1] * ky / view[2]);
+    let (sx, sy) = Camera::to_screen(view, target.width, target.height);
     let (w, h) = ((target.width / 320).max(1), (target.height / 200).max(1));
     let (x0, y0) = (sx.floor() as isize, sy.floor() as isize);
     for y in y0..y0 + h as isize {
         for x in x0..x0 + w as isize {
-            if x >= 0 && y >= 0 && (x as usize) < target.width && (y as usize) < target.height {
-                target.colour[y as usize * target.width + x as usize] = index;
-            }
+            target.plot(x, y, index);
         }
     }
 }
@@ -932,8 +928,7 @@ fn line(target: &mut Target, camera: &Camera, from: [i32; 3], to: [i32; 3], inde
     } else if b[2] <= WEATHER_NEAR {
         b = clip(b, a);
     }
-    let ([kx, ky], [cx, cy]) = Camera::screen(target.width, target.height);
-    let screen = |v: [f32; 3]| (cx + v[0] * kx / v[2], cy - v[1] * ky / v[2]);
+    let screen = |v: [f32; 3]| Camera::to_screen(v, target.width, target.height);
     let ((x0, y0), (x1, y1)) = (screen(a), screen(b));
     let steps = (x1 - x0).abs().max((y1 - y0).abs()).ceil().max(1.0) as usize;
     // A streak across the whole frame is a drop right at the eye; the engine
@@ -942,11 +937,13 @@ fn line(target: &mut Target, camera: &Camera, from: [i32; 3], to: [i32; 3], inde
     for i in 0..=steps {
         let t = i as f32 / steps as f32;
         let (x, y) = ((x0 + (x1 - x0) * t) as isize, (y0 + (y1 - y0) * t) as isize);
-        if x >= 0 && y >= 0 && (x as usize) < target.width && (y as usize) < target.height {
-            let at = y as usize * target.width + x as usize;
+        if !tested {
+            target.plot(x, y, index);
+        } else if x >= 0 && y >= 0 && (x as usize) < target.width && (y as usize) < target.height {
             // Depth is linear in 1/z across the screen.
             let depth = 1.0 / ((1.0 - t) / a[2] + t / b[2]);
-            if !tested || depth < target.depth[at] {
+            let at = y as usize * target.width + x as usize;
+            if depth < target.depth[at] {
                 target.colour[at] = index;
             }
         }

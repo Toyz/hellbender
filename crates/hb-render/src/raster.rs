@@ -50,6 +50,22 @@ impl Target {
         self.depth.fill(f32::INFINITY);
     }
 
+    /// One pixel, if it is in the frame.
+    pub fn plot(&mut self, x: isize, y: isize, index: u8) {
+        if x >= 0 && y >= 0 && (x as usize) < self.width && (y as usize) < self.height {
+            self.colour[y as usize * self.width + x as usize] = index;
+        }
+    }
+
+    /// A line one pixel wide, clipped to the frame (the engine's `0x4871c0`
+    /// clips it to the view instead).
+    pub fn line(&mut self, (x0, y0): (isize, isize), (x1, y1): (isize, isize), index: u8) {
+        let steps = (x1 - x0).abs().max((y1 - y0).abs()).max(1);
+        for i in 0..=steps {
+            self.plot(x0 + (x1 - x0) * i / steps, y0 + (y1 - y0) * i / steps, index);
+        }
+    }
+
     pub fn to_rgb(&self, palette: &Palette) -> Vec<u8> {
         let mut out = Vec::with_capacity(self.colour.len() * 3);
         for &index in &self.colour {

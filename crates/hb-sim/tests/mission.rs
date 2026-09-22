@@ -6,10 +6,9 @@ use hb_sim::mission::{self, Actor, Event, Mission, Outcome, World};
 use hb_sim::turret::Rng;
 
 fn point(kind: Kind, at: [f32; 3], data: Data) -> Nav {
-    let fixed = |v: f32| (v * 65536.0) as i32;
     Nav {
         kind,
-        position: at.map(fixed),
+        position: at.map(hb_formats::fixed::from_units),
         priority: 0,
         time: 0,
         completion_sound: Some(format!("{kind:?}.wav").to_lowercase()),
@@ -20,8 +19,7 @@ fn point(kind: Kind, at: [f32; 3], data: Data) -> Nav {
 }
 
 fn placed(x: f32, z: f32) -> Placement {
-    let fixed = |v: f32| (v * 65536.0) as i32;
-    Placement { kind: 0, hit_points: 65536, x: fixed(x), y: 0, z: fixed(z), pitch: 0, roll: 0, heading: 0 }
+    Placement { kind: 0, hit_points: 65536, x: hb_formats::fixed::from_units(x), y: 0, z: hb_formats::fixed::from_units(z), pitch: 0, roll: 0, heading: 0 }
 }
 
 struct Actors {
