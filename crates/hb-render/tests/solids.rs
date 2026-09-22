@@ -85,3 +85,52 @@ fn nothing_is_absurdly_big() {
         assert!(widest < 128.0, "{stem}: a solid {widest} units across");
     }
 }
+
+/// Shooting a switch starts it: every shot-triggered door in a level answers
+/// to a hit in its own cell at its own height.
+#[test]
+fn a_shot_starts_a_switch() {
+    use hb_sim::quake::{Layer, Quakes, Trigger};
+    let Some(level) = level("morbos") else { return };
+    let mut doors = Quakes::new(&level.quake, |layer, (x, z)| match layer {
+        Layer::BoxA => (level.terrain.boxes_a.bottom.at(x, z), level.terrain.boxes_a.top.at(x, z)),
+        Layer::BoxB => (level.terrain.boxes_b.bottom.at(x, z), level.terrain.boxes_b.top.at(x, z)),
+        Layer::Ground => {
+            let h = level.terrain.ground.at(x, z);
+            (h, h)
+        }
+        Layer::ChamberFloor => {
+            let h = level.terrain.chambers.floor.at(x, z);
+            (h, h)
+        }
+        Layer::ChamberCeiling => {
+            let h = level.terrain.chambers.ceiling.at(x, z);
+            (h, h)
+        }
+    });
+    let shot: Vec<(i32, i32, f32)> = doors
+        .doors
+        .iter()
+        .filter(|d| d.trigger == Trigger::Shot)
+        .map(|d| (d.cell.0, d.cell.1, (d.bottom + d.top) / 2.0))
+        .collect();
+    assert!(!shot.is_empty(), "morbos has no shot-triggered doors");
+    let mut started = 0;
+    for (x, z, middle) in &shot {
+        started += doors.shot((*x, *z), *middle);
+    }
+    assert_eq!(started, shot.len(), "a hit in the middle of one should start it");
+
+    // And the cell a switch names is a cell the world has a box in, so a shot
+    // that lands there lands on the switch rather than somewhere else.
+    let grid = hb_world::Grid::new(&level.terrain);
+    let mut boxed = 0;
+    for (x, z, _) in &shot {
+        let cell = hb_world::grid::Cell::new(*x, *z);
+        if hb_formats::terrain::Layer::BOX_LAYERS.iter().any(|&l| grid.has_box(l, cell)) {
+            boxed += 1;
+        }
+    }
+    println!("{boxed} of {} shot-triggered cells have a box", shot.len());
+    assert!(boxed * 2 >= shot.len(), "most shot-triggered cells should hold a box");
+}

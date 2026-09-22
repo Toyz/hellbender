@@ -1133,7 +1133,13 @@ fn main() -> Result<(), String> {
                 (hit[0] * 65536.0) as i32,
                 (hit[2] * 65536.0) as i32,
             );
-            doors.shot((cell.x, cell.z), hit[1] * hb_sim::quake::WORD);
+            let started = doors.shot((cell.x, cell.z), hit[1] * hb_sim::quake::WORD);
+            println!(
+                "shot: cell ({:3},{:3}) at {:6.1} words -> {started} door(s) started",
+                cell.x,
+                cell.z,
+                hit[1] * hb_sim::quake::WORD
+            );
         }
 
         for noise in noises {

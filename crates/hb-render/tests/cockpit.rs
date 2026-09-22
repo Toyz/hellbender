@@ -79,3 +79,31 @@ fn the_players_ship_is_there() {
     assert!(!model.vertices.is_empty(), "the ship has no vertices");
     assert!(!model.polygons.is_empty(), "the ship has no polygons");
 }
+
+/// Eve's welcome, wrapped to the panel, fits inside it.
+#[test]
+fn the_panel_wraps_a_long_line() {
+    use hb_formats::hud_font::HudFont;
+    let dir = std::env::var_os("HB_GAME").map(std::path::PathBuf::from).unwrap_or_else(|| {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../original")
+    });
+    let Ok(exe) = std::fs::read(dir.join("HELLBEND.EXE")) else {
+        eprintln!("skipping: no executable");
+        return;
+    };
+    let font = HudFont::read(&exe).unwrap();
+    let eve = hb_sim::phrases::phrase(128).expect("no phrase 128").text;
+    for (w, _h) in [(320usize, 200usize), (640, 480)] {
+        let width = (hb_render::hud::PANEL[2] as usize * w / 640).saturating_sub(4);
+        let lines = hb_render::hud::wrap(&font, &[eve.to_string()], width);
+        for line in &lines {
+            assert!(
+                font.width(line) <= width,
+                "{w}: {:?} is {} wide in a {width} panel",
+                line,
+                font.width(line)
+            );
+        }
+        println!("{w}: {} lines, widest {}", lines.len(), lines.iter().map(|l| font.width(l)).max().unwrap());
+    }
+}
