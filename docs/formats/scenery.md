@@ -2,7 +2,7 @@
 title: The .GLT lights, .QKE moving geometry and .TTY ground types
 status: partial
 covers: DATA\*.GLT, DATA\*.QKE, DATA\*.TTY
-worklog: 15, 47, 48
+worklog: 15, 47, 48, 91
 ---
 
 # .GLT, .QKE and .TTY
@@ -260,9 +260,18 @@ record shape cannot be read from the data.
 
 ## Unknown
 
-What the eight numbers of a `.GLT` record set, and what puts a light out:
-the unlit and broken textures are loaded and indexed and the load-time scan
-finds the faces wearing them, but the code that swaps one texture for
+What the eight numbers of a `.GLT` record set, and what puts a light out.
+
+What is known of the second: the records live at `0x5d0628`, 92 bytes each,
+counted by `0x5d05e0`, and the test "is this texture a light" is written out
+by hand in eight places rather than called - each one masks a texture word to
+twelve bits, walks the array comparing `+0x00` and `+0x04`, and answers 1 for
+lit, 2 for unlit, 0 for neither. `+0x08`, the broken texture, is not compared
+in any of them.
+
+The load-time scan is `0x48bd60`, called once, from the level load at
+`0x44c729`, and it hands each face it finds to `0x41bda0`. So the lights are
+found when the level loads and something is placed at each one. What swaps
 another has not been read, nor has what the list at `0x5cafe0` is for. In
 `.QKE`: what the flags line's first number - the mode byte the resting state
 tests - selects beyond 1, and what a kind 3 ground entry does with the ship's
