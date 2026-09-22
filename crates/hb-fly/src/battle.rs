@@ -443,6 +443,22 @@ impl Battle {
                 player_damage += blast.damage;
             }
         }
+        // Flying into something (`0x464f2f`): the ship's own position
+        // against every live actor's volume. Nothing is pushed anywhere -
+        // both just take damage while it lasts.
+        if self.pilot.alive() {
+            let health = &self.health;
+            let volumes = &self.volumes;
+            let rammed = combat::object_at(player, live, volumes, |i| {
+                !health[i].destroyed
+                    && combat::rammable(level.kinds[live[i].kind].class())
+            });
+            if let Some(i) = rammed {
+                hits.push((i, combat::RAM_ACTOR * dt, 0));
+                player_damage += combat::RAM_PLAYER;
+            }
+        }
+
         // And the enemy's, which only ever test the player (`0x495de0`) and
         // scale what they take off by how far in he was.
         if self.pilot.alive() {

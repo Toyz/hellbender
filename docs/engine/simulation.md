@@ -776,6 +776,26 @@ passes five seconds (`0x4822a4`). `hb_sim::death` is that; what the port does
 at the end of it - start the level again - is its own choice, since what the
 engine does with a failed mission is not read.
 
+## The ship against an actor
+
+The ship's collision (`0x427280`) is cells and nothing else - see below - so
+nothing pushes the ship off a placed actor. That does not mean you can fly
+through one for free.
+
+`0x464f2f`, in the player's own frame, calls `0x40d650` with the ship's
+position, `0x2000 * frame_time` and `0x1000`. That routine walks every live
+actor whose type's class is neither 0 nor 9, asks `0x40ce70` whether the
+point is inside its hit spheres or its turned box, and on the first that says
+yes:
+
+- the actor takes 0.125 a second (`0x40d2b0`, with 1000 as its kind so no
+  weapon multiplier applies), and
+- the player takes 1/16, on the frame, unless `0x5b36a4` is set.
+
+So flying into a bunker does not stop you and does not bounce you. It grinds
+both of you down for as long as you are inside it, and if you sit there you
+both die. This port does the same.
+
 ## The ship against the world
 
 `0x427280` is the ship's collision, and it runs on the position the flight

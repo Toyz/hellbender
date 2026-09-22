@@ -417,6 +417,21 @@ pub fn object_at(
     None
 }
 
+/// What flying into something costs, a frame, while the ship is inside it.
+///
+/// `0x464f2f` asks `0x40d650` every frame whether the ship's own position is
+/// inside any live actor. It is not a push - nothing moves - it is a hit on
+/// both: the actor takes [`RAM_ACTOR`] a second and the player
+/// [`RAM_PLAYER`] on the frame. The engine skips every actor whose class is
+/// 0 or 9 (`0x40d6af`).
+pub const RAM_ACTOR: f32 = 0x2000 as f32 / 65536.0;
+pub const RAM_PLAYER: f32 = 0x1000 as f32 / 65536.0;
+
+/// The classes flying into them costs nothing (`0x40d6ad`, `0x40d6b2`).
+pub fn rammable(class: i64) -> bool {
+    class != 0 && class != 9
+}
+
 /// The player's hit box: 2 units each way of the ship (`0x46568a`).
 pub fn player_is_hit(player: [f32; 3], point: [f32; 3]) -> bool {
     wrapped(player[0] - point[0]).abs() < 2.0

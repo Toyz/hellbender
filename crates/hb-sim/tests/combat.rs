@@ -267,3 +267,36 @@ fn a_sound_falls_away_with_distance() {
     let seam = falloff([510.0, 0.0, 0.0], [-510.0, 0.0, 0.0]);
     assert!(seam > 0.9, "{seam}");
 }
+
+/// Flying into something costs both of you, and does not move either.
+#[test]
+fn flying_into_an_actor_hurts_both_and_pushes_nobody() {
+    use hb_sim::combat::{object_at, rammable, HitVolume, RAM_ACTOR, RAM_PLAYER};
+    // Classes 0 and 9 are flown through for free.
+    assert!(!rammable(0));
+    assert!(!rammable(9));
+    assert!(rammable(7));
+    // A sixteenth off the player a frame, an eighth a second off the thing.
+    assert!((RAM_PLAYER - 1.0 / 16.0).abs() < 1e-6, "{RAM_PLAYER}");
+    assert!((RAM_ACTOR - 0.125).abs() < 1e-6, "{RAM_ACTOR}");
+
+    let place = Placement {
+        kind: 0,
+        hit_points: 65536,
+        x: 0,
+        y: 0,
+        z: 0,
+        heading: 0,
+        pitch: 0,
+        roll: 0,
+    };
+    let volumes =
+        vec![HitVolume::Box { min: [-2.0, -2.0, -2.0], max: [2.0, 2.0, 2.0] }];
+    let places = [place];
+    // Inside it.
+    assert_eq!(object_at([0.5, 0.0, 0.5], &places, &volumes, |_| true), Some(0));
+    // Outside it.
+    assert_eq!(object_at([9.0, 0.0, 0.0], &places, &volumes, |_| true), None);
+    // And a wreck is flown through.
+    assert_eq!(object_at([0.5, 0.0, 0.5], &places, &volumes, |_| false), None);
+}
