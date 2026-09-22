@@ -11,9 +11,9 @@ base_url = "https://toyz.github.io/hellbender/"
 readme   = "README.md"
 
 [[link]]
-label = "Repository"
-url   = "https://github.com/Toyz/hellbender"
-icon  = "github"
+label = "The Rust port"
+url   = "https://github.com/Toyz/hellbender/tree/main/crates"
+icon  = "code"
 
 [docs]
 dir   = "docs"
