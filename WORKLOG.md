@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-115 entries: audio 7, build 2, content 10, decomp 75, engine 26, flight 7, format 40, net 1, port 91, render 33, test 6, tooling 6, ui 11, video 6, world 12.
+116 entries: audio 7, build 2, content 10, decomp 76, engine 26, flight 7, format 40, net 1, port 92, render 33, test 6, tooling 6, ui 11, video 6, world 12.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -126,3 +126,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 113 | [The cars drive their courses, and nothing else does](worklog/0113-the-cars-drive-their-courses-and-nothing-else-does.md) | 2026-09-22 | decomp, port |
 | 114 | [Rain, snow, and the box that follows the eye](worklog/0114-rain-snow-and-the-box-that-follows-the-eye.md) | 2026-09-22 | render, port |
 | 115 | [Lightning every fifteen seconds, leaning the same way every time](worklog/0115-lightning-every-fifteen-seconds-leaning-the-same-way-every.md) | 2026-09-22 | render, port |
+| 116 | [Every gun starts its clock somewhere in the first half second](worklog/0116-every-gun-starts-its-clock-somewhere-in-the-first-half.md) | 2026-09-22 | decomp, port |

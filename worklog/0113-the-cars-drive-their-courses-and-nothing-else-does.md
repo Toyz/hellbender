@@ -85,10 +85,7 @@ the course classes and triggers for the four that shoot. The test runs all 302
 for a simulated minute and checks each stays within 50 units of the leg it is
 driving.
 
-The same setup routine starts every actor's fire timer at `rand() & 0xffff`
-(`+0x68`), somewhere in the first half second. The port had every gun start
-at zero, so a row of SAM sites fired as one; now turrets, followers, flyers
-and hover craft each start somewhere in that half second.
-
 **Still unknown:** the other six course routines. The port runs the
-transports and `FX4` (17 placements) on class 47's.
+transports and `FX4` (17 placements) on class 47's. And the random start of
+the fire timer - `0x404e90` sets `+0x68` to `rand() & 0xffff` - is not in the
+port's `Turret`, which starts every gun at zero.
