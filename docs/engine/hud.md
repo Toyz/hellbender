@@ -79,6 +79,13 @@ Then the distance into box 2, then the six gauges. A `GRD` point adds the
 guardian's health as a percentage. Last it plays or stops the missile
 warning.
 
+**`0x420080`** is the top-left panel, which is where the game writes to you:
+16, 3, 236 by 56 in 640x480, built out of the view's size, cleared and
+written seven pixels a line - eight lines. While something is in it
+`0x674d68` is set, and that is the flag the weapon pair reads, because the
+panel is the same strip of screen as the weapon lines and the weapon's
+picture.
+
 **`0x44eb0f`** is the weapon pair. The name comes from a table at `0x50e798`
 indexed by the selected weapon times 0x44; the count from `0x61bce0` indexed
 by the same weapon, where -1 means unlimited and prints `inf`. Both lines are

@@ -549,6 +549,29 @@ pub fn countdown(target: &mut Target, font: &HudFont, seconds: i32) {
     font.draw(&mut target.colour, w, h, x, y, &text, INK);
 }
 
+/// The top-left panel, which is the other place the game writes to you:
+/// 16, 3, 236 by 56 in 640x480 (`0x420080` builds it out of the view's
+/// size), cleared and written seven pixels a line - eight lines. While
+/// something is in it, `0x674d68` is set and the weapon and ammunition lines
+/// stand aside, because it is the same strip of screen and the weapon's
+/// picture is under it too.
+pub const PANEL: [isize; 4] = [16, 3, 236, 56];
+
+/// Write into the panel, most recent line last. More than eight lines and
+/// the oldest fall off the top.
+pub fn panel(target: &mut Target, font: &HudFont, lines: &[String]) {
+    let (w, h) = (target.width, target.height);
+    let [x, y, pw, ph] = PANEL;
+    let (x, y) = (x * w as isize / 640, y * h as isize / 480);
+    let (pw, ph) = (pw * w as isize / 640, ph * h as isize / 480);
+    fill(&mut target.colour, w, h, x, y, pw, ph, 0);
+    let rows = (ph / LINE as isize).max(1) as usize;
+    let from = lines.len().saturating_sub(rows);
+    for (i, line) in lines[from..].iter().enumerate() {
+        font.draw(&mut target.colour, w, h, x + 2, y + i as isize * LINE as isize, line, INK);
+    }
+}
+
 /// A message, where `0x481030` puts one: word-wrapped to 240 pixels, centred
 /// in the view, three eighths of the way down, on a filled box that runs
 /// three pixels left and two above the text to one past its right and bottom.

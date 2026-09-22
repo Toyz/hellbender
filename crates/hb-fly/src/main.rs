@@ -517,6 +517,11 @@ fn main() -> Result<(), String> {
 
     // A line the mission flashes on the HUD, and for how much longer.
     let mut flash: Option<(String, f32)> = None;
+    // What is in the top-left panel and for how much longer. The engine
+    // writes its lines there (`0x420080`) and hides the weapon readout while
+    // one is up, which is the same strip of screen.
+    let mut panel: Vec<String> = Vec::new();
+    let mut saying = 0.0f32;
     // Seconds since the mission ended, before the next level (or this one
     // again) begins.
     let mut ended = 0.0f32;
@@ -668,7 +673,7 @@ fn main() -> Result<(), String> {
         if pressed(binds.beacon) && demo.is_none() {
             for event in mission.drop_beacon(eye_of(&flight.camera)) {
                 if let hb_sim::mission::Event::Voice(v) = event {
-                    flash = Some((v.text.replace('\n', " "), 3.0));
+                    say(&mut panel, &mut saying, v.text);
                     if let (Some(music), Some(s)) = (music.as_ref(), sound(v.sound)) {
                         music.effect(&s, 1.0);
                     }
@@ -785,7 +790,7 @@ fn main() -> Result<(), String> {
                 }
             }
             for v in voices {
-                flash = Some((v.text.replace('\n', " "), 3.0));
+                say(&mut panel, &mut saying, v.text);
                 if let (Some(music), Some(s)) = (music.as_ref(), sound(v.sound)) {
                     music.effect(&s, 1.0);
                 }
@@ -964,7 +969,7 @@ fn main() -> Result<(), String> {
                 let heard = match event {
                     Event::Sound(name) => Some(name),
                     Event::Voice(v) => {
-                        flash = Some((v.text.replace('\n', " "), 3.0));
+                        say(&mut panel, &mut saying, v.text);
                         Some(v.sound.to_string())
                     }
                     Event::Message(m) => {
@@ -1015,7 +1020,7 @@ fn main() -> Result<(), String> {
                 use hb_sim::powerup::Event;
                 let heard = match event {
                     Event::Voice(v) => {
-                        flash = Some((v.text.replace('\n', " "), 3.0));
+                        say(&mut panel, &mut saying, v.text);
                         Some(v.sound)
                     }
                     Event::Message(m) => {
@@ -1030,6 +1035,12 @@ fn main() -> Result<(), String> {
             }
         }
 
+        if saying > 0.0 {
+            saying -= dt;
+            if saying <= 0.0 {
+                panel.clear();
+            }
+        }
         if let Some((_, left)) = &mut flash {
             *left -= dt;
             if *left <= 0.0 {
@@ -1320,8 +1331,13 @@ fn main() -> Result<(), String> {
                     blips: &blips,
                 };
                 hb_render::hud::draw(&mut target, font, &readout);
+                // The panel, and while it is up the weapon lines and the
+                // picture stand aside - they are the same strip of screen.
+                if saying > 0.0 && !panel.is_empty() {
+                    hb_render::hud::panel(&mut target, font, &panel);
+                }
                 // The weapon's picture, which the message panel covers.
-                if flash.is_none() {
+                if flash.is_none() && !(saying > 0.0 && !panel.is_empty()) {
                     if let Some(Some(art)) =
                         hb_render::hud::WEAPON_ICONS.get(weapon).map(|&i| &icons[i])
                     {
@@ -1581,6 +1597,21 @@ fn draw_brackets(pixels: &mut [u8], w: usize, h: usize, x: f32, y: f32, colour: 
     }
 }
 
+
+/// Put a line in the top-left panel, keeping the last few and starting the
+/// clock again. A line with a break in it is two lines, as the panel has
+/// eight of them.
+fn say(panel: &mut Vec<String>, saying: &mut f32, text: &str) {
+    for line in text.split('\n') {
+        panel.push(line.trim().to_string());
+    }
+    while panel.len() > 8 {
+        panel.remove(0);
+    }
+    // The phrase table's own durations are two to five seconds; four is the
+    // middle of them and what this uses until a line carries its own.
+    *saying = 4.0;
+}
 
 /// Whether a level has a briefing at all - only the first of each chapter
 /// does.

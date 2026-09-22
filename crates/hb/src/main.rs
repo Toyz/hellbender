@@ -671,6 +671,11 @@ fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
                     hb_render::hud::icon(&mut target, &art);
                 }
                 hb_render::hud::arrow(&mut target, 0x2000);
+                hb_render::hud::panel(
+                    &mut target,
+                    &font,
+                    &["Troop transport destroyed.".to_string(), "Objective Complete".to_string()],
+                );
                 if let Some(model) = startup
                     .read("models", "target.bin")
                     .ok()

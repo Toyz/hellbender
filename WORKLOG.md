@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-86 entries: audio 5, build 2, content 9, decomp 55, engine 26, flight 5, format 32, port 70, render 26, test 3, tooling 4, ui 7, world 10.
+87 entries: audio 5, build 2, content 9, decomp 56, engine 26, flight 5, format 32, port 71, render 27, test 3, tooling 4, ui 7, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -97,3 +97,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 84 | [A destroyed building is one square, not eleven](worklog/0084-a-destroyed-building-is-one-square-not-eleven.md) | 2026-09-21 | decomp, render, port |
 | 85 | [The briefing types itself out](worklog/0085-the-briefing-types-itself-out.md) | 2026-09-21 | decomp, content, port |
 | 86 | [Three hundred things the game says](worklog/0086-three-hundred-things-the-game-says.md) | 2026-09-21 | decomp, audio, content |
+| 87 | [What the port was not missing](worklog/0087-what-the-port-was-not-missing.md) | 2026-09-21 | decomp, port, render |
