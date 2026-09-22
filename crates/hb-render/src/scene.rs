@@ -865,3 +865,71 @@ pub fn draw_spark(target: &mut Target, camera: &Camera, position: [f32; 3], inde
         }
     }
 }
+
+/// How close in front of the eye weather is still drawn. The particles live
+/// within eight units of it, so the world's near plane would lose most of the
+/// nearest ones.
+const WEATHER_NEAR: f32 = 0.05;
+
+fn weather_view(camera: &Camera, at: [i32; 3]) -> [f32; 3] {
+    // The particle nearest the eye across the world's edge.
+    let wrap = |v: i32| v.wrapping_shl(6) >> 6;
+    camera.to_view(
+        camera.x + wrap(at[0] - camera.x),
+        at[1],
+        camera.z + wrap(at[2] - camera.z),
+    )
+}
+
+/// A snowflake: one 320x200 pixel whatever the mode (`0x486e20`), written
+/// straight into the frame with no depth test, as the engine's is.
+pub fn draw_flake(target: &mut Target, camera: &Camera, at: [i32; 3], index: u8) {
+    let view = weather_view(camera, at);
+    if view[2] <= WEATHER_NEAR {
+        return;
+    }
+    let ([kx, ky], [cx, cy]) = Camera::screen(target.width, target.height);
+    let (sx, sy) = (cx + view[0] * kx / view[2], cy - view[1] * ky / view[2]);
+    let (w, h) = ((target.width / 320).max(1), (target.height / 200).max(1));
+    let (x0, y0) = (sx.floor() as isize, sy.floor() as isize);
+    for y in y0..y0 + h as isize {
+        for x in x0..x0 + w as isize {
+            if x >= 0 && y >= 0 && (x as usize) < target.width && (y as usize) < target.height {
+                target.colour[y as usize * target.width + x as usize] = index;
+            }
+        }
+    }
+}
+
+/// A raindrop's streak from `from` to `to`, a line one pixel wide, clipped
+/// to the space in front of the eye and to the frame, with no depth test.
+pub fn draw_streak(target: &mut Target, camera: &Camera, from: [i32; 3], to: [i32; 3], index: u8) {
+    let (mut a, mut b) = (weather_view(camera, from), weather_view(camera, to));
+    if a[2] <= WEATHER_NEAR && b[2] <= WEATHER_NEAR {
+        return;
+    }
+    // Pull an end behind the eye forward to the near plane along the line.
+    let clip = |p: [f32; 3], q: [f32; 3]| -> [f32; 3] {
+        let t = (WEATHER_NEAR - p[2]) / (q[2] - p[2]);
+        std::array::from_fn(|k| p[k] + (q[k] - p[k]) * t)
+    };
+    if a[2] <= WEATHER_NEAR {
+        a = clip(a, b);
+    } else if b[2] <= WEATHER_NEAR {
+        b = clip(b, a);
+    }
+    let ([kx, ky], [cx, cy]) = Camera::screen(target.width, target.height);
+    let screen = |v: [f32; 3]| (cx + v[0] * kx / v[2], cy - v[1] * ky / v[2]);
+    let ((x0, y0), (x1, y1)) = (screen(a), screen(b));
+    let steps = (x1 - x0).abs().max((y1 - y0).abs()).ceil().max(1.0) as usize;
+    // A streak across the whole frame is a drop right at the eye; the engine
+    // draws it and so does this, but no longer than the frame is wide.
+    let steps = steps.min(target.width + target.height);
+    for i in 0..=steps {
+        let t = i as f32 / steps as f32;
+        let (x, y) = ((x0 + (x1 - x0) * t) as isize, (y0 + (y1 - y0) * t) as isize);
+        if x >= 0 && y >= 0 && (x as usize) < target.width && (y as usize) < target.height {
+            target.colour[y as usize * target.width + x as usize] = index;
+        }
+    }
+}

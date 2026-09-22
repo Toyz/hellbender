@@ -44,6 +44,7 @@ How the game works, subsystem by subsystem.
 | [The original's polygon pipeline](engine/rasteriser.md) | partial | HELLBEND.EXE:0x40f7b0, 0x437f90, 0x437b20, 0x4a723f, 0x4a76ac |
 | [The port's renderer](engine/rendering.md) | partial | crates/hb-render |
 | [The simulation](engine/simulation.md) | partial | HELLBEND.EXE logic phases, crates/hb-sim |
+| [Snow, rain and lightning](engine/weather.md) | partial | LEVELS\*.LVL line 40, HELLBEND.EXE:0x49c9b0, 0x49ce80, 0x49d220, 0x49d290 |
 
 ## Content
 

@@ -589,6 +589,9 @@ fn main() -> Result<(), String> {
     // The scatter an asteroid starts with, and anything else the loop needs
     // a number for.
     let mut rng = hb_sim::turret::Rng::new(0x5eed);
+    // Snow and rain, and where the ship was when they last moved.
+    let mut weather = hb_sim::weather::Weather::new(camera_at(&flight.camera), &mut rng);
+    let mut weather_eye = camera_at(&flight.camera);
     // The missile warning and the afterburner's note, while they are held.
     let mut warning: Option<u64> = None;
     let (mut burner, mut burning) = (None, false);
@@ -892,6 +895,8 @@ fn main() -> Result<(), String> {
             hoverers = hoverers_for(&level);
             gone = vec![false; live.len()];
             last_eye = eye_of(&flight.camera);
+            weather = hb_sim::weather::Weather::new(camera_at(&flight.camera), &mut rng);
+            weather_eye = camera_at(&flight.camera);
             ended = 0.0;
             dying = None;
             flash = None;
@@ -1587,6 +1592,38 @@ fn main() -> Result<(), String> {
                 );
             }
         }
+        // Snow and rain, after the world and before the cockpit
+        // (`0x49c9b0`, `0x49ce80`), and only when the eye is above the ground,
+        // below the sky layer and under nothing.
+        {
+            use hb_sim::weather::{self, Weather};
+            let at = camera_at(&seen);
+            let grid = hb_world::Grid::new(&level.terrain);
+            let cell = hb_world::grid::Cell::containing(at[0], at[2]);
+            let over = grid
+                .box_span(hb_world::Layer::BoxA, cell)
+                .map(|(bottom, _)| bottom)
+                .filter(|&bottom| at[1] < bottom);
+            let sky = (level.sky_height() * 65536.0) as i32;
+            let ship = camera_at(&flight.camera);
+            let moved: [i32; 3] = std::array::from_fn(|k| hb_sim::course::wrap(ship[k] - weather_eye[k]));
+            weather_eye = ship;
+            if Weather::falls(at[1], sky, over) {
+                if level.manifest.has_snow() {
+                    Weather::step(&mut weather.snow, dt, at);
+                    for flake in weather.snow.iter().filter(|p| p.shown) {
+                        hb_render::scene::draw_flake(&mut target, &seen, flake.position, weather::SNOW_INDEX);
+                    }
+                }
+                if level.manifest.has_rain() {
+                    Weather::step(&mut weather.rain, dt, at);
+                    for drop in weather.rain.iter().filter(|p| p.shown) {
+                        let end = Weather::streak_end(drop, moved);
+                        hb_render::scene::draw_streak(&mut target, &seen, drop.position, end, weather::RAIN_INDEX);
+                    }
+                }
+            }
+        }
         // Brackets on the locked target. The engine's lock display is not
         // read; this only shows what is locked. Not while the eye is off the
         // ship - nothing of the cockpit is.
@@ -1781,6 +1818,11 @@ fn main() -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Where a camera is, 16.16.
+fn camera_at(camera: &Camera) -> [i32; 3] {
+    [camera.x, camera.y, camera.z]
 }
 
 /// The scenery the port makes solid: every placement of a class the engine's
