@@ -106,6 +106,11 @@ fn run(args: &[&str]) -> Result<(), String> {
         ["brief", name, out] => cmd_brief(name, Path::new(out)),
         ["hudfont", out, rest @ ..] => cmd_hud_font(Path::new(out), rest),
         ["demo", n, at, out] => cmd_demo(n, at, Path::new(out)),
+        ["movie", name] => cmd_movie(name, None, 0),
+        ["movie", name, out] => cmd_movie(name, Some(Path::new(out)), 0),
+        ["movie", name, out, frame] => {
+            cmd_movie(name, Some(Path::new(out)), frame.parse().map_err(|_| "frame?")?)
+        }
         ["check"] => cmd_check(),
         _ => Err(format!("unknown command\n\n{USAGE}")),
     }
@@ -775,6 +780,51 @@ fn cmd_font(out: &Path, rest: &[&str]) -> Result<(), String> {
 
 /// The mission briefing: the screen every level draws it on, with its prose
 /// over it.
+/// A cutscene: what its header says, and one frame as a PNG.
+fn cmd_movie(name: &str, out: Option<&Path>, frame: usize) -> Result<(), String> {
+    use hb_formats::smk::Player;
+    let path = game_dir().join("system/Story").join(name);
+    let data = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut player = Player::new(&data).map_err(|e| e.to_string())?;
+    let m = &player.movie;
+    println!(
+        "{name}: {}x{} {} frames at {:.2} a second, {} with a palette",
+        m.width,
+        m.height,
+        m.frames,
+        m.fps(),
+        m.kinds.iter().filter(|k| *k & 1 != 0).count()
+    );
+    for (i, rate) in m.audio_rate.iter().enumerate().filter(|(_, r)| **r != 0) {
+        println!(
+            "  track {i}: {} Hz, {}-bit, {}, {}",
+            rate & 0xff_ffff,
+            if rate & 1 << 30 != 0 { 16 } else { 8 },
+            if rate & 1 << 29 != 0 { "stereo" } else { "mono" },
+            if rate & 1 << 31 != 0 { "compressed" } else { "raw" }
+        );
+    }
+    println!(
+        "  trees: {:?} entries, {} packed bytes",
+        m.tree_sizes.map(|s| s / 8 - 1),
+        m.trees.len()
+    );
+    let Some(out) = out else { return Ok(()) };
+    for _ in 0..=frame {
+        if !player.step(&data) {
+            return Err(format!("{name} has no frame {frame}"));
+        }
+    }
+    let mut rgb = Vec::with_capacity(player.picture.len() * 3);
+    for &index in &player.picture {
+        rgb.extend_from_slice(&player.palette[index as usize]);
+    }
+    let png = hb_formats::png::rgb(player.movie.width, player.movie.height, &rgb);
+    std::fs::write(out, png).map_err(|e| e.to_string())?;
+    println!("frame {frame} -> {}", out.display());
+    Ok(())
+}
+
 fn cmd_brief(name: &str, out: &Path) -> Result<(), String> {
     use hb_formats::brief::{Brief, BACKDROP};
     use hb_formats::hud_font::{HudFont, LINE};

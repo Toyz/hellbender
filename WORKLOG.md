@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-97 entries: audio 6, build 2, content 10, decomp 66, engine 26, flight 6, format 35, net 1, port 75, render 31, test 4, tooling 4, ui 7, world 10.
+98 entries: audio 6, build 2, content 10, decomp 66, engine 26, flight 6, format 36, net 1, port 76, render 31, test 5, tooling 4, ui 7, video 1, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -108,3 +108,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 95 | [Which end of the ramp a light of zero is](worklog/0095-which-end-of-the-ramp-a-light-of-zero-is.md) | 2026-09-21 | decomp, render |
 | 96 | [The hand on the stick, and three more cockpits](worklog/0096-the-hand-on-the-stick-and-three-more-cockpits.md) | 2026-09-21 | decomp, render, port, content |
 | 97 | [What the ship can fly through](worklog/0097-what-the-ship-can-fly-through.md) | 2026-09-21 | decomp, port, test |
+| 98 | [Smacker, written out by hand](worklog/0098-smacker-written-out-by-hand.md) | 2026-09-21 | format, video, port, test |

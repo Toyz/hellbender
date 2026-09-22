@@ -21,6 +21,7 @@ pub mod nav;
 pub mod png;
 pub mod quake;
 pub mod raw;
+pub mod smk;
 pub mod terrain;
 pub mod text;
 
