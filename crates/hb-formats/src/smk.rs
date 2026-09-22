@@ -309,6 +309,11 @@ impl Tree {
         self.nodes.iter().filter(|n| matches!(n, Node::Leaf(_))).count()
     }
 
+    /// Forget the three most recent values.
+    pub fn forget(&mut self) {
+        self.recent = [0; 3];
+    }
+
     /// One value, and the cache moved along.
     pub fn decode(&mut self, bits: &mut Bits) -> u32 {
         let Some(mut at) = self.root else { return 0 };
@@ -428,6 +433,10 @@ pub struct Player {
     pub picture: Vec<u8>,
     /// Track 0's samples for the frame just decoded.
     pub sound: Vec<i16>,
+    /// What the frame just decoded spent: the video chunk's bytes, the bits
+    /// the block stream read, and how many blocks it covered. A frame that
+    /// decodes correctly covers every block and stops inside its own chunk.
+    pub spent: (usize, usize, usize),
     next: usize,
 }
 
@@ -436,7 +445,15 @@ impl Player {
         let movie = Movie::parse(data)?;
         let trees = Trees::parse(&movie.trees);
         let picture = vec![0; movie.width * movie.height];
-        Ok(Player { movie, trees, palette: vec![[0; 3]; 256], picture, sound: Vec::new(), next: 0 })
+        Ok(Player {
+            movie,
+            trees,
+            palette: vec![[0; 3]; 256],
+            picture,
+            sound: Vec::new(),
+            spent: (0, 0, 0),
+            next: 0,
+        })
     }
 
     /// Which frame comes next.
@@ -527,9 +544,17 @@ impl Player {
         let across = self.movie.width / 4;
         let down = self.movie.height / 4;
         let stride = self.movie.width;
+        // Every frame starts with the four caches empty. Carrying them from
+        // one frame to the next decodes most frames correctly and quietly
+        // ruins the rest - see `docs/formats/audio-video.md`.
+        self.trees.map.forget();
+        self.trees.colour.forget();
+        self.trees.full.forget();
+        self.trees.kind.forget();
         let mut bits = Bits::new(chunk);
         let mut block = 0usize;
         let blocks = across * down;
+        self.spent = (chunk.len(), 0, 0);
         while block < blocks && !bits.past_end() {
             let code = self.trees.kind.decode(&mut bits);
             let kind = code & 3;
@@ -587,5 +612,6 @@ impl Player {
                 }
             }
         }
+        self.spent = (chunk.len(), bits.position(), block);
     }
 }

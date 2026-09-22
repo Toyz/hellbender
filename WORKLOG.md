@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-102 entries: audio 7, build 2, content 10, decomp 66, engine 26, flight 6, format 39, net 1, port 80, render 31, test 5, tooling 5, ui 8, video 4, world 10.
+103 entries: audio 7, build 2, content 10, decomp 66, engine 26, flight 6, format 40, net 1, port 80, render 31, test 6, tooling 5, ui 8, video 5, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -113,3 +113,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 100 | [The movies, on the screen](worklog/0100-the-movies-on-the-screen.md) | 2026-09-21 | port, video, ui |
 | 101 | [Arriving and leaving](worklog/0101-arriving-and-leaving.md) | 2026-09-21 | port, video, format |
 | 102 | [The port without the executable](worklog/0102-the-port-without-the-executable.md) | 2026-09-21 | port, format, tooling |
+| 103 | [The cache is emptied every frame](worklog/0103-the-cache-is-emptied-every-frame.md) | 2026-09-21 | format, video, test |

@@ -847,6 +847,29 @@ fn cmd_movie(name: &str, out: Option<&Path>, frame: usize) -> Result<(), String>
         );
         return Ok(());
     }
+    // A `.raw` asks for every frame as rgb24, or as bare palette indices with
+    // `.idx`, which is what a comparison against another decoder needs.
+    if out.extension().is_some_and(|e| e.eq_ignore_ascii_case("idx")) {
+        let mut all = Vec::new();
+        while player.step(&data) {
+            all.extend_from_slice(&player.picture);
+        }
+        std::fs::write(out, &all).map_err(|e| e.to_string())?;
+        println!("{} frames -> {}", all.len() / (320 * 240), out.display());
+        return Ok(());
+    }
+    if out.extension().is_some_and(|e| e.eq_ignore_ascii_case("raw")) {
+        let mut all = Vec::new();
+        while player.step(&data) {
+            for &index in &player.picture {
+                all.extend_from_slice(&player.palette[index as usize]);
+            }
+        }
+        let pixels = player.movie.width * player.movie.height * 3;
+        std::fs::write(out, &all).map_err(|e| e.to_string())?;
+        println!("{} frames -> {}", all.len() / pixels, out.display());
+        return Ok(());
+    }
     for _ in 0..=frame {
         if !player.step(&data) {
             return Err(format!("{name} has no frame {frame}"));

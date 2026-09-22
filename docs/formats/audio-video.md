@@ -142,6 +142,14 @@ The escapes are the format's cache. A leaf whose value is one of the three does
 not mean that value: it means the first, second or third most recently decoded
 value, and every decode that is not already at the front moves the list along.
 
+**The cache is emptied at the start of every frame.** All four of them, back to
+zero. This is the one thing about the format that cannot be worked out by
+reading a file, because a decoder that carries the caches across frames still
+decodes most frames perfectly - every one of `MORBBRF.SMK`'s 600 - and quietly
+ruins the ones where a frame's first cached code lands on a slot the previous
+frame left different. Half of `MORBIN.SMK` came out wrong that way while the
+briefing next to it was exact.
+
 **The header's size for a tree is `(leaves + 1) * 8`.** That holds for all four
 trees of all 32 movies, which is what says this reading is right. The packed
 blob has a little slack after the fourth tree - 63 bytes in `Intro.smk`, 225 in
@@ -158,7 +166,9 @@ they were, a byte with bit 6 set copies `(b & 0x3f) + 1` entries from the old
 palette starting at the next byte's index, and anything else is the first of
 three six-bit channels. Six bits become eight as `(v << 2) | (v >> 4)`.
 
-The video is 4x4 blocks in rows, left to right and top to bottom. A code from
+The video is 4x4 blocks in rows, left to right and top to bottom. A correct
+frame covers every block and stops inside its own bytes; a decoder out of step
+with the stream fails one or the other, which is what the port tests. A code from
 the type tree carries the kind in its low two bits, a run in the next six, and
 for a fill the colour in the rest. The run is the code itself up to 59, then
 128, 256, 512, 1024, 2048.

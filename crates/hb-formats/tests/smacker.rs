@@ -62,15 +62,29 @@ fn the_trees_are_the_size_the_header_says() {
     }
 }
 
-/// Every frame of every movie decodes, and the block stream ends inside the
-/// frame's own bytes rather than running past them.
+/// Every frame of every movie decodes, covers all 4,800 of its blocks, and
+/// stops inside its own bytes.
+///
+/// The last two are what catch a decoder that is out of step with the stream
+/// rather than wrong about a pixel. Carrying the trees' caches from one frame
+/// to the next - which is what this decoder did at first - passes on 600
+/// frames of `MORBBRF.SMK` and fails here on the fourth frame of
+/// `MORBIN.SMK`, which is the sort of thing only an invariant finds.
 #[test]
 fn every_frame_decodes() {
     for (name, data) in movies() {
         let mut player = Player::new(&data).unwrap();
         let frames = player.movie.frames;
+        let blocks = player.movie.width / 4 * (player.movie.height / 4);
         for i in 0..frames {
             assert!(player.step(&data), "{name}: frame {i} of {frames} stopped short");
+            let (bytes, bits, covered) = player.spent;
+            assert_eq!(covered, blocks, "{name}: frame {i} covered {covered} of {blocks} blocks");
+            assert!(
+                bits.div_ceil(8) <= bytes,
+                "{name}: frame {i} read {} bytes of a {bytes}-byte chunk",
+                bits.div_ceil(8)
+            );
         }
         assert!(!player.step(&data), "{name}: a frame past the end");
     }
