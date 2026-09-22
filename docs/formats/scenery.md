@@ -51,7 +51,11 @@ projects it (`0x41adf0`, `0x41b0b0`) and adds it to a list counted at
 `0x5cafe0`. Nothing in the level files marks a light; they are marked by what
 they are painted with.
 
-The eight numbers are not read out of the engine. The first is a whole number
+The eight numbers are not read out of the engine, and the load scan is not
+where they are used: `0x48bd60` touches a record's `+0x00` and `+0x04` and
+nothing else. Something reads `+0x2c`, `+0x34` and `+0x48` (`0x48afe7`,
+`0x48ca76`), which are inside the 92 bytes and past the indices, so the
+numbers are read somewhere - just not by the code that finds the lights. The first is a whole number
 of units in 16.16 - 2, 4, 6 or 10 - and the second is 90000 (1.373) or 65535
 (1.0). The third and sixth are smaller and less regular, 2.0 down to 0.03.
 The fourth is 6 in all 90 records and the fifth 1 in all but one. The seventh
