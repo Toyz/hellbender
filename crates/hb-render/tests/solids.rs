@@ -133,4 +133,58 @@ fn a_shot_starts_a_switch() {
     }
     println!("{boxed} of {} shot-triggered cells have a box", shot.len());
     assert!(boxed * 2 >= shot.len(), "most shot-triggered cells should hold a box");
+
+    // And once they are moving, the switches watching them should swap their
+    // texture - and the name they swap to should be one the level has.
+    let switches = doors.doors.iter().filter(|d| d.switch.is_some()).count();
+    let watchers = doors
+        .doors
+        .iter()
+        .filter(|d| matches!(d.trigger, hb_sim::quake::Trigger::Watching(_)))
+        .count();
+    let ids: Vec<i64> = doors.doors.iter().filter(|d| d.switch.is_some()).map(|d| d.id).collect();
+    println!("{switches} switches, {watchers} watchers, switch ids {:?}", &ids[..ids.len().min(12)]);
+    let links: Vec<String> = doors
+        .doors
+        .iter()
+        .filter_map(|d| match d.trigger {
+            hb_sim::quake::Trigger::Watching(w) => Some(format!("{w:?}")),
+            _ => None,
+        })
+        .collect();
+    println!("what the watchers watch: {:?}", &links[..links.len().min(12)]);
+    let shot_switches =
+        doors.doors.iter().filter(|d| d.switch.is_some() && d.trigger == Trigger::Shot).count();
+    println!("{shot_switches} of the switches are shot-triggered");
+    for d in doors.doors.iter().filter(|d| d.switch.is_some()).take(6) {
+        println!(
+            "  switch id {:3} cell {:?} bottom {:8.1} top {:8.1} travel(rest->target) {:8.1} delay {:.2}",
+            d.id,
+            d.cell,
+            d.bottom,
+            d.top,
+            d.target - d.rest,
+            d.delay
+        );
+    }
+    let mut swaps = 0;
+    let mut resolved = 0;
+    for _ in 0..600 {
+        doors.step(1.0 / 30.0);
+        for swap in std::mem::take(&mut doors.swaps) {
+            swaps += 1;
+            if let Some(name) = swap.texture {
+                let wanted = name.to_ascii_lowercase();
+                if level.texture_names.iter().any(|n| n.to_ascii_lowercase() == wanted) {
+                    resolved += 1;
+                } else {
+                    println!("  no texture named {name:?}");
+                }
+            } else {
+                println!("  a swap with no texture");
+            }
+        }
+    }
+    println!("{swaps} swaps, {resolved} of them naming a texture the level has");
+    assert!(swaps > 0, "nothing swapped a texture in twenty seconds");
 }

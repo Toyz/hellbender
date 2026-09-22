@@ -355,11 +355,19 @@ impl Quakes {
     }
 
     /// Put a door into the state before moving, with its timer cleared
-    /// (`0x410b6b`).
+    /// (`0x410b6b`), and start whatever was waiting on it.
+    ///
+    /// The waking belongs here rather than only where a box moves: a switch's
+    /// `rest` and `target` are both zero - it flips rather than travels - so
+    /// nothing it points at would ever start if only movement woke them, and
+    /// the engine's own `0x410d00` runs off the trigger, not off the motion.
     pub fn start(&mut self, door: usize) {
-        let d = &mut self.doors[door];
-        d.state = State::About;
-        d.timer = 0.0;
+        {
+            let d = &mut self.doors[door];
+            d.state = State::About;
+            d.timer = 0.0;
+        }
+        self.wake_watchers(door);
     }
 
     /// One frame. Returns every cell that moved, and collects any sounds in

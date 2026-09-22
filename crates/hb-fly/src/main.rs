@@ -642,6 +642,8 @@ fn main() -> Result<(), String> {
     // Whether the opening camera has had its turn. It is armed once, not once
     // a frame - without this it re-arms the moment it lands and never ends.
     let mut opened = false;
+    // `HB_DOORS=1` says where each shot landed and what it started.
+    let trace_doors = std::env::var_os("HB_DOORS").is_some();
     // The opening camera: how far it still has to fall, and where it has spun
     // to. `None` once it has landed.
     let mut arriving: Option<(f32, f32)> = None;
@@ -778,10 +780,29 @@ fn main() -> Result<(), String> {
         for swap in std::mem::take(&mut doors.swaps) {
             let Some(name) = swap.texture else { continue };
             let wanted = name.to_ascii_lowercase();
-            let Some(index) =
-                level.texture_names.iter().position(|n| n.to_ascii_lowercase() == wanted)
-            else {
-                continue;
+            // A switch may name a texture the level's own `.TEX` list does
+            // not carry - `SUPRSWT1.RAW` in `MORBOS` - so load it and give it
+            // a slot rather than leaving the switch stuck on one face.
+            let index = match level
+                .texture_names
+                .iter()
+                .position(|n| n.to_ascii_lowercase() == wanted)
+            {
+                Some(index) => index,
+                None => {
+                    let Some(image) = startup
+                        .read("art", &wanted)
+                        .or_else(|_| game.read("art", &wanted))
+                        .ok()
+                        .and_then(|b| Image::parse_guessed(b).ok().flatten())
+                    else {
+                        continue;
+                    };
+                    level.texture_names.push(name.clone());
+                    level.textures.push(Some(image));
+                    level.mips.push([None, None]);
+                    level.texture_names.len() - 1
+                }
             };
             let layer = match swap.layer {
                 hb_sim::quake::Layer::BoxA => &mut level.terrain.boxes_a,
@@ -1134,12 +1155,14 @@ fn main() -> Result<(), String> {
                 (hit[2] * 65536.0) as i32,
             );
             let started = doors.shot((cell.x, cell.z), hit[1] * hb_sim::quake::WORD);
-            println!(
-                "shot: cell ({:3},{:3}) at {:6.1} words -> {started} door(s) started",
-                cell.x,
-                cell.z,
-                hit[1] * hb_sim::quake::WORD
-            );
+            if trace_doors {
+                println!(
+                    "shot: cell ({:3},{:3}) at {:6.1} words -> {started} door(s) started",
+                    cell.x,
+                    cell.z,
+                    hit[1] * hb_sim::quake::WORD
+                );
+            }
         }
 
         for noise in noises {

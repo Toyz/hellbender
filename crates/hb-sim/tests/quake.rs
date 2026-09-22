@@ -141,10 +141,11 @@ fn a_door_that_watches_an_id_follows_the_one_that_carries_it() {
     let mut doors = quakes(vec![first, second], Vec::new());
     assert!(matches!(doors.doors[1].trigger, Trigger::Watching(_)));
     doors.shot((65, 48), 400.0);
+    // Starting one starts whatever watches it, there and then: a switch does
+    // not travel, so waiting for it to move would never wake anything.
+    assert_ne!(doors.doors[1].state, State::Rest, "the watcher should be going");
     doors.step(1.0 / 30.0);
-    // The first frame the shot one actually moves, the other one starts.
     doors.step(1.0 / 30.0);
-    assert_eq!(doors.doors[1].state, State::About);
     // Both are moving now, and the second cell moves too.
     let moved = doors.step(1.0 / 30.0);
     assert!(moved.iter().any(|m| m.cell == (65, 48)));

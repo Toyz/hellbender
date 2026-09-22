@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-110 entries: audio 7, build 2, content 10, decomp 72, engine 26, flight 7, format 40, net 1, port 87, render 31, test 6, tooling 5, ui 11, video 6, world 11.
+111 entries: audio 7, build 2, content 10, decomp 73, engine 26, flight 7, format 40, net 1, port 88, render 31, test 6, tooling 5, ui 11, video 6, world 12.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -121,3 +121,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 108 | [A camera for the empty hook](worklog/0108-a-camera-for-the-empty-hook.md) | 2026-09-21 | port, ui |
 | 109 | [Eve, and the spin she talks after](worklog/0109-eve-and-the-spin-she-talks-after.md) | 2026-09-21 | port, ui, decomp |
 | 110 | [The camera a level opens on](worklog/0110-the-camera-a-level-opens-on.md) | 2026-09-21 | decomp, port, ui |
+| 111 | [A switch flips, it does not travel](worklog/0111-a-switch-flips-it-does-not-travel.md) | 2026-09-21 | decomp, world, port |

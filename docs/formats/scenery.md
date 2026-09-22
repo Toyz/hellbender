@@ -205,6 +205,11 @@ off (`0x412a50`, `0x412ab6`). What decides which is the position of the box
 the switch points at: while that box is away from where it rests, the switch
 is lit.
 
+A switch's own box does not travel: its rest and its target are both zero, so
+it flips rather than moves. That matters for when it wakes things - waiting for
+a box to move would leave a switch's doorasleep - and the engine's
+`0x410d00` runs off the trigger rather than off the motion.
+
 The switch then has to find the door it opens. `0x410d00` walks the box
 quakes for one that is resting and whose flag field says what it watches:
 
