@@ -10,6 +10,16 @@ repository  = "https://github.com/Toyz/hellbender"
 base_url = "https://toyz.github.io/hellbender/"
 readme   = "README.md"
 
+[[link]]
+label = "Repository"
+url   = "https://github.com/Toyz/hellbender"
+icon  = "github"
+
+[[link]]
+label = "The Rust port"
+url   = "https://github.com/Toyz/hellbender/tree/main/crates"
+icon  = "code"
+
 [docs]
 dir   = "docs"
 label = "Reference"
