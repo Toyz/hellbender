@@ -1791,6 +1791,11 @@ fn scenery_of(level: &Level) -> Vec<hb_sim::collide::Solid> {
     level
         .placements
         .iter()
+        // Above ground only. A chamber is tunnels, and the things standing in
+        // them - reactors, cores - are big enough that a box around one fills
+        // the passage it is in, so underground the engine's answer stands and
+        // the ship flies past.
+        .filter(|p| p.y >= 0)
         .filter(|p| !hb_sim::combat::rammable(level.kinds[p.kind].class()))
         .map(|p| {
             let volume = hb_sim::combat::HitVolume::for_type(

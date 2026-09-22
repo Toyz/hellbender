@@ -188,3 +188,38 @@ fn a_shot_starts_a_switch() {
     println!("{swaps} swaps, {resolved} of them naming a texture the level has");
     assert!(swaps > 0, "nothing swapped a texture in twenty seconds");
 }
+
+/// Objects underground are drawn. A chamber is where a level's tunnels are,
+/// and nothing about being under the ground should hide what is in one.
+#[test]
+fn a_chamber_draws_what_is_in_it() {
+    let Some(level) = level("morbos") else { return };
+    let grid = hb_world::Grid::new(&level.terrain);
+    // Somewhere with a chamber under it, and something placed down there.
+    let under: Vec<usize> = level
+        .placements
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| {
+            let at = [p.x as f32 / 65536.0, p.y as f32 / 65536.0, p.z as f32 / 65536.0];
+            at[1] < 0.0 && grid.has_chamber(hb_world::grid::Cell::containing(p.x, p.z))
+        })
+        .map(|(i, _)| i)
+        .collect();
+    println!("{} placements sit in a chamber", under.len());
+    if under.is_empty() {
+        return;
+    }
+    let p = &level.placements[under[0]];
+    let mut target = hb_render::Target::new(320, 200);
+    target.clear(0);
+    let mut camera = hb_render::Camera::looking_at(p.x, p.y + (8 << 16), p.z - (40 << 16), hb_formats::Angle(0));
+    camera.pitch = hb_formats::Angle(0);
+    let scene = level.scene();
+    let drawn = hb_render::draw_world(&mut target, &scene, &camera);
+    println!("underground: {drawn:?}");
+    println!("at {} {} {}", p.x as f32/65536.0, p.y as f32/65536.0, p.z as f32/65536.0);
+    let rgb: Vec<u8> = target.colour.iter().flat_map(|&i| level.palette.rgb(i)).collect();
+    std::fs::write("/tmp/under.png", hb_formats::png::rgb(320, 200, &rgb)).unwrap();
+    assert!(drawn.models > 0, "nothing was drawn in the chamber");
+}

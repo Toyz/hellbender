@@ -141,9 +141,10 @@ control begins exactly where `0x471333` puts it, and any key skips it.
 **Scenery is solid.** The engine lets the ship fly through a radar dish, a
 reactor or a bunker - classes 0 and 9 - without a scratch, because its actor
 test skips those two classes and its own collision is cells only. The port
-gives each of them a box and pushes the ship out. Everything else keeps the
-engine's answer, ramming included: a tank still grinds you down rather than
-stopping you.
+gives each of them a box and pushes the ship out, **above ground only** - a
+chamber is tunnels, and a box around the reactor standing in one fills the
+passage. Everything else keeps the engine's answer, ramming included: a tank
+still grinds you down rather than stopping you.
 
 ## Known problems
 
