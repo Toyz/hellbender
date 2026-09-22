@@ -124,6 +124,15 @@ cutscenes through a decoder binding; the front end, demos and saves.
 
 Multiplayer is out of scope until everything above works.
 
+## Where the port departs on purpose
+
+One place, and this is it: the engine lets the ship fly through a radar dish, a
+reactor or a bunker - classes 0 and 9 - without a scratch, because its actor
+test skips those two classes and its own collision is cells only. The port
+gives each of them a box and pushes the ship out. Everything else keeps the
+engine's answer, ramming included: a tank still grinds you down rather than
+stopping you.
+
 ## Known problems
 
 Reported from playing `hb-fly` and deliberately deferred:

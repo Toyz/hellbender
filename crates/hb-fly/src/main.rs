@@ -146,7 +146,7 @@ impl Flight {
     /// is going (`0x427280`), so nothing is crossed in one frame. This walks
     /// the step in pieces no longer than half the ship's unit and resolves
     /// each, which comes to the same thing for anything it can fly into.
-    fn settle(&mut self, grid: &hb_world::Grid) {
+    fn settle(&mut self, grid: &hb_world::Grid, scenery: &[hb_sim::collide::Solid]) {
         self.grounded = false;
         if !self.collide {
             return;
@@ -165,7 +165,7 @@ impl Flight {
         for piece in 1..=pieces {
             let t = piece as f32 / pieces as f32;
             let along: [f32; 3] = std::array::from_fn(|k| self.was[k] + travel[k] * t);
-            let (resolved, held) = self.resolve(grid, along);
+            let (resolved, held) = self.resolve(grid, scenery, along);
             at = resolved;
             if held {
                 break;
@@ -183,14 +183,32 @@ impl Flight {
     /// it is least far through, as the engine's response does (`0x4277c0`).
     /// The ground and the chamber are height queries, sampled across the
     /// ship's own unit rather than under its middle.
-    fn resolve(&mut self, grid: &hb_world::Grid, position: [f32; 3]) -> ([f32; 3], bool) {
+    fn resolve(
+        &mut self,
+        grid: &hb_world::Grid,
+        scenery: &[hb_sim::collide::Solid],
+        position: [f32; 3],
+    ) -> ([f32; 3], bool) {
         let fixed = |v: f32| (v * 65536.0) as i32;
         let unit = hb_sim::collide::SHIP;
-        let solids: Vec<hb_sim::collide::Solid> = grid
+        let mut solids: Vec<hb_sim::collide::Solid> = grid
             .boxes_near(fixed(position[0]), fixed(position[2]), (unit * 65536.0) as i32)
             .into_iter()
             .map(hb_sim::collide::Solid::of)
             .collect();
+        // And the scenery the engine would have let the ship through - see
+        // `hb_sim::collide::solid_of`.
+        solids.extend(scenery.iter().filter(|s| {
+            (0..3).all(|k| {
+                let (lo, hi) = (s.min[k] - unit, s.max[k] + unit);
+                if k == 1 {
+                    position[k] >= lo && position[k] <= hi
+                } else {
+                    let middle = (lo + hi) / 2.0;
+                    hb_sim::combat::wrapped(position[k] - middle).abs() <= (hi - lo) / 2.0
+                }
+            })
+        }));
         let (mut at, push) = hb_sim::collide::push_out(position, unit, &solids);
         let mut held = push.is_some();
         if push == Some(hb_sim::collide::Push::Up) {
@@ -507,6 +525,7 @@ fn main() -> Result<(), String> {
     // placements that follow a course (`live` is the copy the renderer draws,
     // rewritten from them each frame), and the fight.
     let (mut flight, mut mission, mut followers, mut live, mut battle, mut colours) = begin(&level);
+    let mut scenery = scenery_of(&level);
     let mut doors = doors_of(&level);
     let mut hoverers = hoverers_for(&level);
     // The actors that have left the level: class 17 ships, once they are
@@ -658,6 +677,7 @@ fn main() -> Result<(), String> {
             describe(&level);
             play_music(&level);
             (flight, mission, followers, live, battle, colours) = begin(&level);
+            scenery = scenery_of(&level);
             doors = doors_of(&level);
             hoverers = hoverers_for(&level);
             gone = vec![false; live.len()];
@@ -737,7 +757,7 @@ fn main() -> Result<(), String> {
             }
             None => {
                 flight.step(&window, &binds, joystick.as_ref(), dt, battle.stores.fuel > 0.0);
-                flight.settle(&hb_world::Grid::new(&level.terrain));
+                flight.settle(&hb_world::Grid::new(&level.terrain), &scenery);
             }
         }
         target.clear(0);
@@ -985,6 +1005,7 @@ fn main() -> Result<(), String> {
                 Some(hb_sim::death::Wants::Over) => {
                     println!("shot down ({} so far) - starting again", battle.deaths);
                     (flight, mission, followers, live, battle, colours) = begin(&level);
+                    scenery = scenery_of(&level);
                     doors = doors_of(&level);
                     hoverers = hoverers_for(&level);
                     gone = vec![false; live.len()];
@@ -1484,6 +1505,24 @@ fn main() -> Result<(), String> {
 /// Every placement whose type names a course that exists, paired with a
 /// follower for it. A dangling course id - six levels have them - is skipped,
 /// as the engine's "Bad course ID for enemy" diagnostic implies it copes.
+/// The scenery the port makes solid: every placement of a class the engine's
+/// own ram test skips, as a world box. See `hb_sim::collide::solid_of` for why
+/// this is the port's own and not the engine's.
+fn scenery_of(level: &Level) -> Vec<hb_sim::collide::Solid> {
+    level
+        .placements
+        .iter()
+        .filter(|p| !hb_sim::combat::rammable(level.kinds[p.kind].class()))
+        .map(|p| {
+            let volume = hb_sim::combat::HitVolume::for_type(
+                &level.kinds[p.kind],
+                level.meshes.get(p.kind).and_then(Option::as_ref),
+            );
+            hb_sim::collide::solid_of(&volume, hb_sim::combat::position_of(p), p.heading as u16)
+        })
+        .collect()
+}
+
 fn followers_for(level: &Level) -> Vec<(usize, hb_sim::Follower)> {
     level
         .placements

@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-96 entries: audio 6, build 2, content 10, decomp 65, engine 26, flight 6, format 35, net 1, port 74, render 31, test 3, tooling 4, ui 7, world 10.
+97 entries: audio 6, build 2, content 10, decomp 66, engine 26, flight 6, format 35, net 1, port 75, render 31, test 4, tooling 4, ui 7, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -107,3 +107,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 94 | [A polygon from corner list to span](worklog/0094-a-polygon-from-corner-list-to-span.md) | 2026-09-21 | decomp, render |
 | 95 | [Which end of the ramp a light of zero is](worklog/0095-which-end-of-the-ramp-a-light-of-zero-is.md) | 2026-09-21 | decomp, render |
 | 96 | [The hand on the stick, and three more cockpits](worklog/0096-the-hand-on-the-stick-and-three-more-cockpits.md) | 2026-09-21 | decomp, render, port, content |
+| 97 | [What the ship can fly through](worklog/0097-what-the-ship-can-fly-through.md) | 2026-09-21 | decomp, port, test |

@@ -792,9 +792,18 @@ yes:
   weapon multiplier applies), and
 - the player takes 1/16, on the frame, unless `0x5b36a4` is set.
 
-So flying into a bunker does not stop you and does not bounce you. It grinds
-both of you down for as long as you are inside it, and if you sit there you
-both die. This port does the same.
+So flying into a tank does not stop you and does not bounce you. It grinds both
+of you down for as long as you are inside it, and if you sit there you both
+die. This port does the same.
+
+The two classes it skips are the ones a level is built out of: class 0 is the
+scenery - the reactors, the radar dishes, the crystal towers - and class 9 is
+the bunkers. Flying into those costs nothing at all in the original, and
+nothing stops the ship either, because the cells under them hold only the
+plinths they stand on. **The port departs here**: it gives every placement of
+those two classes a box of its own hit volume and pushes the ship out of it,
+which is the one thing in its collision the engine does not do. See
+`hb_sim::collide::solid_of`.
 
 ## The ship against the world
 

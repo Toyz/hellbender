@@ -285,6 +285,31 @@ impl HitVolume {
     }
 }
 
+impl HitVolume {
+    /// The volume's own axis-aligned bounds, in the object's frame. A sphere
+    /// is a cube here as it is in the test.
+    pub fn bounds(&self) -> ([f32; 3], [f32; 3]) {
+        match self {
+            HitVolume::Box { min, max } => (*min, *max),
+            HitVolume::Spheres(spheres) => {
+                let mut min = [f32::MAX; 3];
+                let mut max = [f32::MIN; 3];
+                for (centre, half) in spheres {
+                    for k in 0..3 {
+                        min[k] = min[k].min(centre[k] - half);
+                        max[k] = max[k].max(centre[k] + half);
+                    }
+                }
+                if spheres.is_empty() {
+                    ([0.0; 3], [0.0; 3])
+                } else {
+                    (min, max)
+                }
+            }
+        }
+    }
+}
+
 /// A world point turned into an object's frame: the heading undone. Placed
 /// objects have no pitch or roll in any shipped level.
 pub fn to_local(point: [f32; 3], origin: [f32; 3], heading: u16) -> [f32; 3] {

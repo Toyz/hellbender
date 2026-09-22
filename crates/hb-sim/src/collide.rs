@@ -104,3 +104,29 @@ pub fn push_out(position: [f32; 3], radius: f32, solids: &[Solid]) -> ([f32; 3],
     }
     (p, push)
 }
+
+/// The world box a placed object fills: its hit volume turned by its heading
+/// and squared off, which is the shape [`push_out`] works in.
+///
+/// The engine has nothing like this. Its own test against a placed object
+/// (`0x40d650`) damages both and pushes neither, and it skips classes 0 and 9 -
+/// the scenery and the bunkers - entirely, so in the original the ship flies
+/// through a radar dish without so much as a scratch. The port stops it, which
+/// is a departure and the only one in its collision.
+pub fn solid_of(volume: &crate::combat::HitVolume, at: [f32; 3], heading: u16) -> Solid {
+    let (lo, hi) = volume.bounds();
+    let mut min = [f32::MAX; 3];
+    let mut max = [f32::MIN; 3];
+    for &x in &[lo[0], hi[0]] {
+        for &z in &[lo[2], hi[2]] {
+            let w = crate::combat::to_world([x, 0.0, z], at, heading as f32);
+            min[0] = min[0].min(w[0]);
+            max[0] = max[0].max(w[0]);
+            min[2] = min[2].min(w[2]);
+            max[2] = max[2].max(w[2]);
+        }
+    }
+    min[1] = at[1] + lo[1];
+    max[1] = at[1] + hi[1];
+    Solid { min, max }
+}
