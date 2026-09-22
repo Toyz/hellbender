@@ -25,14 +25,13 @@ const USAGE: &str = "\
 hb-fly - fly around a Hellbender level
 
   hb-fly [level] [--mode 200|400|480] [--scale N] [--demo 1|2|3]
-         [--no-intro] [--no-entry] [--movie NAME] [--no-movies]
+         [--no-intro] [--movie NAME] [--no-movies]
 
   level    a level stem, default `hoth`
   --mode   the game's three screen sizes, default 200 (320x200)
   --scale  integer upscale of the window, default 3
   --demo   replay one of the game's recorded attract-mode flights
   --no-intro   skip the four cutscenes the game opens on
-  --no-entry   skip the fly-in camera, which is the port's own
   --movie      play one cutscene by name, e.g. --movie Intro.smk
   --no-movies  skip every cutscene
 
@@ -316,7 +315,6 @@ fn main() -> Result<(), String> {
     let mut pending: Vec<String> = Vec::new();
     let mut movies = true;
     let mut opening = true;
-    let mut entry_camera = true;
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         match arg.as_str() {
@@ -329,7 +327,6 @@ fn main() -> Result<(), String> {
                 opening = false;
             }
             "--no-intro" => opening = false,
-            "--no-entry" => entry_camera = false,
             "--no-movies" => movies = false,
             other if !other.starts_with('-') => level_name = other.to_string(),
             other => return Err(format!("unknown option {other}\n\n{USAGE}")),
@@ -639,7 +636,6 @@ fn main() -> Result<(), String> {
     // has gone off. See `jump_out`.
     let mut jumping: Option<(f32, bool)> = None;
     // And flying in, which is the port's own - see `entry`.
-    let mut arriving: Option<f32> = if entry_camera { Some(0.0) } else { None };
     let mut welcomed = false;
 
     // A line the mission flashes on the HUD, and for how much longer.
@@ -726,9 +722,9 @@ fn main() -> Result<(), String> {
         // after the spin rather than over it: `0x4201a9` is in the cockpit's
         // own per-frame code, and it plays phrase 128 and clears the flag the
         // new-game routine armed at `0x4834e3`.
-        if !welcomed && dt > 0.0 && arriving.is_none() && show.is_none() && briefing.is_none() {
+        if !welcomed && dt > 0.0 && show.is_none() && briefing.is_none() {
             welcomed = true;
-            if let Some(eve) = hb_sim::phrases::phrase(entry::WELCOME) {
+            if let Some(eve) = hb_sim::phrases::phrase(WELCOME) {
                 say(&mut panel, &mut saying, eve.text);
                 if let (Some(music), Some(s)) = (music.as_ref(), sound(eve.sound)) {
                     music.effect(&s, 1.0);
@@ -823,7 +819,6 @@ fn main() -> Result<(), String> {
             level = Level::load(&game, Some(&startup), hb_formats::campaign::CAMPAIGN[index].stem)?;
             briefing = has_briefing(&game, &level.stem).then(|| level.stem.clone());
             typing = 0.0;
-            arriving = None;
             if movies {
                 // The level being left says goodbye before the next one
                 // arrives - `HOTH3` names `snowout.smk`, `ROID4` `astrout.smk`.
@@ -912,25 +907,6 @@ fn main() -> Result<(), String> {
                     flight.camera.pitch = Angle(pose.angles[0] as u16);
                     flight.camera.roll = Angle(pose.angles[1] as u16);
                     flight.camera.yaw = Angle(pose.angles[2] as u16);
-                }
-            }
-            None if arriving.is_some() => {
-                // Nothing flies: the ship waits where the start point put it
-                // and only the camera moves, so control begins exactly where
-                // the engine begins it.
-                // Nothing starts until the frame is really running: a movie
-                // or the briefing screen holds `dt` at zero, and Eve talking
-                // over either of them is what "too early" looks like.
-                if dt > 0.0 {
-                    let clock = arriving.as_mut().expect("checked");
-                    *clock += dt;
-                    let skipped = window
-                        .get_keys_pressed(minifb::KeyRepeat::No)
-                        .iter()
-                        .any(|k| *k != quit);
-                    if *clock > entry::SECONDS || skipped {
-                        arriving = None;
-                    }
                 }
             }
             None => match jumping.as_mut() {
@@ -1485,19 +1461,6 @@ fn main() -> Result<(), String> {
         let seen = {
             let mut c = flight.camera;
             let mut turn = hb_render::cockpit::VIEWS[view].0;
-            if let Some(clock) = arriving {
-                let (yaw, pitch) = entry::look(clock);
-                turn = turn.wrapping_add((yaw * 65536.0) as i32 as u16);
-                c.pitch = Angle(c.pitch.0.wrapping_add((pitch * 65536.0) as i32 as u16));
-                let (a, b) = (
-                    (c.yaw.0.wrapping_add(turn) as f32 / 65536.0) * std::f32::consts::TAU,
-                    (c.pitch.0 as i16 as f32 / 65536.0) * std::f32::consts::TAU,
-                );
-                let back = jump::BACK * 65536.0;
-                c.x -= (a.sin() * b.cos() * back) as i32;
-                c.y += (b.sin() * back) as i32;
-                c.z -= (a.cos() * b.cos() * back) as i32;
-            }
             if let Some((clock, _)) = jumping {
                 let (yaw, pitch) = jump::look(clock);
                 turn = turn.wrapping_add((yaw * 65536.0) as i32 as u16);
@@ -1553,7 +1516,7 @@ fn main() -> Result<(), String> {
         }
         // The cockpit is not drawn while the eye is off the ship, which is
         // what the engine's own outside view must do too.
-        if show_cockpit && arriving.is_none() && jumping.is_none() {
+        if show_cockpit && jumping.is_none() {
             if let Some(Some(art)) = cockpits.get(view) {
                 target.overlay(art);
             }
@@ -1847,39 +1810,11 @@ fn begin(
     )
 }
 
-/// Flying *in*, which the engine does not do.
-///
-/// `0x481631` calls `0x45a290` as a level starts, right after the opening
-/// movies, and `0x45a290` is one byte: `ret`. Byte for byte the same in the
-/// December build. So the hook is there, the animation was cut, and there is
-/// nothing to restore - see worklog 107.
-///
-/// What the game actually does is watchable under Wine, and it does do this:
-/// the camera swings round the ship while Eve says her piece. The routine that
-/// swings it is `0x45a2a0`, which [[105]] read as the way out; its one caller
-/// is gated on a flag whose setters are reached by jumps this port has not
-/// followed, so which of the two ends it is meant for is still open.
-///
-/// So the sequence is the engine's - its curve, its eight seconds, its
-/// phrase - and where it is hung is the port's. The ship does not move while
-/// it runs, so control begins exactly where `0x471333` puts it, and any key
-/// skips.
-mod entry {
-    /// The engine's own sequence is eight seconds and this runs the same one.
-    pub const SECONDS: f32 = super::jump::SECONDS;
-
-    /// Eve introducing herself, which plays once the cockpit is up rather than
-    /// over the spin: phrase 128 of the table at `0x505c20`.
-    pub const WELCOME: usize = 128;
-
-    /// Where the camera is looking, in turns, at `clock` seconds. The same
-    /// curve `0x45a2a0` drives: twice round, and the pitch up to
-    /// [`super::jump::PITCH`] over the first half and down through level to
-    /// the other side over the second.
-    pub fn look(clock: f32) -> (f32, f32) {
-        super::jump::look(clock)
-    }
-}
+/// Eve introducing herself once the cockpit is up: phrase 128 of the table at
+/// `0x505c20`. `0x4834e3`, in the new-game routine, arms the flag; `0x4201a9`,
+/// in the cockpit's own per-frame code, plays the phrase and clears it, which
+/// is why it happens once and after whatever came before it.
+const WELCOME: usize = 128;
 
 /// Flying out of a jump zone, which is what ends a level (`0x45a2a0`).
 ///
