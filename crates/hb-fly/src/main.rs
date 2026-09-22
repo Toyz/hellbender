@@ -722,6 +722,20 @@ fn main() -> Result<(), String> {
             }
         }
 
+        // Eve introduces herself on the first frame of the cockpit, which is
+        // after the spin rather than over it: `0x4201a9` is in the cockpit's
+        // own per-frame code, and it plays phrase 128 and clears the flag the
+        // new-game routine armed at `0x4834e3`.
+        if !welcomed && dt > 0.0 && arriving.is_none() && show.is_none() && briefing.is_none() {
+            welcomed = true;
+            if let Some(eve) = hb_sim::phrases::phrase(entry::WELCOME) {
+                say(&mut panel, &mut saying, eve.text);
+                if let (Some(music), Some(s)) = (music.as_ref(), sound(eve.sound)) {
+                    music.effect(&s, 1.0);
+                }
+            }
+        }
+
         // The doors, before anything borrows the terrain to read it: a moved
         // box is written straight back into the grid, so the renderer and the
         // collision both see it where it now is.
@@ -909,15 +923,6 @@ fn main() -> Result<(), String> {
                 // over either of them is what "too early" looks like.
                 if dt > 0.0 {
                     let clock = arriving.as_mut().expect("checked");
-                    if !welcomed {
-                        welcomed = true;
-                        if let Some(eve) = hb_sim::phrases::phrase(entry::WELCOME) {
-                            say(&mut panel, &mut saying, eve.text);
-                            if let (Some(music), Some(s)) = (music.as_ref(), sound(eve.sound)) {
-                                music.effect(&s, 1.0);
-                            }
-                        }
-                    }
                     *clock += dt;
                     let skipped = window
                         .get_keys_pressed(minifb::KeyRepeat::No)
@@ -1863,8 +1868,8 @@ mod entry {
     /// The engine's own sequence is eight seconds and this runs the same one.
     pub const SECONDS: f32 = super::jump::SECONDS;
 
-    /// Eve introducing herself, which is what plays over it: phrase 128 of the
-    /// table at `0x505c20`, two seconds of it.
+    /// Eve introducing herself, which plays once the cockpit is up rather than
+    /// over the spin: phrase 128 of the table at `0x505c20`.
     pub const WELCOME: usize = 128;
 
     /// Where the camera is looking, in turns, at `clock` seconds. The same

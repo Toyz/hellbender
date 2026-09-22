@@ -1,12 +1,12 @@
 ---
 number: 109
-title: Eve, and the spin she talks over
+title: Eve, and the spin she talks after
 date: 2026-09-21
 area: port, ui, decomp
 files: crates/hb-fly/src/main.rs, docs/port/plan.md
 ---
 
-# 109. Eve, and the spin she talks over
+# 109. Eve, and the spin she talks after
 
 The game runs under Wine now, in a prefix beside the repository, and that
 settled an argument I had been losing on the evidence: **there is a camera spin
@@ -51,9 +51,15 @@ it. Which is exactly "it plays once and never again".
 The sequence is the engine's - its curve from `0x45a2a0`, its eight seconds,
 its phrase - and where it is hung is the port's, because which routine the
 engine hangs it from is still open. After the movies and after the briefing
-screen, the camera swings twice round the ship and back to level while Eve
-says her piece, the ship holding exactly where `0x471333` put it. Once a
-session, as the game does it. Any key skips.
+screen, the camera swings twice round the ship and back to level, the ship
+holding exactly where `0x471333` put it, and any key skips it.
+
+**Eve speaks after that, not over it.** Watched again and reported: she talks
+once the cockpit is up. Which is what the code says, and I had not read the
+placement of it - `0x4201a9` is inside the cockpit's own per-frame routine, so
+the flag is tested on the first frame the cockpit draws and that is when the
+phrase goes off. The port now does the same, on the first running frame with
+no movie, no briefing and no spin in front of it.
 
 Getting the "after" right took a correction: the welcome fired the moment the
 level loaded, which is over the movies and over the briefing text. A movie and
