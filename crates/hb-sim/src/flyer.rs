@@ -54,14 +54,13 @@
 
 use crate::mine::laid::Field as Laid;
 use crate::mine::laid::AHEAD;
+use hb_formats::fixed::{circle, signed, TURN};
 use hb_formats::mrgl::Model;
 use hb_formats::text::{EnemyDef, Placement};
 
 use crate::combat::{position_of, wrapped};
 use crate::turret::{Launch, Rng, Turret};
 
-/// The engine's circle.
-const TURN: f32 = 65536.0;
 const CONE: f32 = 0.523_598_8;
 
 /// What the flyer knows about the player each frame.
@@ -105,14 +104,6 @@ fn dot(a: [f32; 3], b: [f32; 3]) -> f32 {
 
 fn radians(angle: f32) -> f32 {
     angle / TURN * std::f32::consts::TAU
-}
-
-fn circle(r: f32) -> f32 {
-    (r / std::f32::consts::TAU * TURN).rem_euclid(TURN)
-}
-
-fn signed(a: f32) -> f32 {
-    (a + 32768.0).rem_euclid(TURN) - 32768.0
 }
 
 /// The engine's cone answer for a point seen in a frame: 1 in the 30-degree

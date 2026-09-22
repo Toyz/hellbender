@@ -102,8 +102,7 @@ pub struct Shot {
 /// A direction in the engine's convention: heading 0 along +z increasing
 /// toward +x, positive pitch nose down.
 pub fn direction(heading: f32, pitch: f32) -> [f32; 3] {
-    let h = heading * std::f32::consts::TAU / 65536.0;
-    let p = pitch * std::f32::consts::TAU / 65536.0;
+    let (h, p) = (hb_formats::fixed::radians(heading), hb_formats::fixed::radians(pitch));
     [h.sin() * p.cos(), -p.sin(), h.cos() * p.cos()]
 }
 
@@ -313,7 +312,7 @@ impl HitVolume {
 /// A world point turned into an object's frame: the heading undone. Placed
 /// objects have no pitch or roll in any shipped level.
 pub fn to_local(point: [f32; 3], origin: [f32; 3], heading: u16) -> [f32; 3] {
-    let (s, c) = (heading as f32 * std::f32::consts::TAU / 65536.0).sin_cos();
+    let (s, c) = hb_formats::fixed::radians(heading as f32).sin_cos();
     let d = [point[0] - origin[0], point[1] - origin[1], point[2] - origin[2]];
     // The inverse of the renderer's `x' = x cos + z sin, z' = -x sin + z cos`.
     [d[0] * c - d[2] * s, d[1], d[0] * s + d[2] * c]
@@ -321,7 +320,7 @@ pub fn to_local(point: [f32; 3], origin: [f32; 3], heading: u16) -> [f32; 3] {
 
 /// An object's frame turned into the world: the heading applied.
 pub fn to_world(local: [f32; 3], origin: [f32; 3], heading: f32) -> [f32; 3] {
-    let (s, c) = (heading * std::f32::consts::TAU / 65536.0).sin_cos();
+    let (s, c) = hb_formats::fixed::radians(heading).sin_cos();
     [
         origin[0] + local[0] * c + local[2] * s,
         origin[1] + local[1],

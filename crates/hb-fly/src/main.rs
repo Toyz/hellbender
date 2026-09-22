@@ -1705,7 +1705,7 @@ fn main() -> Result<(), String> {
                 // The radar, which the engine fills from every object that is
                 // alive and not hidden, turned so the nose points up
                 // (`0x437148`). Blips beyond the box are dropped by the draw.
-                let heading = flight.camera.yaw.0 as f32 * std::f32::consts::TAU / 65536.0;
+                let heading = flight.camera.yaw.to_radians();
                 let (sin, cos) = heading.sin_cos();
                 let blips: Vec<hb_render::hud::Blip> = live
                     .iter()

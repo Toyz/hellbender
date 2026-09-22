@@ -31,6 +31,7 @@
 //! first and skips the update when it reports the actor out of range
 //! (`0x42f7b9`). See [`crate::combat::in_range`].
 
+use hb_formats::fixed::signed;
 use hb_formats::mrgl::Model;
 use hb_formats::text::{EnemyDef, Placement};
 
@@ -69,12 +70,6 @@ impl Rng {
 /// second, so guns of one type placed together do not fire together.
 pub fn first_wait(rng: &mut Rng) -> f32 {
     (rng.next() & 0xffff) as f32 / 65536.0
-}
-
-/// The turn of an angle difference into -32,768..32,768, as the engine takes
-/// it before easing a heading.
-fn angle_error(to: f32, from: f32) -> f32 {
-    (to - from + 32768.0).rem_euclid(65536.0) - 32768.0
 }
 
 #[derive(Debug, Clone)]
@@ -184,8 +179,8 @@ impl Turret {
         }
 
         let ease = def.turn_rate as f32 / 65536.0 * dt;
-        self.heading = (self.heading + angle_error(wanted, self.heading) * ease).rem_euclid(65536.0);
-        self.pitch += angle_error(wanted_pitch, self.pitch) * ease;
+        self.heading = (self.heading + signed(wanted - self.heading) * ease).rem_euclid(65536.0);
+        self.pitch += signed(wanted_pitch - self.pitch) * ease;
 
         self.trigger(def, mesh, at, player, dt, def.shot_speed() as f32 / 65536.0, rng)
     }
@@ -465,7 +460,7 @@ impl Missile {
                     let gain = Missile::GAIN * self.age.min(1.0);
                     self.pitch += (pitch - self.pitch) * gain * step;
                     self.heading =
-                        (self.heading + angle_error(heading, self.heading) * gain * step).rem_euclid(65536.0);
+                        (self.heading + signed(heading - self.heading) * gain * step).rem_euclid(65536.0);
                 }
             }
             let dir = direction(self.heading, self.pitch);

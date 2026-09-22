@@ -11,10 +11,6 @@ fn fly(ship: &mut Ship, controls: Controls, seconds: f32) {
     }
 }
 
-fn s16(angle: f32) -> f32 {
-    (angle + 32768.0).rem_euclid(65536.0) - 32768.0
-}
-
 #[test]
 fn full_throttle_settles_at_sixteen_units_a_second() {
     let mut ship = Ship::new([0.0; 3], 0.0);
@@ -71,14 +67,14 @@ fn right_turns_right_and_banks_right_and_up_dives() {
     let [_, roll, heading] = ship.angles();
     // Heading rises toward +x; the right wing goes down, which is negative
     // roll - as the demo records in its right turns.
-    assert!(s16(heading) > 1000.0, "{heading}");
-    assert!(s16(roll) < -500.0, "{roll}");
+    assert!(hb_formats::fixed::signed(heading) > 1000.0, "{heading}");
+    assert!(hb_formats::fixed::signed(roll) < -500.0, "{roll}");
 
     let mut ship = Ship::new([0.0; 3], 0.0);
     fly(&mut ship, Controls { up: true, ..Controls::default() }, 0.5);
     let [pitch, _, _] = ship.angles();
     // The up key raises the pitch angle, which is nose down.
-    assert!(s16(pitch) > 1000.0, "{pitch}");
+    assert!(hb_formats::fixed::signed(pitch) > 1000.0, "{pitch}");
     assert!(ship.forward[1] < -0.1);
 }
 
@@ -87,16 +83,16 @@ fn auto_level_brings_the_wings_back() {
     let mut ship = Ship::new([0.0; 3], 0.0);
     fly(&mut ship, Controls { roll_left: true, ..Controls::default() }, 0.6);
     let [_, rolled, _] = ship.angles();
-    assert!(s16(rolled) > 3000.0, "{rolled}");
+    assert!(hb_formats::fixed::signed(rolled) > 3000.0, "{rolled}");
     fly(&mut ship, Controls::default(), 6.0);
     let [_, roll, _] = ship.angles();
-    assert!(s16(roll).abs() < 200.0, "still rolled {}", s16(roll));
+    assert!(hb_formats::fixed::signed(roll).abs() < 200.0, "still rolled {}", hb_formats::fixed::signed(roll));
     // And without it the roll stays.
     let mut ship = Ship::new([0.0; 3], 0.0);
     ship.auto_level = false;
     fly(&mut ship, Controls { roll_left: true, ..Controls::default() }, 0.6);
     fly(&mut ship, Controls::default(), 6.0);
-    assert!(s16(ship.angles()[1]) > 3000.0);
+    assert!(hb_formats::fixed::signed(ship.angles()[1]) > 3000.0);
 }
 
 /// A stick held all the way over turns the ship the same amount as the key
@@ -108,12 +104,12 @@ fn a_stick_fully_over_turns_like_a_key_already_held() {
         let mut ship = Ship::new([0.0; 3], 0.0);
         // Half a second gets the ramp to 1.0, then a second of turning.
         fly(&mut ship, Controls { right: true, ..Controls::default() }, 1.5);
-        s16(ship.angles()[2])
+        hb_formats::fixed::signed(ship.angles()[2])
     };
     let stick = {
         let mut ship = Ship::new([0.0; 3], 0.0);
         fly(&mut ship, Controls { stick: Some([0.0, 1.0, 0.0]), ..Controls::default() }, 1.5);
-        s16(ship.angles()[2])
+        hb_formats::fixed::signed(ship.angles()[2])
     };
     // The key spends its first half second climbing; the stick is there from
     // the start, so it is further round, and by that half second's worth.
@@ -127,7 +123,7 @@ fn a_stick_half_over_turns_half_as_far() {
     let turn = |deflection: f32| {
         let mut ship = Ship::new([0.0; 3], 0.0);
         fly(&mut ship, Controls { stick: Some([0.0, deflection, 0.0]), ..Controls::default() }, 1.0);
-        s16(ship.angles()[2])
+        hb_formats::fixed::signed(ship.angles()[2])
     };
     let (half, full) = (turn(0.5), turn(1.0));
     assert!((half / full - 0.5).abs() < 0.02, "half {half}, full {full}");
@@ -150,11 +146,11 @@ fn a_centred_stick_leaves_the_keys_alone() {
     let mut ship = Ship::new([0.0; 3], 0.0);
     let controls = Controls { right: true, stick: Some([0.0; 3]), ..Controls::default() };
     fly(&mut ship, controls, 1.0);
-    let with = s16(ship.angles()[2]);
+    let with = hb_formats::fixed::signed(ship.angles()[2]);
 
     let mut ship = Ship::new([0.0; 3], 0.0);
     fly(&mut ship, Controls { right: true, ..Controls::default() }, 1.0);
-    let without = s16(ship.angles()[2]);
+    let without = hb_formats::fixed::signed(ship.angles()[2]);
 
     assert!((with - without).abs() < 1e-3, "with {with}, without {without}");
 }
@@ -166,5 +162,5 @@ fn a_key_and_a_stick_do_not_fight() {
     let mut ship = Ship::new([0.0; 3], 0.0);
     let controls = Controls { right: true, stick: Some([0.0, -0.3, 0.0]), ..Controls::default() };
     fly(&mut ship, controls, 1.0);
-    assert!(s16(ship.angles()[2]) > 0.0, "the key still turns right");
+    assert!(hb_formats::fixed::signed(ship.angles()[2]) > 0.0, "the key still turns right");
 }

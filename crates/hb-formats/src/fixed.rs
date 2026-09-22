@@ -38,6 +38,27 @@ pub fn wrapped(d: f32) -> f32 {
     (d + 512.0).rem_euclid(1024.0) - 512.0
 }
 
+/// A whole turn of the 16-bit circle, for the float code that keeps angles
+/// in its units.
+pub const TURN: f32 = 65536.0;
+
+/// An angle in the 16-bit circle, as radians.
+pub fn radians(circle: f32) -> f32 {
+    circle * std::f32::consts::TAU / TURN
+}
+
+/// Radians into the 16-bit circle, 0 up to a whole turn.
+pub fn circle(radians: f32) -> f32 {
+    (radians / std::f32::consts::TAU * TURN).rem_euclid(TURN)
+}
+
+/// An angle, or the difference of two, folded into minus half a turn to
+/// plus half a turn: the short way round, as the engine's `shl 16; sar 16`
+/// takes it before easing a heading.
+pub fn signed(a: f32) -> f32 {
+    (a + TURN / 2.0).rem_euclid(TURN) - TURN / 2.0
+}
+
 /// The engine's sine and cosine of an angle in the 16-bit circle, 16.16
 /// (`0x429ea0`, `0x429ed0`). The engine interpolates a 256-entry table; this
 /// is the curve the table samples.

@@ -638,7 +638,7 @@ fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
         {
             if let Ok(font) = hb_render::hud::font_from_disc() {
                 // Every placement, as the radar would see it from here.
-                let heading = camera.yaw.0 as f32 * std::f32::consts::TAU / 65536.0;
+                let heading = camera.yaw.to_radians();
                 let (sin, cos) = heading.sin_cos();
                 let blips: Vec<hb_render::hud::Blip> = level
                     .placements

@@ -91,7 +91,7 @@ pub struct Angle(pub u16);
 
 impl Angle {
     pub fn to_radians(self) -> f32 {
-        self.0 as f32 * std::f32::consts::TAU / 65536.0
+        fixed::radians(self.0 as f32)
     }
 
     pub fn to_degrees(self) -> f32 {
@@ -107,7 +107,7 @@ impl Angle {
     /// use. The sky was drawn with the unsigned one and vanished whenever the
     /// nose came up.
     pub fn to_signed_radians(self) -> f32 {
-        (self.0 as i16) as f32 * std::f32::consts::TAU / 65536.0
+        fixed::radians((self.0 as i16) as f32)
     }
 }
 
