@@ -22,7 +22,6 @@ This does it mechanically. It is not a decompiler:
 
 import re
 import struct
-import subprocess
 import sys
 import pathlib
 
@@ -33,20 +32,9 @@ IMAGE = Image()
 
 
 def disassemble(start, end):
-    import tempfile
-    raw = IMAGE.read(start, end - start)
-    with tempfile.NamedTemporaryFile(suffix=".bin") as tmp:
-        tmp.write(raw)
-        tmp.flush()
-        out = subprocess.run(
-            ["objdump", "-D", "-b", "binary", "-m", "i386", "-M", "intel",
-             f"--adjust-vma={start:#x}", tmp.name],
-            capture_output=True, check=True,
-        ).stdout.decode()
-    for line in out.splitlines():
-        m = re.match(r"\s*([0-9a-f]+):\t((?:[0-9a-f]{2} )+)\s*\t?(.*)$", line)
-        if m:
-            yield int(m.group(1), 16), bytes.fromhex(m.group(2).replace(" ", "")), m.group(3).strip()
+    for _, ins in IMAGE.objdump(start, end - start):
+        if ins is not None:
+            yield ins
 
 
 def global_value(addr, size):

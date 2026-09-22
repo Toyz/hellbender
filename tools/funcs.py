@@ -40,7 +40,6 @@ import pathlib
 import pickle
 import re
 import struct
-import subprocess
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -601,17 +600,10 @@ def disassemble(code, e):
         prev = va
     runs.append((start, prev + code.insns[prev].length))
     for lo, hi in runs:
-        blob = code.img.read(lo, hi - lo)
-        tmp = pathlib.Path("/tmp/_hb_run.bin")
-        tmp.write_bytes(blob)
-        out = subprocess.run(["objdump", "-D", "-b", "binary", "-m", "i386", "-M", "intel",
-                              f"--adjust-vma={lo:#x}", str(tmp)],
-                             capture_output=True, text=True).stdout
-        for line in out.splitlines()[7:]:
-            m = re.match(r"\s*([0-9a-f]+):", line)
+        for line, parsed in code.img.objdump(lo, hi - lo):
             note = ""
-            if m:
-                ins = code.insns.get(int(m.group(1), 16))
+            if parsed:
+                ins = code.insns.get(parsed[0])
                 if ins is not None:
                     if ins.kind == x86.CALL and ins.target in code.functions:
                         note = f"   ; -> {ins.target:#x}"

@@ -17,6 +17,7 @@ import re
 import struct
 import subprocess
 import sys
+import tempfile
 
 DEFAULT = pathlib.Path("original/HELLBEND.EXE")
 
@@ -112,19 +113,31 @@ class Image:
                 out.append((here, "call" if op == 0xE8 else "jmp"))
         return out
 
+    def objdump(self, va, length):
+        """objdump's reading of `length` bytes from `va`, linearly: its own
+        lines, and for each instruction line the address, the bytes and the
+        text. Every tool here that prints assembly goes through this."""
+        raw = self.read(va, length)
+        with tempfile.NamedTemporaryFile(suffix=".bin") as tmp:
+            tmp.write(raw)
+            tmp.flush()
+            out = subprocess.run(
+                ["objdump", "-D", "-b", "binary", "-m", "i386",
+                 "-M", "intel", f"--adjust-vma={va:#x}", tmp.name],
+                capture_output=True, text=True, check=True,
+            ).stdout
+        for line in out.splitlines()[7:]:
+            m = re.match(r"\s*([0-9a-f]+):\t((?:[0-9a-f]{2} )+)\s*\t?(.*)$", line)
+            if m:
+                yield line, (int(m.group(1), 16), bytes.fromhex(m.group(2).replace(" ", "")),
+                             m.group(3).strip())
+            else:
+                yield line, None
+
     def disassemble(self, va, length=128):
-        o = self.off(va)
-        if o is None:
+        if self.off(va) is None:
             return "(no raw data at that VA)"
-        blob = self.data[o : o + length]
-        tmp = pathlib.Path("/tmp/_hb_dis.bin")
-        tmp.write_bytes(blob)
-        out = subprocess.run(
-            ["objdump", "-D", "-b", "binary", "-m", "i386",
-             "-M", "intel", f"--adjust-vma={va:#x}", str(tmp)],
-            capture_output=True, text=True, check=True,
-        ).stdout
-        return "\n".join(out.splitlines()[7:])
+        return "\n".join(line for line, _ in self.objdump(va, length))
 
 
 def main() -> int:
