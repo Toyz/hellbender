@@ -68,13 +68,18 @@ impl Target {
     /// with `VGA.ACT` on 240 of its 256 entries, so it can be blitted into a
     /// frame that is in the level's palette without a remap.
     pub fn overlay(&mut self, image: &Image) {
-        let w = image.shape.width.min(self.width);
-        let h = image.shape.height.min(self.height);
+        self.overlay_at(image, 0, 0);
+    }
+
+    /// The same, with the image's top left corner at `(at_x, at_y)`.
+    pub fn overlay_at(&mut self, image: &Image, at_x: usize, at_y: usize) {
+        let w = image.shape.width.min(self.width.saturating_sub(at_x));
+        let h = image.shape.height.min(self.height.saturating_sub(at_y));
         for y in 0..h {
             for x in 0..w {
                 let index = image.pixels[y * image.shape.width + x];
                 if index != 0 {
-                    self.colour[y * self.width + x] = index;
+                    self.colour[(at_y + y) * self.width + at_x + x] = index;
                 }
             }
         }

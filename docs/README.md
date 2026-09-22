@@ -37,6 +37,7 @@ How the game works, subsystem by subsystem.
 
 | Page | Status | Covers |
 | --- | --- | --- |
+| [The cockpit and the hand on the stick](engine/cockpit.md) | partial | ART\CKPT*.RAW, ART\HN*.RAW, ART\HP*.RAW, ART\HT*.RAW, ART\KNOB*.RAW, HELLBEND.EXE:0x41f900 |
 | [The HUD](engine/hud.md) | partial | HELLBEND.EXE:0x44e5e0, crates/hb-render/src/hud.rs |
 | [Multiplayer](engine/network.md) | partial | HELLBEND.EXE:0x434540, system/DPSERIAL.DLL, system/DPSOCKET.DLL, system/DPWSOCK.DLL, LEVELS\NETLVL1-3.LVL |
 | [How the game is put together](engine/overview.md) | partial | HELLBEND.EXE |

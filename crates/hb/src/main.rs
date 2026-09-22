@@ -617,6 +617,17 @@ fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
         .and_then(|b| raw::Image::parse_guessed(b).ok().flatten());
     if let (Some(art), false) = (cockpit, bare) {
         target.overlay(&art);
+        // The hand on the stick, at rest and centred, which is what a still
+        // frame with nobody flying it has (`0x41fde0`, `0x420607`).
+        let cell = hb_render::cockpit::cell(0.0, 0.0);
+        let hand = startup
+            .read("art", &hb_render::cockpit::hand(hb_render::cockpit::REST, cell, 200))
+            .ok()
+            .and_then(|b| raw::Image::parse_guessed(b).ok().flatten());
+        if let Some(hand) = hand {
+            let [hx, hy, ..] = hb_render::cockpit::hand_box(w, h);
+            target.overlay_at(&hand, hx, hy);
+        }
     }
     // The readout, so the layout can be looked at without a window. The
     // numbers are a sample; what feeds them in flight is `hb-fly`.

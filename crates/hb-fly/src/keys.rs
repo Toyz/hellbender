@@ -118,6 +118,9 @@ pub struct Bindings {
     pub throttle_up: Option<Key>,
     pub throttle_down: Option<Key>,
     pub fire: Option<Key>,
+    /// `weaponKey`, the engine's second trigger - what the cockpit hand
+    /// reaches for (`0x41fde0`).
+    pub weapon: Option<Key>,
     pub missile_lock: Option<Key>,
     pub beacon: Option<Key>,
     pub transfer_weapon: Option<Key>,
@@ -183,6 +186,7 @@ impl Bindings {
             throttle_up: key("throttleUpKey"),
             throttle_down: key("throttleDownKey"),
             fire: key("fireKey"),
+            weapon: key("weaponKey"),
             missile_lock: key("keyMissileLock"),
             beacon: key("keyBeacon"),
             transfer_weapon: key("keyTransferWeapon"),

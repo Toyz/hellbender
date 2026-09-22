@@ -8,6 +8,7 @@
 //! renderer's own rather than the engine's, the comment says so.
 
 pub mod camera;
+pub mod cockpit;
 pub mod level;
 pub mod raster;
 pub mod hud;

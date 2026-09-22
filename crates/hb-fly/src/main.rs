@@ -337,6 +337,23 @@ fn main() -> Result<(), String> {
         .ok()
         .and_then(|b| Image::parse_guessed(b).ok().flatten());
     let mut show_cockpit = cockpit.is_some();
+    // The hand on the stick: 27 pictures, three sets of nine, chosen by where
+    // the stick is and whether a trigger is down (`0x41fde0`). `[Game]`'s
+    // `cockpitHandFlag` turns it off; it is 1 in the engine's own defaults.
+    let hands: Vec<Option<Image>> = (0..3)
+        .flat_map(|set| (0..9).map(move |cell| (set, cell)))
+        .map(|(set, cell)| {
+            startup
+                .read("art", &hb_render::cockpit::hand(set, cell, mode as u32))
+                .ok()
+                .and_then(|b| Image::parse_guessed(b).ok().flatten())
+        })
+        .collect();
+    let show_hand = hb_formats::ini::Ini::read(&game_dir().join("system/hellbend.ini"))
+        .and_then(|ini| ini.int("Game", "cockpitHandFlag"))
+        .unwrap_or(1)
+        == 1
+        && hands.iter().any(Option::is_some);
     // The game's own key bindings. Without an .INI they are the engine's
     // defaults, which is what a fresh install plays on.
     let (binds, from_ini) = keys::Bindings::load(&game_dir());
@@ -1273,6 +1290,29 @@ fn main() -> Result<(), String> {
         if show_cockpit {
             if let Some(art) = &cockpit {
                 target.overlay(art);
+            }
+            if show_hand {
+                // Where the stick is: the flight model's own ramped inputs,
+                // which is what the engine hands the chooser after dividing
+                // its `0x2492` scale back out.
+                let [up, down, left, right, ..] = flight.ship.keys;
+                let held = |k: Option<minifb::Key>| k.is_some_and(|k| window.is_key_down(k));
+                let set = if held(binds.weapon)
+                    || joystick.as_ref().is_some_and(|s| s.button(stick::WEAPON))
+                {
+                    hb_render::cockpit::WEAPON
+                } else if held(binds.fire)
+                    || joystick.as_ref().is_some_and(|s| s.button(stick::FIRE))
+                {
+                    hb_render::cockpit::FIRE
+                } else {
+                    hb_render::cockpit::REST
+                };
+                let cell = hb_render::cockpit::cell(right - left, up - down);
+                if let Some(Some(art)) = hands.get(set * 9 + cell) {
+                    let [x, y, ..] = hb_render::cockpit::hand_box(w, h);
+                    target.overlay_at(art, x, y);
+                }
             }
         }
         if show_reticle {
