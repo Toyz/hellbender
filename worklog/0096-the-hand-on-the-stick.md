@@ -1,12 +1,12 @@
 ---
 number: 96
-title: The hand on the stick
+title: The hand on the stick, and three more cockpits
 date: 2026-09-21
 area: decomp, render, port, content
-files: docs/engine/cockpit.md, crates/hb-render/src/cockpit.rs, crates/hb-render/src/raster.rs, crates/hb-render/src/lib.rs, crates/hb-fly/src/main.rs, crates/hb-fly/src/keys.rs, crates/hb/src/main.rs
+files: docs/engine/cockpit.md, crates/hb-render/src/cockpit.rs, crates/hb-render/src/raster.rs, crates/hb-render/src/lib.rs, crates/hb-render/tests/cockpit.rs, crates/hb-fly/src/main.rs, crates/hb-fly/src/keys.rs, crates/hb/src/main.rs
 ---
 
-# 96. The hand on the stick
+# 96. The hand on the stick, and three more cockpits
 
 "The joystick on the cockpit is missing" has been on the list twice. The art
 was found long ago - `KNOB200.RAW`, `KNOB400.RAW`, `KNOB480.RAW`, 6 by 7 and up
@@ -57,8 +57,13 @@ scan codes `weaponKey` and `fireKey` bind, with two joystick buttons beside
 them.
 
 `0x420607` draws the chosen picture with its left edge at 180 and its bottom on
-the bottom of the frame, and only when `[0x51265c]` is 1 - which is `[Game]`'s
-`cockpitHandFlag`, whose default in the image is 1.
+the bottom of the frame, and only when the view is ahead and `[0x51265c]` is
+1 - which is `[Game]`'s `cockpitHandFlag`, whose default in the image is 1.
+
+The box the layout gives the hand is a row shorter than the picture in two of
+the three modes - `110 * 200 / 480` is 45 where `HNMM200.RAW` is 140 by 46 - so
+the hand hangs a row past the bottom of the frame. The port lets it, and a test
+says so.
 
 ## And four cockpits, not one
 
@@ -66,8 +71,8 @@ Chasing the knob turned up something else the port did not know: `ckpt%d.raw`
 has three siblings. `0x4209a8` switches on the view angle and picks
 `ckpt%d.raw` at 0, `ckpt%dr.raw` at 0x4000, `ckpt%db.raw` at 0x8000 and
 `ckpt%dl.raw` at 0xc000, and calls anything else `"Bad vview!"`. All twelve are
-in `STARTUP.POD` at full screen size. The game can look right, behind and left,
-and the port cannot yet.
+in `STARTUP.POD` at full screen size. So `0x5125f8` is the view, which is also
+what the hand is gated on, and `keyChangeViews` is what turns it.
 
 ## In the port
 
@@ -79,6 +84,11 @@ model's own ramped inputs, which is the same number the engine hands the
 chooser. `hb fly <level> <out.png>` draws the resting centred hand so the
 placement can be looked at without flying.
 
-**Still unknown:** what `0x5125f8` is - it is tested just before the hand and
-skips it when set, and it is none of the flags on the page. Whether the HUD is
-drawn over the three other views, and what a side cockpit's own parts are.
+`hb-fly` binds `keyChangeViews` and turns a quarter at a time: the world is
+drawn from the ship's camera turned by the view, the matching picture goes over
+it, and the hand is drawn only looking ahead. The engine eases its view toward
+the target at `0x8000` a second (`0x420793`) where this snaps.
+
+**Still unknown:** whether the HUD is drawn over the three other views, and
+what a side cockpit's own parts are. What the eased angle is for, given the
+picture changes the moment the view does.

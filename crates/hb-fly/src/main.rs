@@ -42,6 +42,7 @@ hb-fly - fly around a Hellbender level
   v             lock the next target   b       drop a beacon
   , .           main energy to the weapons, to the shield
   t             crosshair on/off       /       label the cockpit
+  o             look ahead, right, behind, left
   esc           quit
 
   And the port's own switches, on keys the game does not bind:
@@ -332,11 +333,18 @@ fn main() -> Result<(), String> {
 
     // The cockpit is drawn for each of the three modes, in VGA.ACT, which a
     // level's own palette agrees with on 240 of 256 entries.
-    let cockpit: Option<Image> = startup
-        .read("art", &format!("ckpt{mode}.raw"))
-        .ok()
-        .and_then(|b| Image::parse_guessed(b).ok().flatten());
-    let mut show_cockpit = cockpit.is_some();
+    // Four of them: ahead, right, behind and left, which `keyChangeViews`
+    // turns between (`0x4209a8`).
+    let cockpits: Vec<Option<Image>> = (0..4)
+        .map(|which| {
+            startup
+                .read("art", &hb_render::cockpit::view(which, mode as u32))
+                .ok()
+                .and_then(|b| Image::parse_guessed(b).ok().flatten())
+        })
+        .collect();
+    let mut view = 0usize;
+    let mut show_cockpit = cockpits[0].is_some();
     // The hand on the stick: 27 pictures, three sets of nine, chosen by where
     // the stick is and whether a trigger is down (`0x41fde0`). `[Game]`'s
     // `cockpitHandFlag` turns it off; it is 1 in the engine's own defaults.
@@ -410,8 +418,10 @@ fn main() -> Result<(), String> {
     let mut pulse: i32 = 32;
     let mut pulse_step: i32 = 1;
     println!(
-        "cockpit: {}",
-        if show_cockpit { "ckpt art loaded" } else { "not found" }
+        "cockpit: {} of the four views, {} of the 27 hands{}",
+        cockpits.iter().filter(|c| c.is_some()).count(),
+        hands.iter().filter(|h| h.is_some()).count(),
+        if show_hand { "" } else { " - cockpitHandFlag is off" }
     );
 
     // The level's music, if a device will take it.
@@ -678,8 +688,14 @@ fn main() -> Result<(), String> {
                 None => {}
             }
         }
+        if pressed(binds.change_views) {
+            view = (view + 1) % 4;
+            if cockpits[view].is_none() {
+                view = 0;
+            }
+        }
         if window.is_key_pressed(binds.cockpit, minifb::KeyRepeat::No) {
-            show_cockpit = !show_cockpit && cockpit.is_some();
+            show_cockpit = !show_cockpit && cockpits[0].is_some();
         }
         if pressed(binds.cockpit_label) {
             show_labels = !show_labels;
@@ -1251,9 +1267,16 @@ fn main() -> Result<(), String> {
             }
         }
         scene.placements = &drawn;
-        hb_render::draw_world(&mut target, &scene, &flight.camera);
+        // The view the frame is drawn from: the ship's, turned by whichever
+        // quarter `keyChangeViews` has left it on.
+        let seen = {
+            let mut c = flight.camera;
+            c.yaw = Angle(c.yaw.0.wrapping_add(hb_render::cockpit::VIEWS[view].0));
+            c
+        };
+        hb_render::draw_world(&mut target, &scene, &seen);
         for (at, colour) in sparks {
-            hb_render::scene::draw_spark(&mut target, &flight.camera, at, colour);
+            hb_render::scene::draw_spark(&mut target, &seen, at, colour);
         }
         // The explosions, each a square facing the eye on its own frame.
         for puff in &battle.blasts.puffs {
@@ -1262,7 +1285,7 @@ fn main() -> Result<(), String> {
                 hb_render::scene::draw_sprite(
                     &mut target,
                     &scene,
-                    &flight.camera,
+                    &seen,
                     near(puff.position),
                     puff.size,
                     texture,
@@ -1275,7 +1298,7 @@ fn main() -> Result<(), String> {
             if let Some(p) = live.get(i) {
                 let at = hb_sim::combat::position_of(p);
                 let fixed = |v: f32| (v * 65536.0) as i32;
-                let v = flight.camera.to_view(
+                let v = seen.to_view(
                     fixed(eye[0] + hb_sim::combat::wrapped(at[0] - eye[0])),
                     fixed(at[1]),
                     fixed(eye[2] + hb_sim::combat::wrapped(at[2] - eye[2])),
@@ -1288,10 +1311,11 @@ fn main() -> Result<(), String> {
             }
         }
         if show_cockpit {
-            if let Some(art) = &cockpit {
+            if let Some(Some(art)) = cockpits.get(view) {
                 target.overlay(art);
             }
-            if show_hand {
+            // The hand is drawn in the forward view only (`0x4205ef`).
+            if show_hand && view == 0 {
                 // Where the stick is: the flight model's own ramped inputs,
                 // which is what the engine hands the chooser after dividing
                 // its `0x2492` scale back out.

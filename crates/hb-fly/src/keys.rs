@@ -128,6 +128,9 @@ pub struct Bindings {
     pub next_weapon: Option<Key>,
     pub previous_weapon: Option<Key>,
     pub crosshair: Option<Key>,
+    /// `keyChangeViews`, which turns the view a quarter at a time
+    /// (`0x4209a8`).
+    pub change_views: Option<Key>,
     pub cockpit_label: Option<Key>,
     pub end_game: Option<Key>,
     /// The eleven weapon keys, in the order `[Control]` lists them, which is
@@ -194,6 +197,7 @@ impl Bindings {
             next_weapon: key("keySelectNextWeapon"),
             previous_weapon: key("keySelectPrevWeapon"),
             crosshair: key("keyCrosshair"),
+            change_views: key("keyChangeViews"),
             cockpit_label: key("keyCockpitLabel"),
             end_game: key("keyEndGame"),
             weapons,

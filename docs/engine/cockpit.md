@@ -63,9 +63,15 @@ key held picks `hn`, and neither picks `hp`. The keys are `weaponKey` and
 `0x5b36c0`.
 
 `0x420607` draws it, at x 180 and with its bottom on the bottom of the frame -
-370 in the 640x480 layout - but only when `[0x51265c]` is 1, which is
-`[Game]`'s `cockpitHandFlag`, and its default is 1. The port draws it on the
-same terms, out of `hb-render`'s `cockpit` module.
+370 in the 640x480 layout - but only when the view is ahead (`0x4205ef`) and
+`[0x51265c]` is 1, which is `[Game]`'s `cockpitHandFlag`, whose default in the
+image is 1. The port draws it on the same terms, out of `hb-render`'s `cockpit`
+module.
+
+The height the engine gives the box is one row short of the picture in two of
+the three modes: `110 * 200 / 480` is 45 where `HNMM200.RAW` is 140 by 46, and
+`110 * 400 / 480` is 91 where the mode-400 one is 92. Only 480 comes out even.
+So the hand hangs a row past the bottom of the frame, and the port lets it.
 
 ## The knob
 
@@ -77,10 +83,14 @@ Nothing reads any of it again. The three numbers have no other reference in the
 image, and the only other mentions of the buffer are the frees. So the knob is
 loaded and placed every time the mode is set and never drawn.
 
+`0x5125f8` is the view, and the three globals around it are the same angle in
+other stages: `0x5018f0` is the one the loaded picture is for, so the art is
+only read again when the view changes, and `0x420793` eases a third toward the
+target at `0x8000` a second - so the view swings rather than snapping. The port
+snaps.
+
 ## Unknown
 
-What `0x5125f8` is. It is tested before the hand is drawn and skips it when
-set, and it is not any of the flags this page names.
-
 Whether the HUD is drawn over the three other views, and what the parts of a
-side cockpit are.
+side cockpit are. What the swing at `0x420793` is for, given the picture
+changes at once.

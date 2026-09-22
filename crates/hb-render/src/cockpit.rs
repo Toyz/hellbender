@@ -55,7 +55,9 @@ pub fn hand(set: usize, cell: usize, mode: u32) -> String {
 ///
 /// The engine scales a 640x480 layout: the hand is 280 by 110 there, its left
 /// edge at 180, and its bottom on the bottom of the frame (`0x41f956` on, and
-/// the draw at `0x420607`). At 320x200 that is the 140 by 46 the art is.
+/// the draw at `0x420607`). At 320x200 that is 140 across, which is what the
+/// art is, and 45 down, where the art is 46 - the engine's divide loses the
+/// row, and the picture hangs one past the bottom of the frame.
 pub fn hand_box(width: usize, height: usize) -> [usize; 4] {
     let w = 280 * width / 640;
     let h = 110 * height / 480;
@@ -67,4 +69,15 @@ pub fn hand_box(width: usize, height: usize) -> [usize; 4] {
 /// reads either again - see `docs/engine/cockpit.md`.
 pub fn knob_size(width: usize, height: usize) -> [usize; 2] {
     [12 * width / 640, 17 * height / 480]
+}
+
+/// The four views and the picture each is seen through, in the order
+/// `0x4209a8` tests them: ahead, right, behind, left. The angle is the
+/// engine's own, a quarter of its 16-bit circle apart.
+pub const VIEWS: [(u16, &str); 4] =
+    [(0x0000, ""), (0x4000, "r"), (0x8000, "b"), (0xc000, "l")];
+
+/// The cockpit picture for a view.
+pub fn view(which: usize, mode: u32) -> String {
+    format!("ckpt{}{}.raw", mode, VIEWS[which].1)
 }
