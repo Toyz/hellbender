@@ -9,7 +9,7 @@ docs/                the reference: formats, engine, content, port plan
 worklog/             how each of those was worked out, newest last
 crates/              the Rust port - hb-pod, hb-formats, hb-world,
                      hb-render, hb (tools), hb-fly (the window)
-tools/               Python: pod.py, pe.py, mrgl.py, docs.py
+tools/               Python: pod.py, pe.py, x86.py, funcs.py, mrgl.py, docs.py
 work/                scratch - extracted archives, dumps. Not checked in.
 ```
 
@@ -97,11 +97,24 @@ diagnostic strings, so a string is usually one cross-reference away from the
 routine that emits it, and almost every format here was read out of its loader
 rather than guessed from the bytes.
 
+`tools/pe.py dis` disassembles linearly from wherever it is pointed, so it can
+start inside an instruction. `tools/funcs.py` is the other half: a hand-written
+x86 decoder (`tools/x86.py`) and recursive descent from the entry point, every
+call, and every pointer the relocation table lists, which gives the program's
+real functions with their real boundaries, callers and callees. `check` holds it
+to account - every byte of `.text` is code, a jump table, padding or a switch's
+byte table, and every relocated address in it is held by an instruction.
+
 ```
 tools/pe.py strings --grep 'ground'
 tools/pe.py xref 0x005013d0        who mentions this address
 tools/pe.py calls 0x00474360       who calls this function
 tools/pe.py dis 0x00412d00 --len 400
+tools/funcs.py fn 0x0045a740       the function holding an address, and who reaches it
+tools/funcs.py dis 0x0045a740      disassembled from its real entry, never mid-instruction
+tools/funcs.py uncovered           the biggest live functions nothing in the repo cites
+tools/funcs.py dead                code the game never calls or points at
+tools/funcs.py check               every byte and relocation in .text accounted for
 tools/mrgl.py check work/game/MODELS
 cairns new "What I found" --area format       the worklog
 tools/docs.py check
