@@ -64,6 +64,13 @@ impl Rng {
     }
 }
 
+/// Where an actor's fire timer (`+0x68`) starts: `rand() & 0xffff` seconds
+/// in 16.16, from the actor setup at `0x404e90` - somewhere in the first half
+/// second, so guns of one type placed together do not fire together.
+pub fn first_wait(rng: &mut Rng) -> f32 {
+    (rng.next() & 0xffff) as f32 / 65536.0
+}
+
 /// The turn of an angle difference into -32,768..32,768, as the engine takes
 /// it before easing a heading.
 fn angle_error(to: f32, from: f32) -> f32 {

@@ -102,13 +102,14 @@ pub struct Battle {
 
 impl Battle {
     pub fn new(level: &Level) -> Battle {
+        let mut rng = Rng::new(0x1996);
         let volumes = level
             .kinds
             .iter()
             .enumerate()
             .map(|(i, k)| HitVolume::for_type(k, level.meshes.get(i).and_then(Option::as_ref)))
             .collect();
-        let turrets = level
+        let mut turrets: Vec<(usize, Turret)> = level
             .placements
             .iter()
             .enumerate()
@@ -124,7 +125,7 @@ impl Battle {
                 (i, turret)
             })
             .collect();
-        let drivers = level
+        let mut drivers: Vec<(usize, Turret)> = level
             .placements
             .iter()
             .enumerate()
@@ -133,7 +134,7 @@ impl Battle {
             })
             .map(|(i, p)| (i, Turret::new(p)))
             .collect();
-        let flyers = level
+        let mut flyers: Vec<(usize, Flyer)> = level
             .placements
             .iter()
             .enumerate()
@@ -146,13 +147,22 @@ impl Battle {
                 (i, flyer)
             })
             .collect();
-        let hovers = level
+        let mut hovers: Vec<(usize, Hover)> = level
             .placements
             .iter()
             .enumerate()
             .filter(|(_, p)| level.kinds.get(p.kind).is_some_and(|k| k.class() == HOVERING))
             .map(|(i, p)| (i, Hover::new(p)))
             .collect();
+        for gun in turrets
+            .iter_mut()
+            .chain(drivers.iter_mut())
+            .map(|(_, t)| t)
+            .chain(flyers.iter_mut().map(|(_, f)| &mut f.gun))
+            .chain(hovers.iter_mut().map(|(_, h)| &mut h.body.gun))
+        {
+            gun.waited = hb_sim::turret::first_wait(&mut rng);
+        }
         Battle {
             health: level.placements.iter().map(Health::for_placement).collect(),
             hovers,
@@ -176,7 +186,7 @@ impl Battle {
             touching: Vec::new(),
             destroyed: 0,
             deaths: 0,
-            rng: Rng::new(0x1996),
+            rng,
         }
     }
 
