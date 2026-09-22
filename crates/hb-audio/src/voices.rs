@@ -107,6 +107,11 @@ impl Voices {
 
     /// Let a held sound go. Unknown handles are ignored, so a caller may stop
     /// one twice.
+    /// Drop every voice at once.
+    pub fn silence(&mut self) {
+        self.playing.clear();
+    }
+
     pub fn stop(&mut self, handle: u64) {
         self.playing.retain(|v| v.held != Some(handle));
     }

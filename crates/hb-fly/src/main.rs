@@ -12,6 +12,7 @@ use hb_formats::Angle;
 mod battle;
 mod sound;
 mod keys;
+mod movie;
 mod stick;
 
 use hb_formats::act;
@@ -24,11 +25,15 @@ const USAGE: &str = "\
 hb-fly - fly around a Hellbender level
 
   hb-fly [level] [--mode 200|400|480] [--scale N] [--demo 1|2|3]
+         [--intro] [--movie NAME] [--no-movies]
 
   level    a level stem, default `hoth`
   --mode   the game's three screen sizes, default 200 (320x200)
   --scale  integer upscale of the window, default 3
   --demo   replay one of the game's recorded attract-mode flights
+  --intro  play the four opening cutscenes first, as the engine does
+  --movie  play one cutscene by name, e.g. --movie Intro.smk
+  --no-movies  skip the chapter briefing movies
 
   The keys are the game's own, from `[Control]` of system/hellbend.ini if
   there is one and the engine's defaults if not:
@@ -50,7 +55,8 @@ hb-fly - fly around a Hellbender level
   h  hud on/off     k  cockpit on/off    y  music on/off
   g  collision      p  cycle the level
 
-  A chapter opens with its briefing screen; any key flies on. The level's
+  A chapter opens with its briefing movie and then its briefing screen; any
+  key skips either. The level's
   mission runs from its .NAV file: the HUD shows the current
   objective's code, how far it is, and an arrow on the radar points at it.
   Flying into the jump zone, or finishing every objective, moves on to the
@@ -279,12 +285,22 @@ fn main() -> Result<(), String> {
     let mut mode = 200usize;
     let mut scale = 3usize;
     let mut demo_number: Option<u32> = None;
+    // Which cutscenes are still to play. A movie holds the window until it
+    // ends or a key skips it.
+    let mut pending: Vec<String> = Vec::new();
+    let mut movies = true;
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--mode" => mode = it.next().and_then(|v| v.parse().ok()).unwrap_or(200),
             "--scale" => scale = it.next().and_then(|v| v.parse().ok()).unwrap_or(3),
             "--demo" => demo_number = it.next().and_then(|v| v.parse().ok()),
+            "--movie" => {
+                pending.extend(it.next().cloned());
+                movies = false;
+            }
+            "--intro" => pending.extend(movie::OPENING.iter().map(|s| s.to_string())),
+            "--no-movies" => movies = false,
             other if !other.starts_with('-') => level_name = other.to_string(),
             other => return Err(format!("unknown option {other}\n\n{USAGE}")),
         }
@@ -560,6 +576,13 @@ fn main() -> Result<(), String> {
     };
     briefing = has_briefing(&game, &level.stem).then(|| level.stem.clone());
     typing = 0.0;
+    // A chapter's briefing is a movie before it is a screen, and the `.LVL`
+    // names it on line 36.
+    if movies && briefing.is_some() {
+        pending.extend(level.manifest.briefing_movie.clone());
+    }
+    // The one that is playing, and its clock.
+    let mut show: Option<movie::Show> = None;
 
     // A line the mission flashes on the HUD, and for how much longer.
     let mut flash: Option<(String, f32)> = None;
@@ -591,9 +614,45 @@ fn main() -> Result<(), String> {
         let mut dt = (now - last).as_secs_f32().min(0.1);
         last = now;
 
+        // A movie holds everything ahead of the briefing screen. It starts
+        // its own soundtrack over the music and any key cuts it short.
+        if show.is_none() && !pending.is_empty() {
+            let name = pending.remove(0);
+            match movie::Show::open(&game_dir(), &name) {
+                Some(mut opened) => {
+                    println!("movie: {}", opened.name);
+                    if let (Some(track), Some(music)) = (opened.sound(), music.as_ref()) {
+                        music.stop();
+                        music.effect(&std::sync::Arc::new(track), 1.0);
+                    }
+                    opened.begin();
+                    show = Some(opened);
+                }
+                None => eprintln!("movie: {name} is not under {}", movie::STORY),
+            }
+        }
+        if let Some(playing) = show.as_mut() {
+            let skipped =
+                window.get_keys_pressed(minifb::KeyRepeat::No).iter().any(|k| *k != quit);
+            let more = playing.step();
+            // Nothing else in the frame: the world behind a movie is work
+            // nobody sees, and at 640x480 it is enough to make it stutter.
+            playing.draw(&mut buffer, w, h);
+            window.update_with_buffer(&buffer, w, h).map_err(|e| e.to_string())?;
+            if !more || skipped {
+                show = None;
+                if let Some(music) = music.as_ref() {
+                    music.silence();
+                }
+                play_music(&level);
+            }
+            last = Instant::now();
+            continue;
+        }
+
         // A briefing holds everything until a key is pressed, the way a
         // briefing screen does. Nothing moves behind it.
-        if briefing.is_some() {
+        if show.is_none() && briefing.is_some() {
             typing += dt;
             dt = 0.0;
             if window.get_keys_pressed(minifb::KeyRepeat::No).iter().any(|k| *k != quit) {
@@ -674,6 +733,9 @@ fn main() -> Result<(), String> {
             level = Level::load(&game, Some(&startup), hb_formats::campaign::CAMPAIGN[index].stem)?;
             briefing = has_briefing(&game, &level.stem).then(|| level.stem.clone());
             typing = 0.0;
+            if movies && briefing.is_some() {
+                pending.extend(level.manifest.briefing_movie.clone());
+            }
             describe(&level);
             play_music(&level);
             (flight, mission, followers, live, battle, colours) = begin(&level);

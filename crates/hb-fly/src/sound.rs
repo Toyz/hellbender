@@ -97,6 +97,13 @@ impl Music {
         }
     }
 
+    /// Cut every voice, which is what the end of a cutscene wants.
+    pub fn silence(&self) {
+        if let Ok(mut voices) = self.voices.lock() {
+            voices.silence();
+        }
+    }
+
     /// Start a one-shot effect over whatever else is sounding.
     pub fn effect(&self, sound: &Arc<Wav>, volume: f32) {
         if let Ok(mut voices) = self.voices.lock() {
