@@ -32,10 +32,16 @@ pub const GROUP_POINTERS: usize = 0x118;
 pub const ANIMATED: u32 = 0x26;
 
 /// The most common polygon node by far - 98% of all nodes in the shipped
-/// models - with the same size formula and, as far as every measurement goes,
-/// the same payload as [`POLYGON`]. What distinguishes the two is not known;
-/// the binary has separate flat and Gouraud shading paths, which is a guess at
-/// why, not evidence for it.
+/// models - with the same size formula and the same payload as [`POLYGON`].
+///
+/// The difference is how the rasteriser is set up, not what the record says.
+/// Both handlers light the polygon the same way (`0x48a6a0`, inverted into a
+/// ramp row at `0x5b3a18`); then 0x18 (`0x458500`) asks for setup 1, which
+/// only turns each corner's z into a reciprocal, and 0x0e (`0x457990`) asks
+/// for setup 2, which finds the nearest corner and scales every corner's u, v
+/// and z by `zmin / z`. So 0x0e is the perspective-corrected polygon and 0x18
+/// the affine one, which is why 0x18 is nearly all of them. See
+/// `docs/engine/rasteriser.md`.
 pub const POLYGON_ALT: u32 = 0x18;
 
 /// A flat colour, 12 bytes: a zero `i32` at +4 and a palette index at +8.

@@ -227,6 +227,17 @@ Types 0x0e, 0x11, 0x18, 0x1e and 0x22 share this layout. 0x18 is 33,484 of the
 33,728 polygons in the two archives and 0x0e is 244; the other three do not
 appear at all.
 
+0x18 and 0x0e differ in nothing the record says: both handlers light the polygon
+identically - `0x48a6a0`, inverted into a ramp row at `0x5b3a18` - and then ask
+the rasteriser for a different setup. 0x18 (`0x458500`) asks for 1, which turns
+each corner's z into a reciprocal and nothing else, and draws affinely.
+0x0e (`0x457990`) asks for 2, which finds the nearest corner's z and scales
+every corner's u, v and z by `zmin / z` - one divide a corner - and its span
+divides again per span. So 0x0e is the perspective-corrected polygon, 0x18 the
+affine one, which is why 0x18 is nearly all of them. The two also go to the
+Direct3D path with different codes, 0x51 and 1. See
+[the polygon pipeline](../engine/rasteriser.md).
+
 ```
 +0x00  u32  type
 +0x04  i32  corner count            always 3 or 4
@@ -364,10 +375,6 @@ rounds each size down to a multiple of 4 with `and eax, 0xfffffffc` before
 stepping, although every size in the table is already a multiple of 4.
 
 ## Unknown
-
-What distinguishes 0x18 from 0x0e. Both have the same size formula and, as far
-as every measurement goes, the same payload; the binary has separate flat and
-Gouraud shading paths, which is a plausible reason and not evidence for one.
 
 What colour the 118 polygons in `FANBODY`, `JAW1`, `JAW2` and `SHELL` are, since
 the stream does not say.

@@ -171,15 +171,34 @@ light is stepped per pixel by `0x513310`, whose gradient was built with
 the byte that picks the row is the light's **top four bits**, which is what
 this port uses.
 
+## Which end of the ramp a light of zero is
+
+The dark end. The engine inverts, and the inversion is written out in every
+polygon handler that fills from a table. Node 0x0e (`0x457a3d`) and node 0x18
+(`0x4585be`), straight after the light at `0x48a6a0` returns 0 to `0xffff`:
+
+```
+xor  eax, 0xffff        ; light becomes darkness
+sar  eax, 4             ; rounded toward zero
+add  eax, 0x100         ; one row of bias
+mov  ds:0x5b3a18, eax
+```
+
+The span puts the texel in the low byte of that and uses the whole number as an
+offset into the ramp base, so the row is the top byte: 1 at full light, 16 at
+none. With the row-0 duplicate in front of the file's rows that is the `.LTE`'s
+row 0 for a bright surface and row 15, black, for an unlit one - which is what
+the port does with `(255 - light) >> 4`, and what makes the `0xffff` that
+`0x44fb7d` writes for a draw that wants no shading come out as no shading.
+
+The fogged spans build their row from depth with the same shape and the same
+`0x100` bias (`0x4a18bc`), and a span whose two ends are both `0x100` skips the
+table entirely.
+
 ## Unknown
 
 How `.MAP` was generated.
 
-Which end of the ramp a light of zero is. Row 0 of the `.LTE` is the identity
-and row 15 sends everything to black, and the port inverts - a bright vertex
-takes a low row - because that is what makes a rendered level look like a
-rendered level. But `0x44fb7d` puts `0xffff` in the vertex light for a draw
-that wants no shading at all, and a straight reading of the span would make
-that the *darkest* row, so one of the two is carrying a sign this reading has
-not accounted for. The terrain's own bytes run 96 to 255 rather than over the
-whole range, which is consistent with either.
+Which file's rows the lit textured spans read. They index a table at
+`0x606a20` that is built rather than loaded, where the span family at
+`0x4a1a01` uses the `0x605270` one this page describes.

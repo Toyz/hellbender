@@ -170,7 +170,6 @@ shading word were read out of the ground and box drawers in worklog 29.
 What remains:
 
 - What the chamber's 24-bit shading value decomposes into.
-- What separates polygon node 0x18 from 0x0e.
 - The sky above the clouds and in space, and how a group model animates.
 
 None of these block a first terrain render; all of them would make it wrong in

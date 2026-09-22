@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-94 entries: audio 6, build 2, content 9, decomp 63, engine 26, flight 6, format 35, net 1, port 73, render 29, test 3, tooling 4, ui 7, world 10.
+95 entries: audio 6, build 2, content 9, decomp 64, engine 26, flight 6, format 35, net 1, port 73, render 30, test 3, tooling 4, ui 7, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -105,3 +105,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 92 | [A file no level uses, read from its writer](worklog/0092-a-file-no-level-uses-read-from-its-writer.md) | 2026-09-21 | decomp, format |
 | 93 | [Node 6 is node 5 with a shaded span](worklog/0093-node-6-is-node-5-with-a-shaded-span.md) | 2026-09-21 | decomp, format, render |
 | 94 | [A polygon from corner list to span](worklog/0094-a-polygon-from-corner-list-to-span.md) | 2026-09-21 | decomp, render |
+| 95 | [Which end of the ramp a light of zero is](worklog/0095-which-end-of-the-ramp-a-light-of-zero-is.md) | 2026-09-21 | decomp, render |

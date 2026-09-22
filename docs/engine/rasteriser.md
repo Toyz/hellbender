@@ -66,12 +66,53 @@ reciprocal in +0x08.
 
 ## Direct3D
 
-Before any of that, `0x437f90` checks `0x502268` - the `useDirect3D` setting -
-and if it is on, hands the polygon to `0x4261f0` with `0x667100` and returns.
-`0x4261f0` is a thunk to `0x403ef0`, which appends opcodes to a Direct3D
-execute buffer. So `0x667100`, which is the other word a draw handler sets, is
-what the hardware path is told about the primitive: 16 for a flat polygon and 4
-for a shaded one. The software path never reads it.
+Before any of that, `0x437f90` checks `0x502268` and if it is on hands the
+polygon to `0x4261f0` with `0x667100` and returns. `0x4261f0` is gated on
+`0x500224`, which is what the config writes `useDirect3D` into (`0x42d00d`),
+and thunks to `0x403ef0`, which appends opcodes to a Direct3D execute buffer.
+So `0x667100`, the other word a draw handler sets, is what the hardware path is
+told about the primitive: 16 for a flat polygon, 4 for a shaded one, 1 for
+node 0x0e, 3 for node 0x0f and 0x51 for node 0x18. The software path never
+reads it.
+
+## The shade row
+
+A polygon that is filled from a table picks its row before any of this, and
+every handler that does it writes the same expression. Node 0x0e at `0x457a3d`
+and node 0x18 at `0x4585be`, having just called the light at `0x48a6a0`:
+
+```
+xor  eax, 0xffff        ; light, 0 to 0xffff, becomes darkness
+cdq
+and  edx, 0xf
+add  eax, edx           ; divide by 16 rounding toward zero
+sar  eax, 4
+add  eax, 0x100
+mov  ds:0x5b3a18, eax
+```
+
+So the row is an **inverted** light with a one-row bias: `0xffff`, full light,
+gives `0x100`, and 0 gives `0x10ff`. The span puts the texel in the low byte of
+that number and uses the whole thing as an offset - `0x4a658d` does
+`mov al, [texture]` then `mov al, [eax + 0x606a20]` - so the lookup is
+`table[row][texel]` with the row's low bits thrown away, at the 256-row table
+based at `0x606a20`. Rows 1 to 16 are the ramp and row 0 is what the flat span
+and the frame-wide passes use.
+
+That is the answer to which end of a ramp a light of zero is: the dark end. A
+light of `0xffff` lands on the row nearest the identity, which is why the sky
+quad sets `0xffff` when it wants no shading at all. The port's
+`(255 - light) >> 4` is the same row.
+
+The fogged spans compute a row the same way from depth rather than light, with
+the same bias - `0x4a18bc` and `0x4a1979`: shift the reciprocal up by two,
+clamp to `0xffff`, `xor 0xffff`, `sar 3`, clamp to `0xfff`, add `0x100`. When
+both ends of a span come out `0x100` there is a fast path that skips the table
+(`0x4a18e1`).
+
+Direct3D undoes it: `0x4041a8` takes `0x5b3a18`, subtracts `0x100` and
+`xor`s with `0xff0` to get a brightness back, keeping the low bits the software
+path drops.
 
 ## The edge records
 
@@ -130,4 +171,16 @@ has not been found.
 What +0x20 of a corner is. It is interpolated by the clip, carried into the
 edge record and stepped like the rest, and no span read so far uses it.
 
-Which of the five `0x6670fc` cases is which, beyond case 3.
+Which of the five `0x6670fc` cases is which, beyond the three read for the
+polygon nodes: 1 (node 0x18) is `0x43805c`, which only turns each corner's z
+into `0x7fffff / (z >> 8) + [0x504280]`; 2 (node 0x0e) is `0x43809b`, which
+calls `0x437e10` - that finds the nearest z across the corners and scales every
+corner's u, v and z by `zmin / z`, one divide a corner; and 3 is `0x4380ae`,
+the per-corner `0x7fffffff / (z >> 8)` into u and v.
+
+Which file's rows are at `0x606a20`. The ramp loader at `0x4861d3` reads its
+file to `0x605370` and builds an 18-row table around it at `0x605270` - row 0
+duplicated in front, two flat rows behind - and the span family at `0x4a1a01`
+uses that base. `0x606a20` is an 18-row table of the same shape somewhere else,
+built rather than read (`0x484555` maps one table through another into it), and
+it is the one the lit textured spans index.
