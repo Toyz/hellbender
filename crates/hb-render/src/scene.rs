@@ -839,6 +839,64 @@ pub fn draw_sprite(
     }
 }
 
+/// A segment of missile smoke (`0x479040`): a tube of three faces along it,
+/// its cross-section a triangle `radius` out from the middle - one corner
+/// straight up, two below either side - a hundredth longer than the segment,
+/// each face wearing the whole of `texture` with texel 0 clear, at full light.
+/// `from` and `to` are world positions already brought near the eye.
+pub fn draw_smoke(
+    target: &mut Target,
+    scene: &Scene,
+    camera: &Camera,
+    from: [f32; 3],
+    to: [f32; 3],
+    radius: f32,
+    texture: &Image,
+) {
+    let d = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
+    let length = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+    if length <= 0.0 || radius <= 0.0 {
+        return;
+    }
+    let forward = d.map(|c| c / length);
+    // Across and up from the segment, with no roll: across is level.
+    let flat = (forward[0] * forward[0] + forward[2] * forward[2]).sqrt();
+    let right = if flat > 1e-6 { [forward[2] / flat, 0.0, -forward[0] / flat] } else { [1.0, 0.0, 0.0] };
+    let up = [
+        forward[1] * right[2] - forward[2] * right[1],
+        forward[2] * right[0] - forward[0] * right[2],
+        forward[0] * right[1] - forward[1] * right[0],
+    ];
+    let long = length * hb_sim::smoke::OVERLAP;
+    let (r, h) = (radius, radius * 0.866);
+    let section = [(0.0, h), (r, -h), (-r, -h)];
+    let corner = |k: usize| -> [f32; 3] {
+        let (x, y) = section[k % 3];
+        let z = if k < 3 { 0.0 } else { long };
+        std::array::from_fn(|i| from[i] + right[i] * x + up[i] * y + forward[i] * z)
+    };
+    let shade = Shade { index_zero_is_clear: true, ..shade_for(scene, camera) };
+    for face in [[0, 1, 4, 3], [0, 2, 5, 3], [1, 2, 5, 4]] {
+        let uv = [(4.0, 4.0), (251.0, 4.0), (251.0, 251.0), (4.0, 251.0)];
+        let mut corners = [Vertex::default(); 4];
+        let mut behind = false;
+        for (j, &k) in face.iter().enumerate() {
+            let at = corner(k).map(hb_formats::fixed::from_units);
+            match project_onto(camera, target.width, target.height, at[0], at[1], at[2]) {
+                Some((x, y, depth)) => {
+                    corners[j] = Vertex { x, y, depth, u: uv[j].0, v: uv[j].1, light: 255.0 };
+                }
+                None => behind = true,
+            }
+        }
+        if behind {
+            continue;
+        }
+        target.triangle([corners[0], corners[1], corners[2]], texture, &shade);
+        target.triangle([corners[0], corners[2], corners[3]], texture, &shade);
+    }
+}
+
 pub fn draw_spark(target: &mut Target, camera: &Camera, position: [f32; 3], index: u8) {
     let at = [
         (position[0] * 65536.0) as i32,

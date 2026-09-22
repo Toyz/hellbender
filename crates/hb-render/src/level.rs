@@ -123,6 +123,8 @@ pub struct Level {
     pub muzzle_mesh: [Option<usize>; 3],
     /// The explosion's frames, `blast1.raw` upward.
     pub blast: Vec<Option<Image>>,
+    /// Missile smoke's texture, `puff4.raw`, in the level's palette.
+    pub puff: Option<Image>,
     /// The powerups the level's `.PUP` lays out.
     pub powerups: Vec<text::PlacedPowerup>,
     /// The level's `.QKE`: the doors and the ground that moves.
@@ -343,18 +345,21 @@ impl Level {
             None => 0,
         };
         let stars = if star_passes > 0 { stars() } else { Vec::new() };
+        // The level palette's `.MAP`: 15-bit colour to the nearest index in
+        // the palette, the engine's own answer to that question. It belongs
+        // to the palette, not the level, so it is named after the palette -
+        // IOWAH, IOWAH2 and IOWAH3 use IOWA.ACT and so IOWA.MAP. All 26 levels
+        // resolve that way, where naming it after the level finds 11 and after
+        // the level family 21.
+        let colour_map = (|| {
+            let (_, ground_palette) = manifest.slot("ground_palette")?;
+            let stem = ground_palette.split('.').next()?;
+            ColourMap::parse(&read("fog", &format!("{stem}.map"))?).ok()
+        })();
         let sky_remap = (|| {
             let (dir, name) = manifest.slot("sky_palette")?;
             let sky_palette = Palette::parse(&read(dir, name)?).ok()?;
-            // The .MAP belongs to the level's palette, not to the level: it
-            // answers "the nearest index in this palette", so it is named
-            // after the palette. All 26 levels resolve that way - IOWAH,
-            // IOWAH2 and IOWAH3 use IOWA.ACT and so IOWA.MAP - where naming it
-            // after the level finds 11 and after the level family 21.
-            let (_, ground_palette) = manifest.slot("ground_palette")?;
-            let palette_stem = ground_palette.split('.').next()?;
-            let map = read("fog", &format!("{palette_stem}.map"))?;
-            let map = ColourMap::parse(&map).ok()?;
+            let map = colour_map.as_ref()?;
             let mut table = [0u8; 256];
             for (i, slot) in table.iter_mut().enumerate() {
                 let entry = (i as u8).wrapping_sub(crate::level::SKY_BIAS);
@@ -522,6 +527,22 @@ impl Level {
         let muzzle_mesh = hb_sim::weapons::MUZZLE
             .map(|name| load_shot(name, &mut meshes, &mut mesh_textures, &mut mesh_radius));
 
+        // Missile smoke's texture, in a palette of its own: the engine's
+        // texture loader opens `<name>.act` beside a texture and converts
+        // through it when there is one (`0x489e3b`). Index 0 stays 0, which
+        // the smoke leaves clear.
+        let puff = (|| {
+            let image = read("art", "puff4.raw").and_then(|b| Image::parse_guessed(&b).ok().flatten())?;
+            let own = Palette::parse(&read("art", "puff4.act")?).ok()?;
+            let map = colour_map.as_ref()?;
+            let pixels = image
+                .pixels
+                .iter()
+                .map(|&i| if i == 0 { 0 } else { let [r, g, b] = own.rgb(i); map.lookup(r, g, b) })
+                .collect();
+            Some(Image { pixels, ..image })
+        })();
+
         // The explosion's sixteen frames, `blast1.raw` to `blast16.raw`.
         let blast: Vec<Option<Image>> = (1..=hb_sim::explosion::FRAMES)
             .map(|n| read("art", &format!("blast{n}.raw")).and_then(|b| Image::parse_guessed(&b).ok().flatten()))
@@ -574,13 +595,7 @@ impl Level {
         // Smaller copies of every texture, for the resolution the engine picks
         // by distance. How the engine made its smaller copies is not read;
         // these average each 2x2 in colour and look the result up in the
-        // level's `.MAP`, the table that answers "nearest index in this
-        // palette" and the one the engine itself uses for that question.
-        let colour_map = (|| {
-            let (_, ground_palette) = manifest.slot("ground_palette")?;
-            let stem = ground_palette.split('.').next()?;
-            ColourMap::parse(&read("fog", &format!("{stem}.map"))?).ok()
-        })();
+        // level's `.MAP`.
         let mips = textures
             .iter()
             .map(|t| match t {
@@ -595,6 +610,7 @@ impl Level {
 
         Ok(Level {
             blast,
+            puff,
             shot_mesh,
             ship_mesh,
             muzzle_mesh,

@@ -70,6 +70,8 @@ pub struct Battle {
     hovers: Vec<(usize, Hover)>,
     pub shots: Vec<Flying>,
     pub missiles: Vec<Missile>,
+    /// The trails the missiles leave (`hb_sim::smoke`).
+    pub smoke: hb_sim::smoke::Smoke,
     pub pilot: Pilot,
     /// The powerups lying about, and what the player has picked up.
     pub field: Field,
@@ -172,6 +174,7 @@ impl Battle {
             flyers,
             shots: Vec::new(),
             missiles: Vec::new(),
+            smoke: hb_sim::smoke::Smoke::default(),
             pilot: Pilot::default(),
             ground_hits: Vec::new(),
             mines: hb_sim::mine::Field::new(),
@@ -527,6 +530,14 @@ impl Battle {
             self.blasts.burst(parent.position, 4.0, &mut self.rng);
         }
         self.missiles.retain(Missile::alive);
+        // Their smoke (`0x478d90`), after they have moved, and the old
+        // smoke aged (`0x479480`).
+        self.smoke.step(dt);
+        for m in &mut self.missiles {
+            if let Some((from, to)) = m.trail.step(m.kind, m.position, dt) {
+                self.smoke.lay(from, to);
+            }
+        }
 
         for (i, damage, kind) in hits {
             let original = level.placements[i].kind;

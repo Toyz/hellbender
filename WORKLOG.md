@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-117 entries: audio 7, build 2, content 10, decomp 76, engine 26, flight 7, format 40, net 1, port 93, render 33, test 6, tooling 6, ui 12, video 6, world 12.
+118 entries: audio 7, build 2, content 10, decomp 76, engine 26, flight 7, format 40, net 1, port 94, render 34, test 6, tooling 6, ui 12, video 6, world 12.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -128,3 +128,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 115 | [Lightning every fifteen seconds, leaning the same way every time](worklog/0115-lightning-every-fifteen-seconds-leaning-the-same-way-every.md) | 2026-09-22 | render, port |
 | 116 | [Every gun starts its clock somewhere in the first half second](worklog/0116-every-gun-starts-its-clock-somewhere-in-the-first-half.md) | 2026-09-22 | decomp, port |
 | 117 | [The lock is a box or a diamond, and the objective has a health bar](worklog/0117-the-lock-is-a-box-or-a-diamond-and-the-objective-has-a.md) | 2026-09-22 | ui, port |
+| 118 | [Missiles smoke, and the smoke thins](worklog/0118-missiles-smoke-and-the-smoke-thins.md) | 2026-09-22 | render, port |

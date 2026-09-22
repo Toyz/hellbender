@@ -129,3 +129,36 @@ fn a_flash_would_light_a_sky_with_colour_in_it() {
     println!("hoth sky {d} -> {l}");
     assert!(l > d + d / 2, "a flash should nearly double it");
 }
+
+#[test]
+fn a_missile_trail_is_drawn_in_puff4() {
+    let Some(level) = hb_render::Level::from_disc("float") else { return };
+    let puff = level.puff.as_ref().expect("puff4.raw and puff4.act are in STARTUP.POD");
+    let grid = hb_world::Grid::new(&level.terrain);
+    let ground = grid.ceiling_of_solid(0, 0);
+    let mut camera = hb_render::Camera::looking_at(0, ground + (10 << 16), 0, hb_formats::Angle(0));
+    camera.pitch = hb_formats::Angle(0);
+    let mut target = hb_render::Target::new(320, 200);
+    target.clear(0);
+    let scene = level.scene();
+    hb_render::draw_world(&mut target, &scene, &camera);
+    let before = target.colour.clone();
+    // A missile climbing away across the view, a segment a frame.
+    let eye = [0.0, hb_formats::fixed::to_units(ground) + 10.0, 0.0];
+    let mut smoke = hb_sim::smoke::Smoke::default();
+    let mut at = [eye[0] - 6.0, eye[1] - 1.0, eye[2] + 12.0];
+    for _ in 0..40 {
+        let next = [at[0] + 0.4, at[1] + 0.1, at[2] + 0.3];
+        smoke.lay(at, next);
+        smoke.step(1.0 / 30.0);
+        at = next;
+    }
+    for (s, r) in smoke.shown() {
+        hb_render::scene::draw_smoke(&mut target, &scene, &camera, s.from, s.to, r, puff);
+    }
+    let drawn = before.iter().zip(&target.colour).filter(|(a, b)| a != b).count();
+    let rgb: Vec<u8> = target.colour.iter().flat_map(|&i| level.palette.rgb(i)).collect();
+    std::fs::write("/tmp/smoke.png", hb_formats::png::rgb(320, 200, &rgb)).unwrap();
+    println!("smoke drew {drawn} pixels");
+    assert!(drawn > 100);
+}

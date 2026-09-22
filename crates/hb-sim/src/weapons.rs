@@ -469,6 +469,7 @@ impl Guns {
                         side: Side::Player,
                         target: self.lock,
                         life: Missile::LIFE,
+                        trail: crate::smoke::Trail::new(at),
                     });
                 }
             }
@@ -514,6 +515,7 @@ impl Guns {
             side: Side::Player,
             target,
             life: if w == CRUISE { 10.0 } else { Missile::LIFE },
+            trail: crate::smoke::Trail::new(at),
         }
     }
 

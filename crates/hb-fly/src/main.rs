@@ -1557,6 +1557,17 @@ fn main() -> Result<(), String> {
         for (at, colour) in sparks {
             hb_render::scene::draw_spark(&mut target, &seen, at, colour);
         }
+        // Missile smoke (`0x479480`).
+        if let Some(texture) = level.puff.as_ref() {
+            for (segment, radius) in battle.smoke.shown() {
+                let from = near(segment.from);
+                let to: [f32; 3] = std::array::from_fn(|k| {
+                    let d = segment.to[k] - segment.from[k];
+                    from[k] + if k == 1 { d } else { hb_sim::combat::wrapped(d) }
+                });
+                hb_render::scene::draw_smoke(&mut target, &scene, &seen, from, to, radius, texture);
+            }
+        }
         // The explosions, each a square facing the eye on its own frame.
         for puff in &battle.blasts.puffs {
             let Some(frame) = puff.frame() else { continue };

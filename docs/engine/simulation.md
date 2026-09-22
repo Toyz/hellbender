@@ -609,7 +609,48 @@ random muzzle along the site's current heading into a second pool, 16 slots of
   heading and pitch from it (`0x477f20`). The gain on the error rises from 0
   to 4.0 over its first second and holds 4.0 to a second and a half; **after
   that it points straight at the player every sub-step**.
-- A smoke puff every sixteenth of a second (`0x478e35`).
+- It leaves a smoke trail from 3/16 of a second after launch - see
+  [missile smoke](#missile-smoke).
+
+## Missile smoke
+
+Every frame `0x478d90` walks the missile pool - the SAM sites' and the
+player's missiles share it - and counts each one's smoke timer (`+0x3c`) down.
+Launch sets it to `0x3000`, 3/16 of a second (`0x477939`), and the missile's
+last position (`+0x40`) to where it starts. When the timer runs out the kind
+decides, through a byte table at `0x478ee8`:
+
+```
+kind   what                                      where
+19     a smoke segment, every frame from then    0x478e4b -> 0x478f00
+24     the same
+25     the same
+18 21  0x4010e0, and the timer wound back 1/16   0x478e35
+26 27  the same
+30     0x401460, and the timer wound back 1/16   0x478eaa
+```
+
+19 is the Viper and the SAM sites' missile, 24 the cruise missile and 25 the
+cluster missile. For them the timer is never wound back, so once it has run
+out they lay a segment every frame, from the last position to the current
+one, which then becomes the last.
+
+`0x478f00` writes a segment into a pool of 100 at `0x612430`, 48 bytes each,
+taken in turn whether in use or not: both ends, the heading and pitch from one
+to the other, a clock, a two-second life (`0x20000`), a start delay of an
+eighth of a second (`0x2000`) and a width of `0x61a8`, 0.38 units. Each frame
+`0x479480` adds the frame time to every live segment's clock, frees one past
+its life, and puts the rest past their delay in the draw list with
+`0x479040`.
+
+That draws a tube: its cross-section a triangle, one corner straight up and
+two below either side, `width` times the part of the life still to come out
+from the middle - so a trail thins to nothing from its old end - and a hundredth
+longer than the segment (`0x1028f`), so neighbours overlap. Its three faces
+each wear the whole of `puff4.raw` (texture coordinates 4 to 251) at full light.
+`puff4.raw` comes with a palette of its own, a ramp of greys; the texture
+loader opens `<name>.act` beside any texture and converts through it when it
+is there (`0x489e3b`).
 
 ## The player's flight
 

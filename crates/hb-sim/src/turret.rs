@@ -306,6 +306,8 @@ pub struct Missile {
     pub target: Option<usize>,
     /// Seconds it flies (`+4`): six, ten for the cruise missile.
     pub life: f32,
+    /// Where its smoke has got to (`+0x3c`, `+0x40`).
+    pub trail: crate::smoke::Trail,
 }
 
 /// The two missiles that break up in flight: the MIRV, whose ten go out
@@ -362,6 +364,7 @@ impl Missile {
             side: Side::Enemy,
             target: None,
             life: Missile::LIFE,
+            trail: crate::smoke::Trail::new(position),
         }
     }
 
@@ -395,6 +398,7 @@ impl Missile {
                     side: self.side,
                     target: guided.then(|| targets.get(i % targets.len().max(1)).copied()).flatten(),
                     life: Missile::LIFE,
+                    trail: crate::smoke::Trail::new(self.position),
                 }
             })
             .collect()
