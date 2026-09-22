@@ -97,6 +97,9 @@ pub struct Level {
     pub wreck_mesh: Vec<Option<usize>>,
     /// For each type, the bytes of its destroy sound from `.DEF` line 24.
     pub destroy_sound: Vec<Option<Vec<u8>>>,
+    /// And what each is called, which is how the words that go with it are
+    /// found - the engine looks a phrase up by its sound's file name.
+    pub destroy_sound_name: Vec<Option<String>>,
     /// For each mesh, its flipbook materials with their frames.
     pub mesh_flipbooks: Vec<Vec<Flip>>,
     /// The mission, as the `.NAV` file lists it.
@@ -523,6 +526,14 @@ impl Level {
 
         // `.DEF` line 24 is the destroy sound. One type names `CRY-DES.DEF`
         // where it means the `.WAV`; that one resolves to nothing.
+        let destroy_sound_name: Vec<Option<String>> = kinds
+            .iter()
+            .map(|k| {
+                let name = k.raw.get(24)?.trim();
+                (!name.eq_ignore_ascii_case("null") && !name.is_empty())
+                    .then(|| name.to_ascii_lowercase())
+            })
+            .collect();
         let destroy_sound = kinds
             .iter()
             .map(|k| {
@@ -579,6 +590,7 @@ impl Level {
             mips,
             wreck_mesh,
             destroy_sound,
+            destroy_sound_name,
             courses,
             animations,
             sky,

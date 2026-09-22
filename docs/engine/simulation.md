@@ -926,9 +926,20 @@ The flag is 1 or 3 and 3 marks the ones with a second sound, which is
 `pause.wav` in every case but 55. Durations are 2, 4 or 5 seconds. Two
 entries at the top have a subtitle and no sound.
 
-Every sound it names is in `STARTUP.POD`, which is a test. The whole table is
-`hb_sim::phrases`, so a line is available by its number the moment a trigger
-for it is found - the port had twenty five of them copied out by hand before.
+Every sound it names is in `STARTUP.POD`, which is a test.
+
+**And the table is looked up by file name.** `0x4548a9` walks it comparing a
+string with each entry's `+0x14`, which is the sound. That is what makes the
+level data speak: a `.NAV` point's completion and proximity sounds and a
+`.DEF` type's destruction sound are file names, and the words that go with
+them are not in the level at all - they are in here. Across the twenty three
+shipped missions the `.NAV` files name **432** sounds and every single one has
+an entry.
+
+The other field the port had wrong: `+0x04` is not a duration. `0x454476`
+switches on it - 1.0, 2.0, 3.0, 4.0 and 5.0 in 16.16 are five categories of
+phrase, each with its own arm - so it is a kind, and how long a subtitle
+stays is elsewhere.
 
 Of the 315 sounds that ship, 305 are named somewhere in the image; 101 of
 those are named by the level data (`.NAV` completion and proximity sounds,

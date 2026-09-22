@@ -392,3 +392,40 @@ fn every_phrase_names_a_sound_that_ships() {
     missing.dedup();
     assert!(missing.is_empty(), "the table names sounds that did not ship: {missing:?}");
 }
+
+/// The words that go with a sound the level data names are in the phrase
+/// table, found by that file name - which is how a `.NAV` point and a `.DEF`
+/// type say anything at all.
+#[test]
+fn the_level_datas_sounds_have_words_in_the_table() {
+    use hb_sim::phrases::by_sound;
+    assert_eq!(by_sound("comm-des.wav").unwrap().text, "Bion commando transports destroyed.");
+    assert_eq!(by_sound("trp-des.wav").unwrap().text, "Troop transport destroyed.");
+    assert_eq!(by_sound("COMM-DES.WAV").unwrap().text, "Bion commando transports destroyed.");
+    assert!(by_sound("not-a-sound.wav").is_none());
+}
+
+/// And every sound the shipped missions name is in there - all 432 of them.
+#[test]
+fn everything_the_missions_name_has_words() {
+    let path = game_dir().join("system/GAME.POD");
+    if !path.exists() {
+        eprintln!("skipping: {} is not there", path.display());
+        return;
+    }
+    let pod = hb_pod::Pod::open(&path).unwrap();
+    let (mut named, mut spoken) = (0, 0);
+    for e in pod.entries().iter().filter(|e| e.ext() == "nav") {
+        for n in nav::navs(pod.bytes(e)).unwrap() {
+            for sound in [&n.completion_sound, &n.proximity_sound].into_iter().flatten() {
+                named += 1;
+                if hb_sim::phrases::by_sound(sound).is_some() {
+                    spoken += 1;
+                }
+            }
+        }
+    }
+    assert!(named > 400, "only {named} sounds named");
+    // Every one of them, in all twenty three levels.
+    assert_eq!(spoken, named, "{spoken} of {named} have words");
+}

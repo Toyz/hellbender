@@ -896,6 +896,14 @@ fn main() -> Result<(), String> {
                     if let (Some(music), Some(s)) = (music.as_ref(), own.or_else(|| sound("blast4.wav"))) {
                         music.effect(&s, 0.8 * hb_sim::combat::falloff(eye, at));
                     }
+                    // And the words that go with it, which the engine finds
+                    // by the sound's own file name (`0x4548a9`).
+                    if let Some(said) = level.destroy_sound_name[kind]
+                        .as_deref()
+                        .and_then(hb_sim::phrases::by_sound)
+                    {
+                        say(&mut panel, &mut saying, said.text);
+                    }
                     continue;
                 }
                 battle::Noise::PlayerHit(n) => (format!("exp{}.wav", n + 1), 0.8),
@@ -967,7 +975,14 @@ fn main() -> Result<(), String> {
             for event in events {
                 use hb_sim::mission::Event;
                 let heard = match event {
-                    Event::Sound(name) => Some(name),
+                    Event::Sound(name) => {
+                        // A sound the mission file names carries its words
+                        // in the engine's phrase table, found by that name.
+                        if let Some(said) = hb_sim::phrases::by_sound(&name) {
+                            say(&mut panel, &mut saying, said.text);
+                        }
+                        Some(name)
+                    }
                     Event::Voice(v) => {
                         say(&mut panel, &mut saying, v.text);
                         Some(v.sound.to_string())

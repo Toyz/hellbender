@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-87 entries: audio 5, build 2, content 9, decomp 56, engine 26, flight 5, format 32, port 71, render 27, test 3, tooling 4, ui 7, world 10.
+88 entries: audio 6, build 2, content 9, decomp 57, engine 26, flight 5, format 32, port 72, render 27, test 3, tooling 4, ui 7, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -98,3 +98,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 85 | [The briefing types itself out](worklog/0085-the-briefing-types-itself-out.md) | 2026-09-21 | decomp, content, port |
 | 86 | [Three hundred things the game says](worklog/0086-three-hundred-things-the-game-says.md) | 2026-09-21 | decomp, audio, content |
 | 87 | [What the port was not missing](worklog/0087-what-the-port-was-not-missing.md) | 2026-09-21 | decomp, port, render |
+| 88 | [Every mission line has its words](worklog/0088-every-mission-line-has-its-words.md) | 2026-09-21 | decomp, audio, port |
