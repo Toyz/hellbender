@@ -906,6 +906,34 @@ slot 18, 5 in 19, 2 in 24, slots 1 and 23 unlimited, weapon 23 selected.
 `hb_sim::powerup` is this. The port keeps the stocks and the energy but has no
 weapons to spend them on yet.
 
+## The phrase table
+
+`0x505c20` is three hundred entries of 36 bytes, and it is everything the
+game says to you. Each is a flag, how long the subtitle stays in 16.16
+seconds, and four pointers: a sound, a second sound, the subtitle, and one
+that is null in all three hundred.
+
+```
+ 13  vul-sec.wav   + pause.wav   "Vulcan Cannon secured"
+ 28  objcomp.wav                 "Objective Complete"
+ 42  hulllow.wav                 "Hull integrity low"
+ 47  trp-des.wav                 "Troop transport destroyed."
+ 55  engcore.wav   + dest30.wav  "Engine core destroyed"
+299  20-sec.wav                  "20 seconds"
+```
+
+The flag is 1 or 3 and 3 marks the ones with a second sound, which is
+`pause.wav` in every case but 55. Durations are 2, 4 or 5 seconds. Two
+entries at the top have a subtitle and no sound.
+
+Every sound it names is in `STARTUP.POD`, which is a test. The whole table is
+`hb_sim::phrases`, so a line is available by its number the moment a trigger
+for it is found - the port had twenty five of them copied out by hand before.
+
+Of the 315 sounds that ship, 305 are named somewhere in the image; 101 of
+those are named by the level data (`.NAV` completion and proximity sounds,
+`.DEF` destruction sounds) and the rest by code.
+
 ## The sounds an event makes
 
 Most effects are one-shots through `0x41f0b0(name, kind, &position)`, where a

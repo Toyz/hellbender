@@ -15,6 +15,7 @@ pub mod flyer;
 pub mod behaviour;
 pub mod mine;
 pub mod mission;
+pub mod phrases;
 pub mod powerup;
 pub mod quake;
 pub mod turret;

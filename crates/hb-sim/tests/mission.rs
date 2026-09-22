@@ -342,3 +342,53 @@ fn a_kill_point_ends_the_level_when_its_target_falls() {
     // Left, not advanced: the jump zone after it was never current.
     assert_eq!(m.nav(m.current).kind, Kind::Kill);
 }
+
+/// Every line in the engine's phrase table names a sound that ships, and the
+/// table is the size the image says.
+#[test]
+fn the_phrase_table_is_three_hundred_lines_that_all_have_a_sound() {
+    use hb_sim::phrases::{phrase, PHRASES};
+    assert_eq!(PHRASES.len(), 300);
+    let missing: Vec<&str> =
+        PHRASES.iter().filter(|p| p.sound.is_empty()).map(|p| p.text).collect();
+    // Two of the three hundred are empty slots at the top of the table.
+    assert_eq!(missing.len(), 2, "{missing:?}");
+    for p in PHRASES.iter().filter(|p| !p.sound.is_empty()) {
+        assert!(p.sound.to_ascii_lowercase().ends_with(".wav"), "{}", p.sound);
+        // The second sound, where there is one, is a sound too - usually
+        // `pause.wav`, but not always.
+        assert!(p.also.is_empty() || p.also.ends_with(".wav"), "{}", p.also);
+        // Two, four or five seconds, in 16.16.
+        assert!([131072, 262144, 327680].contains(&p.seconds), "{}", p.seconds);
+    }
+    // The ones the port already had by hand line up with the table.
+    assert_eq!(phrase(0x3c).unwrap().sound, "objcomp.wav");
+    // And the line Toyz went looking for.
+    assert_eq!(phrase(47).unwrap().text, "Troop transport destroyed.");
+}
+
+/// Every sound the phrase table names is in the archive.
+#[test]
+fn every_phrase_names_a_sound_that_ships() {
+    let path = game_dir().join("system/STARTUP.POD");
+    if !path.exists() {
+        eprintln!("skipping: {} is not there", path.display());
+        return;
+    }
+    let pod = hb_pod::Pod::open(&path).unwrap();
+    let mut missing: Vec<String> = Vec::new();
+    for p in hb_sim::phrases::PHRASES {
+        for name in [p.sound, p.also] {
+            if name.is_empty() {
+                continue;
+            }
+            let file = name.to_ascii_lowercase();
+            if pod.find("sound", &file).is_none() {
+                missing.push(file);
+            }
+        }
+    }
+    missing.sort();
+    missing.dedup();
+    assert!(missing.is_empty(), "the table names sounds that did not ship: {missing:?}");
+}
