@@ -30,7 +30,18 @@ numPoints,groundCourse,periodic
 `numPoints` points follow, each an x, y, z triple in 16.16 fixed point.
 `groundCourse` is non-zero when the path is meant to be followed along the
 ground and `periodic` when it loops back to its first point. Across the shipped
-data both take only 0 and 1.
+data both take only 0 and 1, but for `KREASH3`'s first course, whose header
+line reads `26,27445719,24423740` - the count, then what look like a point's
+x and z. The engine takes it as written: 26 points, and a non-zero `periodic`
+that loops.
+
+The loader (`0x49d7d0`, from the level load at `0x44c0e0`) reads each course
+into a 1,812-byte record in the array at `0x5b3a20`: `groundCourse` at `+0x00`,
+`numPoints` at `+0x04`, `periodic` at `+0x08`, and up to 150 points of twelve
+bytes from `+0x0c`. The follower reads `+0x08` to decide between going round
+and turning back; nothing the port has read looks at `+0x00`. A `.DEF`'s course
+id indexes the array directly (`0x49da10`), so ids are 0-based, and `-1` is the
+only one it refuses.
 
 ## Variant two: a segment list
 
@@ -53,6 +64,12 @@ Course end
 
 Each segment carries its own separator, a type, a start and an end. Segments
 meet end to start, so a seven-segment course has eight distinct points.
+
+The engine cannot read this form. Its loader skips two lines and scans three
+numbers, so `0,7,0` becomes a course of **zero** points, and everything after
+is read out of step. It never matters: nothing that follows a course names one
+of these. `0x49d900`, which writes the point form back, has no segment case
+either.
 
 ## The world is centred on the origin
 
@@ -86,13 +103,13 @@ netlvl2  9            netlvl3  9      roid2    1
 ship     50
 ```
 
-`SHIP`'s 50 all name course 0 and its `.CRS` holds none at all. The engine has
-a diagnostic for exactly this - `"Bad course ID for enemy"` - so it checks and
-carries on rather than trusting the data. A port has to do the same.
+`SHIP`'s 50 all name course 0 and its `.CRS` holds none at all. None of this
+matters to the engine: every one of those placements is of a class whose
+routine never reads a course (see [the simulation](../engine/simulation.md)).
+The seven course classes' 302 placements all name courses that exist.
 
 ## Unknown
 
-What a segment's `type` is; it is 0 in every shipped segment. What `direction`
-means in a segment course. Whether course ids are 0-based - `HOTH2` referencing
-course 5 of 5 would be valid 1-based, but the other five levels' dangling
-references are not explained by an off-by-one.
+What a segment's `type` and `direction` would have meant, since the engine
+never reads either. What `groundCourse` is for: class 47 follows the ground
+whatever it says.

@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-112 entries: audio 7, build 2, content 10, decomp 74, engine 26, flight 7, format 40, net 1, port 88, render 31, test 6, tooling 6, ui 11, video 6, world 12.
+113 entries: audio 7, build 2, content 10, decomp 75, engine 26, flight 7, format 40, net 1, port 89, render 31, test 6, tooling 6, ui 11, video 6, world 12.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -123,3 +123,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 110 | [The camera a level opens on](worklog/0110-the-camera-a-level-opens-on.md) | 2026-09-21 | decomp, port, ui |
 | 111 | [A switch flips, it does not travel](worklog/0111-a-switch-flips-it-does-not-travel.md) | 2026-09-21 | decomp, world, port |
 | 112 | [The relocation table knows where every function is](worklog/0112-the-relocation-table-knows-where-every-function-is.md) | 2026-09-22 | tooling, decomp |
+| 113 | [The cars drive their courses, and nothing else does](worklog/0113-the-cars-drive-their-courses-and-nothing-else-does.md) | 2026-09-22 | decomp, port |

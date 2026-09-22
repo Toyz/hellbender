@@ -13,22 +13,27 @@ has not; this page is the map of what is known so far.
 ## Actors follow courses
 
 A type in a level's [`.DEF`](../formats/level-text.md) names a course on its
-line 15, and every placement of that type follows it. Across the 26 levels,
-1,560 placements belong to a type that names a course and 1,301 of those
-courses exist - the other 259 are the dangling references described under
-[courses](../formats/courses.md).
+line 15, but only seven classes ever read it: 46, 47, 48, 50, 51, 52 and 62,
+the routines that look a course up through `0x49da10`. Across the 26 levels,
+1,560 placements belong to a type that names a course and 302 of them are of
+those classes. The other 1,258 - scenery, turrets, flyers - name one and never
+move along it. Every course the 302 name exists; the dangling references
+described under [courses](../formats/courses.md) all belong to the classes
+that do not look.
 
-The engine's logic routines are named by their own diagnostics:
+The course routines are named by their own diagnostics:
 
 ```
-logicFollowPath                 logicFollowPathAttitude
-logicFollowGroundPath           logicPathDogfight
-logicTransportDisappear         logicTransportTakeoffLand
-logicTransportTakeoffLandLeave
+class 46  0x421a50  logicFollowPath           class 50  0x421d90  logicTransportDisappear
+class 47  0x421240  logicFollowGroundPath     class 51  0x4220f0  logicTransportTakeoffLand
+class 48  0x421610  logicFollowPath           class 52  0x422790  logicTransportTakeoffLandLeave
+class 62  0x4213a0  logicFollowPathAttitude
 ```
 
-Each is a phase machine over the actor's `+0x64` field, and each checks its
-course the same way before doing anything:
+(`0x421240` names itself `logicFollowPath` in its first message and
+`logicFollowGroundPath` in its last; what it does is the ground one.) Each is a
+phase machine over the actor's `+0x64`, and each checks its course the same
+way before doing anything:
 
 ```
 course = courses[actor+0x244]      "Bad course ID passed to ..." if negative
@@ -36,33 +41,47 @@ course = courses[actor+0x244]      "Bad course ID passed to ..." if negative
                                    "No course points for course" if empty
 ```
 
-## Joining a course
+## Class 47 follows the ground
 
-Phase 0 of the follow logic at `0x00421240` sets a best distance of
-`0x40000000`, walks every point of the course, and keeps the nearest. So an
-actor **joins its course at whichever point is closest to where it stands**,
-and does not have to be placed on it.
+285 of the 302 are class 47: the cars on `HOTH`, the boats and morbots on
+`IOWAH`, the T-rexes, the loaders on `ROID`, the Kraaken. `0x421240`:
 
-That explains a measurement that otherwise makes no sense: only 202 of the
-1,301 course-following placements sit within one unit of their course, and the
-median is 460 units away. They are meant to fly to it. The transport logic's
-names - take off, land, leave - say the same thing: a transport starts on a pad
-and goes to its route.
+- **Phase 0** walks every point and keeps the nearest by `0x42b960`, the
+  straight-line distance with the world's wrap, and goes to phase 2.
+- **Phase 2** puts the actor on that point - its position becomes the point's -
+  and goes to phase 3. An actor placed 460 units from its course, which is
+  the median, does not fly there. It is there on its third frame.
+- **Phase 3** is `0x4231b0`, every frame after.
 
-## What this port does
+`0x4231b0` steers. `0x423b60` aims at the point it is heading for - `atan2` of
+the wrapped x and z difference into `+0x48` - and the heading at `+0x14` eases
+toward that at the type's turn rate (type `+0x68`) times the frame time. The
+actor moves along the heading it had at the start of the frame, at the type's
+move rate (`+0x64`), so it drives curves between points rather than sliding
+along the lines. Within eight units of the point in x and in z (`0x423225`)
+it takes the next one, forward or back by `+0x144`.
 
-`hb-sim` reproduces phase 0 exactly and then follows the course point to point.
-Everything past phase 0 is its own choice:
+At the end of a course, a periodic one (record `+0x08`) goes round to its
+first point. One that is not turns round: the index past the end folds back
+to the last point, the direction flips, and it comes back the way it came.
 
-| choice | why |
-| --- | --- |
-| 20 units a second | The engine's speed source has not been read. A type's `.DEF` line 1 has a field that reads as 15 to 30 units a second in half the records and is zero in the other half. |
-| Straight lines between points | The engine has a `"Curve parameter calculation failed"` diagnostic, so it probably fits curves. |
-| A periodic course loops; a plain one stops at its last point | What the engine does at the end of a non-periodic course is not known. |
-| All seven logic routines treated as "follow" | Only the follow logic's first phase has been read. Transports, dogfighting and attitude-following all behave alike here. |
+The height is not the course's. After x moves and before z does, the actor's
+y becomes the floor under it (`0x41c300`) plus the type's `+0x14`, which is
+zero for every class 47 type - so the cars sit on the ground and follow its
+hills. And it ends by calling the turrets' trigger, `0x407770`, with a range of
+32 that the trigger's 40-unit test always passes: a class 47 fires along its
+own heading every fire interval, whenever the player is ahead of it.
 
-The heading an actor faces is `atan2(dx, dz)` of its direction of travel, the
-same convention the recorded demo flight measured.
+Every actor also carries a small fixed bias from its place in the level.
+`0x404e90`, which the loader runs over each actor with its index, writes
+`(index << 30) >> 16` into `+0x74` and `+0x78`, which the follower adds to the
+type's move and turn rates: 0, +1/4, -1/2 or -1/4 of a unit a second by the
+index's low two bits. The turn takes half when the whole would not be
+positive. Nine identical cars on one course do not move as one.
+
+`hb_sim::course` is this, in the engine's 16.16. The other six course classes -
+17 placements, the transports and `FX4` - run on it too in the port, which is
+the port's choice: their routines are not read yet.
 
 ## Behaviour classes
 
@@ -83,7 +102,7 @@ class   types   routine    what
    18       ?   0x40a2c0   falls, tumbling, explodes, again
    35       ?   0x40c4a0   class 14, and the body turns
    10     118   0x408c30   turret
-   47      97   0x421240   course follower (phase 0 read, see above)
+   47      97   0x421240   follows its course along the ground, see above
    26       ?   0x40ab80   hovers: bobs and turns on the spot, see below
    25       0   0x40aa90   rises from the ground playing missile.wav; unused
 ```
@@ -999,8 +1018,8 @@ two need.
 
 ## Unknown
 
-Everything past phase 0 of the course follower: speeds, curve fitting, what
-happens at the end of a course, how the seven logic routines differ.
+The course routines other than class 47's: the transports' take off, land
+and leave, and `FX4`'s attitude following.
 
 The behaviour classes still unread, by how many placements they drive: 55
 with 49 and 58 with 34, both of which live in the `0x49` range with the

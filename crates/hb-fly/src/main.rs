@@ -1379,6 +1379,7 @@ fn main() -> Result<(), String> {
             }
         }
 
+        let floor = floor_of(&level);
         for (i, follower) in &mut followers {
             if battle.health[*i].destroyed {
                 continue;
@@ -1387,7 +1388,7 @@ fn main() -> Result<(), String> {
             if !hb_sim::combat::in_range(eye, hb_sim::combat::position_of(&live[*i])) {
                 continue;
             }
-            follower.step(dt);
+            follower.step(dt, &floor);
             let [x, y, z] = follower.position_fixed();
             let placed = &mut live[*i];
             placed.x = x;
@@ -1395,6 +1396,7 @@ fn main() -> Result<(), String> {
             placed.z = z;
             placed.heading = follower.heading();
         }
+        drop(floor);
 
         // Animated textures advance on the wall clock.
         // The animated models, before the scene borrows the level.
@@ -1781,9 +1783,6 @@ fn main() -> Result<(), String> {
     Ok(())
 }
 
-/// Every placement whose type names a course that exists, paired with a
-/// follower for it. A dangling course id - six levels have them - is skipped,
-/// as the engine's "Bad course ID for enemy" diagnostic implies it copes.
 /// The scenery the port makes solid: every placement of a class the engine's
 /// own ram test skips, as a world box. See `hb_sim::collide::solid_of` for why
 /// this is the port's own and not the engine's.
@@ -1807,6 +1806,11 @@ fn scenery_of(level: &Level) -> Vec<hb_sim::collide::Solid> {
         .collect()
 }
 
+/// Every placement of a class whose routine reads its course, paired with a
+/// follower for it. A type of any other class may name a course and the
+/// engine never looks. A dangling course id - six levels have them - is
+/// skipped, as the engine's "Bad course ID for enemy" diagnostic implies it
+/// copes.
 fn followers_for(level: &Level) -> Vec<(usize, hb_sim::Follower)> {
     level
         .placements
@@ -1814,14 +1818,11 @@ fn followers_for(level: &Level) -> Vec<(usize, hb_sim::Follower)> {
         .enumerate()
         .filter_map(|(i, p)| {
             let kind = level.kinds.get(p.kind)?;
-            // An actor runs one routine, and the flyers' and the hovering
-            // class's do not read the course.
-            if battle::FLYING.contains(&kind.class()) || kind.class() == 26 {
+            if !hb_sim::course::COURSE_CLASSES.contains(&kind.class()) {
                 return None;
             }
-            let c = kind.course;
-            let course = level.courses.get(usize::try_from(c).ok()?)?;
-            Some((i, hb_sim::Follower::new(course, [p.x, p.y, p.z])?))
+            let course = level.courses.get(usize::try_from(kind.course).ok()?)?;
+            Some((i, hb_sim::Follower::new(course, p, kind, i)?))
         })
         .collect()
 }

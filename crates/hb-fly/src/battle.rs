@@ -63,6 +63,9 @@ pub struct Battle {
     pub health: Vec<Health>,
     volumes: Vec<HitVolume>,
     turrets: Vec<(usize, Turret)>,
+    /// The course followers that shoot. Only the trigger of a `Turret` is
+    /// used: the follower's own heading is where the gun points.
+    drivers: Vec<(usize, Turret)>,
     flyers: Vec<(usize, Flyer)>,
     hovers: Vec<(usize, Hover)>,
     pub shots: Vec<Flying>,
@@ -121,6 +124,15 @@ impl Battle {
                 (i, turret)
             })
             .collect();
+        let drivers = level
+            .placements
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| {
+                level.kinds.get(p.kind).is_some_and(|k| hb_sim::course::SHOOTING.contains(&k.class()))
+            })
+            .map(|(i, p)| (i, Turret::new(p)))
+            .collect();
         let flyers = level
             .placements
             .iter()
@@ -146,6 +158,7 @@ impl Battle {
             hovers,
             volumes,
             turrets,
+            drivers,
             flyers,
             shots: Vec::new(),
             missiles: Vec::new(),
@@ -242,6 +255,27 @@ impl Battle {
                 // (`0x40c4a0` before it runs class 14's routine).
                 let turn = hb_sim::behaviour::RATE * dt;
                 live[*i].heading = (live[*i].heading as f32 + turn) as u16;
+            }
+        }
+
+        // The course followers that shoot: the same trigger as a turret's
+        // (`0x407770`), along whatever heading the course has them on.
+        for (i, gun) in &mut self.drivers {
+            let Some(player) = target else { break };
+            let p = &live[*i];
+            if self.health[*i].destroyed || !combat::in_range(player, combat::position_of(p)) {
+                continue;
+            }
+            let def = &level.kinds[p.kind];
+            let mesh = level.meshes.get(p.kind).and_then(Option::as_ref);
+            gun.heading = p.heading as f32;
+            gun.pitch = p.pitch as f32;
+            let at = combat::position_of(p);
+            let speed = def.shot_speed() as f32 / 65536.0;
+            match gun.trigger(def, mesh, at, player, dt, speed, &mut self.rng) {
+                Some(Launch::Shot(s)) => self.shots.push(Flying::new(s)),
+                Some(Launch::Missile(m)) => self.missiles.push(m),
+                Some(Launch::Mine { .. }) | None => {}
             }
         }
 

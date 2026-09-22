@@ -1,148 +1,253 @@
-//! Following a course.
+//! Following a course: behaviour class 47, the engine's
+//! `logicFollowGroundPath` (`HELLBEND.EXE:0x421240`).
 //!
-//! The engine's follow logic at `HELLBEND.EXE:0x00421240` is a phase machine
-//! over the actor's `+0x64` field. Phase 0 seeds a best distance of
-//! `0x40000000`, walks every point of the course, and keeps the nearest - so
-//! an actor does not have to be placed on its course. It joins it at whichever
-//! point is closest to where it stands. That is why only 202 of the 1,301
-//! placements that name a course sit within a unit of it: the rest are meant
-//! to fly to it.
+//! Only the course classes read a course - 46, 47, 48, 50, 51, 52 and 62, the
+//! seven routines that look one up through `0x49da10`. A type of any other
+//! class can name a course in its `.DEF` and the engine never reads it. Class
+//! 47 is 285 of the 302 placements that do: the cars, boats and morbots, the
+//! T-rexes, the Kraaken. The other six - 17 placements, the transports and
+//! `FX4` - have routines of their own that are not read yet; this crate runs
+//! them on class 47's, which is its choice and not the engine's.
 //!
-//! Phase 2 then follows the course. What the engine does at the far end - and
-//! how fast it goes - has not been read, so both are this crate's choice and
-//! are named as such.
+//! It is a phase machine over the actor's `+0x64`:
+//!
+//! - **0** walks every point of the course and keeps the nearest (`0x42b960`,
+//!   world-wrapped straight-line distance), and goes to phase 2.
+//! - **2** puts the actor *on* that point - its position becomes the point's -
+//!   and goes to phase 3. So an actor placed away from its course does not fly
+//!   to it: it is there on its third frame.
+//! - **3** is `0x4231b0`, every frame after.
+//!
+//! Phase 3 steers rather than slides. It aims at the point it is heading for
+//! (`0x423b60`, `atan2` of the world-wrapped difference) and eases its heading
+//! toward that by the type's turn rate, then moves along the heading it had,
+//! at the type's move rate. Within eight units of the point in both x and z it
+//! takes the next one. The height is not the course's: it is the floor under
+//! the actor (`0x41c300`) plus the type's `+0x14`, which is zero for every
+//! class 47 type shipped - the cars sit on the ground and climb its hills.
+//!
+//! At the end of a course a looping one (`periodic`, record `+0x08`) goes back
+//! to its first point, and one that does not turns round and comes back.
+//!
+//! Every actor also gets a small, fixed difference in speed and turn from its
+//! place in the level (`0x404e90`): the placement index's low two bits pick 0,
+//! +1/4, -1/2 or -1/4 of a unit a second, so a column of identical cars on the
+//! same course spreads out.
+//!
+//! The arithmetic is the engine's 16.16 throughout.
 
-use hb_formats::course::{Course, Point};
+use hb_formats::course::Course;
+use hb_formats::text::{EnemyDef, Placement};
 
+/// The classes whose routines read a course.
+pub const COURSE_CLASSES: [i64; 7] = [46, 47, 48, 50, 51, 52, 62];
+
+/// The course classes that shoot as well: their routines end in the
+/// turrets' trigger, `0x407770`, with a range it always passes. The
+/// transports - 50, 51, 52 - do not call it.
+pub const SHOOTING: [i64; 4] = [46, 47, 48, 62];
+
+/// How close counts as at the point, in x and in z separately (`0x423225`).
+pub const REACHED: i32 = 8 << 16;
+
+/// The actor's `+0x64`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
-    /// Heading for the nearest point on the course, from wherever the actor
-    /// was placed. The engine's phase 0 chooses it; this is the flight there.
-    Joining,
-    /// Moving from point to point.
+    /// 0: about to choose the nearest point.
+    Start,
+    /// 2: about to be put on it.
+    Placed,
+    /// 3: following.
     Following,
-    /// A course that does not loop has run out.
-    Finished,
 }
-
-/// Units per second. The engine's source for speed has not been read - a
-/// type's `.DEF` line 1 has a field that reads as 15 to 30 units a second in
-/// half the records and zero in the other half - so this is a single chosen
-/// value.
-pub const DEFAULT_SPEED: f32 = 20.0;
 
 #[derive(Debug, Clone)]
 pub struct Follower {
-    pub points: Vec<[f32; 3]>,
-    pub periodic: bool,
-    /// World units, as floats for the simulation's own arithmetic. The files
-    /// are 16.16; `position_fixed` converts back.
-    pub position: [f32; 3],
+    points: Vec<[i32; 3]>,
+    periodic: bool,
+    /// 16.16 world units, the actor's `+0x00..+0x08`.
+    pub position: [i32; 3],
+    /// The engine's 16-bit circle, `+0x14`.
+    pub heading: i32,
+    /// `+0x0c`, which scales the step; zero for every shipped placement.
+    pub pitch: i32,
+    /// The heading it is turning toward, `+0x48`.
+    pub wanted: i32,
+    /// The point it is heading for, `+0x140`.
     pub target: usize,
+    /// `+0x144`: 1 walks the course forward, anything else backward.
+    pub direction: i32,
     pub phase: Phase,
-    pub speed: f32,
+    /// 16.16 units a second: the type's move rate and the actor's own bias.
+    pub speed: i32,
+    /// 16.16 a second: the type's turn rate and the actor's own bias.
+    pub turn: i32,
+    /// The type's `+0x14`, added to the floor.
+    pub height: i32,
 }
 
-fn units(p: Point) -> [f32; 3] {
-    [p.x as f32 / 65536.0, p.y as f32 / 65536.0, p.z as f32 / 65536.0]
+/// A difference in world coordinates, wrapped the way the engine wraps every
+/// one: the world is 2^26 in 16.16, 1024 units, and the top six bits go.
+pub fn wrap(v: i32) -> i32 {
+    v.wrapping_shl(6) >> 6
 }
 
-fn distance_sq(a: [f32; 3], b: [f32; 3]) -> f32 {
-    (0..3).map(|i| (a[i] - b[i]).powi(2)).sum()
+/// A 16.16 product, `imul` then `shrd 16`.
+fn mul(a: i32, b: i32) -> i32 {
+    ((a as i64 * b as i64) >> 16) as i32
+}
+
+/// `0x42b960`: the straight-line distance, world-wrapped, truncated.
+fn distance(a: [i32; 3], b: [i32; 3]) -> i32 {
+    let d = |i: usize| wrap(a[i].wrapping_sub(b[i])) as f64;
+    (d(0) * d(0) + d(1) * d(1) + d(2) * d(2)).sqrt() as i32
+}
+
+/// The engine's sine and cosine (`0x429ea0`, `0x429ed0`) in 16.16.
+fn sin16(angle: i32) -> i32 {
+    ((angle as f64 * std::f64::consts::TAU / 65536.0).sin() * 65536.0).round() as i32
+}
+
+fn cos16(angle: i32) -> i32 {
+    ((angle as f64 * std::f64::consts::TAU / 65536.0).cos() * 65536.0).round() as i32
+}
+
+/// The speed and turn bias `0x404e90` gives the actor at `index` in the level:
+/// `(index << 30) >> 16`. The turn gets half of it when the whole would not
+/// be positive.
+pub fn bias(index: usize, turn_rate: i32) -> (i32, i32) {
+    let b = ((index as i32) << 30) >> 16;
+    let turn = if turn_rate + b <= 0 { b / 2 } else { b };
+    (b, turn)
 }
 
 impl Follower {
-    /// An actor placed at `start` that follows `course`. `None` for a course
-    /// with no points, which the engine treats as fatal ("No course points for
-    /// course").
-    pub fn new(course: &Course, start: [i32; 3]) -> Option<Follower> {
-        let points: Vec<[f32; 3]> = course.points().into_iter().map(units).collect();
+    /// The actor placed as `placement`, the `index`th in its level, of type
+    /// `kind`. `None` for a course with no points, which the engine treats as
+    /// fatal ("No course points for course").
+    pub fn new(course: &Course, placement: &Placement, kind: &EnemyDef, index: usize) -> Option<Follower> {
+        let points: Vec<[i32; 3]> = course.points().into_iter().map(|p| [p.x, p.y, p.z]).collect();
         if points.is_empty() {
             return None;
         }
         let periodic = match course {
             Course::Points { periodic, .. } => *periodic != 0,
+            // The engine's loader reads only the point form; a segment
+            // course, whatever it would have been, never loops.
             Course::Segments { .. } => false,
         };
-        let position = [
-            start[0] as f32 / 65536.0,
-            start[1] as f32 / 65536.0,
-            start[2] as f32 / 65536.0,
-        ];
-        // Phase 0: the nearest point, exactly as the engine chooses it.
-        let target = points
-            .iter()
-            .enumerate()
-            .min_by(|a, b| {
-                distance_sq(position, *a.1).total_cmp(&distance_sq(position, *b.1))
-            })
-            .map(|(i, _)| i)
-            .unwrap_or(0);
+        let (speed_bias, turn_bias) = bias(index, kind.turn_rate);
         Some(Follower {
             points,
             periodic,
-            position,
-            target,
-            phase: Phase::Joining,
-            speed: DEFAULT_SPEED,
+            position: [wrap(placement.x), placement.y, wrap(placement.z)],
+            heading: placement.heading as i32,
+            pitch: placement.pitch,
+            wanted: 0,
+            target: 0,
+            direction: 1,
+            phase: Phase::Start,
+            speed: kind.move_rate + speed_bias,
+            turn: kind.turn_rate + turn_bias,
+            height: kind.fields[4] as i32,
         })
     }
 
-    /// Advance by `dt` seconds.
-    pub fn step(&mut self, dt: f32) {
-        if self.phase == Phase::Finished {
-            return;
-        }
-        let mut budget = self.speed * dt;
-        // Spend the whole step's distance, possibly passing several points.
-        while budget > 0.0 && self.phase != Phase::Finished {
-            let goal = self.points[self.target];
-            let gap = distance_sq(self.position, goal).sqrt();
-            if gap > budget {
-                for i in 0..3 {
-                    self.position[i] += (goal[i] - self.position[i]) / gap * budget;
+    /// One frame of `dt` seconds. `floor` is the surface under a point in
+    /// units (`0x41c300`), given the point.
+    pub fn step(&mut self, dt: f32, floor: impl Fn([f32; 3]) -> f32) {
+        match self.phase {
+            Phase::Start => {
+                let mut best = 0x4000_0000;
+                for (i, &p) in self.points.iter().enumerate() {
+                    let d = distance(self.position, p);
+                    if best > d {
+                        best = d;
+                        self.target = i;
+                    }
                 }
-                return;
+                self.phase = Phase::Placed;
             }
-            self.position = goal;
-            budget -= gap;
-            self.phase = Phase::Following;
-            self.advance_target();
+            Phase::Placed => {
+                self.position = self.points[self.target];
+                self.phase = Phase::Following;
+            }
+            Phase::Following => self.follow(dt, floor),
         }
     }
 
-    fn advance_target(&mut self) {
-        if self.points.len() == 1 {
-            // A one-point course is a place to be, not a path.
-            self.phase = Phase::Finished;
-            return;
-        }
-        if self.target + 1 < self.points.len() {
-            self.target += 1;
-        } else if self.periodic {
-            self.target = 0;
+    /// `0x423b60`: aim at a point.
+    fn aim(&mut self, at: [i32; 3]) {
+        let dx = wrap(at[0].wrapping_sub(self.position[0])) as f64;
+        let dz = wrap(at[2].wrapping_sub(self.position[2])) as f64;
+        self.wanted = (dx.atan2(dz) * (65536.0 / std::f64::consts::TAU)) as i32;
+    }
+
+    /// The next point along, `0x423264`: forward or back by `direction`, and
+    /// at an end either round to the other end or back the way it came.
+    fn next(&mut self) {
+        let n = self.points.len() as i32;
+        let was = self.target as i32 + if self.direction == 1 { 1 } else { -1 };
+        let now = if self.periodic {
+            if was < 0 {
+                n - was.abs() % n
+            } else if was >= n {
+                was % n
+            } else {
+                was
+            }
+        } else if was < 0 {
+            was.abs() % n
+        } else if was >= n {
+            n - was % n - 1
         } else {
-            self.phase = Phase::Finished;
+            was
+        };
+        if now != was && !self.periodic {
+            self.direction = -self.direction;
         }
+        self.target = now as usize;
     }
 
-    /// The heading of travel, in the engine's convention: 0 along +z and
-    /// increasing toward +x, the same as `atan2(dx, dz)`.
+    /// `0x4231b0`.
+    fn follow(&mut self, dt: f32, floor: impl Fn([f32; 3]) -> f32) {
+        let point = self.points[self.target];
+        self.aim(point);
+        self.position[1] = point[1];
+        let dx = wrap(point[0].wrapping_sub(self.position[0])).abs();
+        let dz = wrap(point[2].wrapping_sub(self.position[2])).abs();
+        if dx < REACHED && dz < REACHED {
+            self.next();
+            self.aim(self.points[self.target]);
+        }
+
+        let dt = (dt * 65536.0) as i32;
+        let turn = mul(self.turn, dt);
+        let step = mul(self.speed, dt);
+        // The step goes along the heading the actor had at the start of the
+        // frame; the turn applies after.
+        let across = mul(sin16(self.heading), cos16(self.pitch));
+        let along = mul(cos16(self.heading), cos16(self.pitch));
+        let error = ((self.wanted - self.heading) << 16) >> 16;
+        self.heading = (self.heading + mul(error, turn)) & 0xffff;
+
+        self.position[0] += mul(step, across);
+        // The floor is found after x moves and before z does.
+        let at = [
+            self.position[0] as f32 / 65536.0,
+            self.position[1] as f32 / 65536.0,
+            self.position[2] as f32 / 65536.0,
+        ];
+        self.position[1] = (floor(at) * 65536.0) as i32 + self.height;
+        self.position[2] += mul(step, along);
+    }
+
     pub fn heading(&self) -> u16 {
-        let goal = self.points[self.target];
-        let (dx, dz) = (goal[0] - self.position[0], goal[2] - self.position[2]);
-        if dx == 0.0 && dz == 0.0 {
-            return 0;
-        }
-        let turns = dx.atan2(dz) / std::f32::consts::TAU;
-        (turns.rem_euclid(1.0) * 65536.0) as u16
+        self.heading as u16
     }
 
+    /// Where it is, wrapped into the world.
     pub fn position_fixed(&self) -> [i32; 3] {
-        [
-            (self.position[0] * 65536.0) as i32,
-            (self.position[1] * 65536.0) as i32,
-            (self.position[2] * 65536.0) as i32,
-        ]
+        [wrap(self.position[0]), self.position[1], wrap(self.position[2])]
     }
 }
