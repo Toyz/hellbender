@@ -151,3 +151,135 @@ impl Weather {
         std::array::from_fn(|k| drop.position[k] + mul(STREAK, dir[k]))
     }
 }
+
+/// How many strikes can be armed at once (`0x5bc7c0`, five 40-byte slots).
+pub const STRIKES: usize = 5;
+
+/// How long the flash lasts, 16.16 seconds (`+0x1c = 0x8000`).
+pub const FLASH: i32 = 0x8000;
+
+/// Seconds of delay per 16.16 unit of distance before the thunder: sound at
+/// about 20.6 units a second (`0x4ef954`).
+pub const THUNDER_PER_UNIT: f32 = 7.398_200_5e-7;
+
+/// How far from the eye a strike lands, in x and z (`0x280000`).
+pub const STRIKE_REACH: i32 = 40 << 16;
+
+/// One armed strike, `0x5bc7c0 + 40 * n`.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Strike {
+    /// Where it last struck, at the sky layer's altitude.
+    pub at: [i32; 3],
+    /// Seconds to the next strike, 16.16 (`+0x14`).
+    pub countdown: i32,
+    /// Seconds until the thunder, 16.16; zero once heard (`+0x18`).
+    pub thunder: i32,
+    /// Seconds of flash left, 16.16; zero when dark (`+0x1c`).
+    pub flash: i32,
+    /// The random part of the interval and its base, 16.16 seconds (`+0x20`,
+    /// `+0x24`): the `.LVL`'s line 42, as stored.
+    pub range: i32,
+    pub base: i32,
+}
+
+/// What a frame of lightning did, for the caller to play and draw.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Flash {
+    /// A strike: `lghtng.wav` at `at` (the eye's height there), and the
+    /// light goes up (`0x49d381`, `0x451450`).
+    Struck { at: [i32; 3] },
+    /// The thunder reaches the eye: `thun-c.wav` at the strike.
+    Thunder { at: [i32; 3] },
+    /// The flash is over and the light goes back (`0x4514e0`).
+    Dark,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Lightning {
+    pub strikes: Vec<Strike>,
+}
+
+impl Lightning {
+    /// `0x49d220`, as the level loads (`0x44bfae`): one strike armed,
+    /// `base + rand() % range + 1` away. The `.LVL`'s line 42 is
+    /// `983040,1966080` in every level, 15.0 and 30.0 in 16.16, and the engine
+    /// does its arithmetic on them as they are - so `rand() % range` is
+    /// `rand()`, at most 32,767, half a second. Lightning strikes every 15 to
+    /// 15.5 seconds.
+    pub fn new(base: i32, range: i32, rng: &mut Rng) -> Lightning {
+        let range = range.max(1);
+        let countdown = base + rng.next() as i32 % range + 1;
+        Lightning { strikes: vec![Strike { countdown, range, base, ..Strike::default() }] }
+    }
+
+    /// Whether the light is up this frame.
+    pub fn flashing(&self) -> Option<&Strike> {
+        self.strikes.iter().find(|s| s.flash > 0)
+    }
+
+    /// `0x49d290`, a frame of `dt` seconds with the eye at `eye` and the sky
+    /// layer at `sky`, both 16.16. The engine only runs it with the eye at or
+    /// above the ground.
+    pub fn step(&mut self, dt: f32, eye: [i32; 3], sky: i32, rng: &mut Rng) -> Vec<Flash> {
+        let dt = (dt * 65536.0) as i32;
+        let mut out = Vec::new();
+        for s in &mut self.strikes {
+            s.countdown -= dt;
+            if s.countdown <= 0 {
+                s.countdown = s.base + rng.next() as i32 % s.range;
+                let near = |e: i32, rng: &mut Rng| {
+                    wrap(e + ((rng.next() as i32) << 8) % 0x50_0000 - STRIKE_REACH)
+                };
+                let x = near(eye[0], rng);
+                let z = near(eye[2], rng);
+                s.at = [x, sky, z];
+                let far = {
+                    let d = |a: i32, b: i32| wrap(a - b) as f64;
+                    (d(eye[0], x).powi(2) + d(eye[1], sky).powi(2) + d(eye[2], z).powi(2)).sqrt() as i32
+                };
+                s.thunder = ((far as f32 * THUNDER_PER_UNIT) as i32) << 16;
+                s.flash = FLASH;
+                out.push(Flash::Struck { at: [x, eye[1], z] });
+            }
+            if s.thunder != 0 {
+                s.thunder -= dt;
+                if s.thunder <= 0 {
+                    s.thunder = 0;
+                    out.push(Flash::Thunder { at: s.at });
+                }
+            }
+            if s.flash != 0 {
+                s.flash -= dt;
+                if s.flash <= 0 {
+                    s.flash = 0;
+                    out.push(Flash::Dark);
+                }
+            }
+        }
+        out
+    }
+}
+
+/// The bolt, `0x49d640`: a jagged line from the strike down to the floor
+/// under it. Each step drops up to four units and wanders up to one either
+/// way in x and z, and the whole bolt is drawn afresh every frame of the
+/// flash in palette index 110 or 111, chosen per step - so it flickers.
+/// `floor` is the surface under a point in 16.16 (`0x41c300`). Returns the
+/// segments with their colours.
+pub fn bolt(from: [i32; 3], floor: impl Fn([i32; 3]) -> i32, rng: &mut Rng) -> Vec<([i32; 3], [i32; 3], u8)> {
+    let mut out = Vec::new();
+    let mut at = from;
+    // The engine's loop runs until the floor; a cap keeps a bolt over a
+    // bottomless point finite.
+    while floor(at) < at[1] && out.len() < 256 {
+        let colour = 0x6e + (rng.next() & 1) as u8;
+        let jitter = |rng: &mut Rng, mask: i32| ((rng.next() as i32) << 16) & mask;
+        let x = at[0] + jitter(rng, 0x1ffff) - 0x10000;
+        let y = at[1] - jitter(rng, 0x3ffff);
+        let z = at[2] + jitter(rng, 0x1ffff) - 0x10000;
+        let next = [x, y, z];
+        out.push((at, next, colour));
+        at = next;
+    }
+    out
+}

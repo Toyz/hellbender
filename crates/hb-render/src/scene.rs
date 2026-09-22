@@ -904,6 +904,20 @@ pub fn draw_flake(target: &mut Target, camera: &Camera, at: [i32; 3], index: u8)
 /// A raindrop's streak from `from` to `to`, a line one pixel wide, clipped
 /// to the space in front of the eye and to the frame, with no depth test.
 pub fn draw_streak(target: &mut Target, camera: &Camera, from: [i32; 3], to: [i32; 3], index: u8) {
+    line(target, camera, from, to, index, false);
+}
+
+/// A lightning bolt's segments (`hb_sim::weather::bolt`). The engine puts the
+/// bolt in its draw list at the strike and lets the painter's order settle
+/// it; here each pixel is tested against the depth buffer, so a hill in
+/// front hides it.
+pub fn draw_bolt(target: &mut Target, camera: &Camera, segments: &[([i32; 3], [i32; 3], u8)]) {
+    for &(from, to, index) in segments {
+        line(target, camera, from, to, index, true);
+    }
+}
+
+fn line(target: &mut Target, camera: &Camera, from: [i32; 3], to: [i32; 3], index: u8, tested: bool) {
     let (mut a, mut b) = (weather_view(camera, from), weather_view(camera, to));
     if a[2] <= WEATHER_NEAR && b[2] <= WEATHER_NEAR {
         return;
@@ -929,7 +943,12 @@ pub fn draw_streak(target: &mut Target, camera: &Camera, from: [i32; 3], to: [i3
         let t = i as f32 / steps as f32;
         let (x, y) = ((x0 + (x1 - x0) * t) as isize, (y0 + (y1 - y0) * t) as isize);
         if x >= 0 && y >= 0 && (x as usize) < target.width && (y as usize) < target.height {
-            target.colour[y as usize * target.width + x as usize] = index;
+            let at = y as usize * target.width + x as usize;
+            // Depth is linear in 1/z across the screen.
+            let depth = 1.0 / ((1.0 - t) / a[2] + t / b[2]);
+            if !tested || depth < target.depth[at] {
+                target.colour[at] = index;
+            }
         }
     }
 }

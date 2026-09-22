@@ -136,10 +136,12 @@ see [the sky](sky.md). Line 42 is `983040,1966080` - 15.0 and 30.0 - in all 26
 levels, read to `0x6670d8` and `0x6670dc` with those same values as defaults
 (`0x44bf52`), and the pair is handed to the lightning spawner as the level
 loads (`0x44bfae`, `0x49d220`). There it sets the countdown to the next
-strike: the first value plus a random amount up to the second
-(`0x49d26e`), so a level with lightning flashes every 15 to 45 seconds. The
-spawner does nothing unless bit 4 of line 40 is set, and it keeps five
-strikes at most (`0x5bc7c0`).
+strike: the first value plus `rand()` modulo the second (`0x49d26e`). Both are
+still 16.16 when it does, and `rand()` is at most 32,767, so the modulo never
+bites: the random part is under half a second, and a level with lightning
+flashes every 15 to 15.5 seconds. The spawner does nothing unless bit 4 of
+line 40 is set, and it keeps five strikes at most (`0x5bc7c0`). See
+[weather](../engine/weather.md).
 
 Line 22 is the fog colour, as an index into the level's palette. When the
 engine cannot open the `.FOG` named on line 16 it builds the table itself

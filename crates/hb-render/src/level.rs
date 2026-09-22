@@ -87,6 +87,10 @@ pub struct Level {
     /// nearest index in the level's palette, which is exactly the question
     /// "what is this sky colour called here".
     pub sky_remap: Option<[u8; 256]>,
+    /// The same, lit by a lightning flash: `initBrightSky` (`0x451290`) makes
+    /// a brightened copy of the sky's texels as the level loads, and a strike
+    /// swaps it in for half a second. See [`bright_sky`].
+    pub sky_remap_lit: Option<[u8; 256]>,
     /// `.ANI` cycles, resolved to indices into [`Level::textures`].
     pub animations: Vec<Cycle>,
     /// The level's `.CRS` courses, which a type's `.DEF` line 15 names.
@@ -600,6 +604,7 @@ impl Level {
             courses,
             animations,
             sky,
+            sky_remap_lit: sky_remap.map(|table| bright_sky(&table, &palette)),
             sky_remap,
             stars,
             star_passes,
@@ -714,4 +719,41 @@ fn halve(image: &Image, palette: &Palette, map: Option<&ColourMap>) -> Option<Im
         }
     }
     Some(Image { shape: hb_formats::raw::Shape::new(hw, hh), pixels })
+}
+
+/// A colour as a lightning flash lights it (`0x451570`, called with
+/// `0x10000`): scaled by up to twice, but no further than takes its brightest
+/// channel to 255, so the hue holds.
+pub fn brighten([r, g, b]: [u8; 3]) -> [u8; 3] {
+    let boost = 0x10000i64;
+    let mut factor = boost;
+    for c in [r, g, b] {
+        let c = c as i64;
+        if (boost + 0x10000) * c >> 16 > 0xff {
+            factor = factor.min(0xff * 0x10000 / c - 0x10000);
+        }
+    }
+    let factor = factor + 0x10000;
+    [r, g, b].map(|c| ((c as i64 * factor) >> 16) as u8)
+}
+
+/// The palette index nearest a colour, as the engine measures it
+/// (`0x485080`): `29|dr| + 58|dg| + 15|db|`, the first of equals.
+pub fn nearest(palette: &Palette, [r, g, b]: [u8; 3]) -> u8 {
+    let mut best = (i64::MAX, 0u8);
+    for i in 0..=255u8 {
+        let [pr, pg, pb] = palette.rgb(i);
+        let d = |a: u8, b: u8| (a as i64 - b as i64).abs();
+        let cost = 29 * d(r, pr) + 58 * d(g, pg) + 15 * d(b, pb);
+        if cost < best.0 {
+            best = (cost, i);
+        }
+    }
+    best.1
+}
+
+/// The sky remap a flash swaps in: each sky index's level colour,
+/// brightened, and matched back into the level's palette (`0x451290`).
+pub fn bright_sky(remap: &[u8; 256], palette: &Palette) -> [u8; 256] {
+    remap.map(|i| nearest(palette, brighten(palette.rgb(i))))
 }
