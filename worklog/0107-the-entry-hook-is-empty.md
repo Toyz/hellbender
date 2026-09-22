@@ -56,6 +56,28 @@ binding beside both cycles. Which of the two it drives is not settled, and the
 port currently turns the four cockpit angles with it, which may be the wrong
 one of the three.
 
-**Still unknown:** what view modes 1 and 2 are, and the distance the outside
-camera sits at - `0x512558`, which `0x480021` uses to push the eye off the
-ship.
+## And it is empty in the other build too
+
+The disc carries a second executable: `Patch v1.02/upgrade.exe` is a Win32
+cabinet self-extractor holding `HELLBNDX.EXE`, 16 December 1996 against the
+disc's 6 September, with a `STARTUPX.POD` of its own labelled "Startup Trial
+1.02" - 1,217 entries against 1,206, the difference almost all palettes.
+
+The same three calls are at `0x480f17` in it, the two-movie routine having
+moved to `0x45b2f0`, and the third call goes to `0x459b90`:
+
+```
+00459b80  01 00 00 00 5d 5f 5e 5b 81 c4 90 00 00 00 c3 90
+00459b90  c3 8d 64 24 00 8d 64 24 00 8d a4 24 00 00 00 00
+```
+
+Byte for byte what the September build has. Three months later, still one
+`ret`. There is nothing to restore: it was not compiled into either.
+
+The trip did close [[105]]'s open question. `0x481792`, at the level start,
+puts `0x20000` in `0x512558` - **two units** - and `0x480021` is what pushes
+the eye off the ship by it. So the jump-out's camera now leaves the cockpit in
+this port as well as turning.
+
+**Still unknown:** what view modes 1 and 2 are, separately from the four
+looking directions.

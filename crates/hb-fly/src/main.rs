@@ -1449,6 +1449,15 @@ fn main() -> Result<(), String> {
                 let (yaw, pitch) = jump::look(clock);
                 turn = turn.wrapping_add((yaw * 65536.0) as i32 as u16);
                 c.pitch = Angle(c.pitch.0.wrapping_add((pitch * 65536.0) as i32 as u16));
+                // And the eye comes off the ship, back along where it looks.
+                let (a, b) = (
+                    (c.yaw.0.wrapping_add(turn) as f32 / 65536.0) * std::f32::consts::TAU,
+                    (c.pitch.0 as i16 as f32 / 65536.0) * std::f32::consts::TAU,
+                );
+                let back = jump::BACK * 65536.0;
+                c.x -= (a.sin() * b.cos() * back) as i32;
+                c.y += (b.sin() * back) as i32;
+                c.z -= (a.cos() * b.cos() * back) as i32;
             }
             c.yaw = Angle(c.yaw.0.wrapping_add(turn));
             c
@@ -1806,10 +1815,9 @@ mod jump {
     /// round twice, and the pitch climbs to [`PITCH`] and then swings all the
     /// way past level to the other side (`0x45a374` and `0x45a39b`).
     ///
-    /// The engine also puts the camera off the ship for this - `0x512568` goes
-    /// to 2 and the view is built at `0x47ffc8` from these two angles alone,
-    /// around a distance this port has not read. Here the eye stays on the
-    /// ship and only the look turns.
+    /// The engine also puts the camera off the ship for this: `0x512568` goes
+    /// to 2 and the view is built at `0x47ffc8` from these two angles around
+    /// [`BACK`], which the level start sets.
     pub fn look(clock: f32) -> (f32, f32) {
         let half = SECONDS / 2.0;
         let pitch = if clock < half {
@@ -1822,6 +1830,10 @@ mod jump {
     /// How far the nose comes up: `0xffffc100` of the circle.
     pub const PITCH: f32 = 0x3f00 as f32 / 65536.0;
     pub const BLAST: &str = "blast4.wav";
+    /// How far behind the ship the outside camera sits: `0x481792` puts
+    /// `0x20000` in `0x512558` as a level starts, and `0x480021` is what
+    /// pushes the eye off the ship by it.
+    pub const BACK: f32 = 2.0;
 }
 
 /// The level's doors and moving ground, with every cell's altitude as the
