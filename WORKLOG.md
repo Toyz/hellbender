@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-91 entries: audio 6, build 2, content 9, decomp 60, engine 26, flight 6, format 33, net 1, port 73, render 27, test 3, tooling 4, ui 7, world 10.
+92 entries: audio 6, build 2, content 9, decomp 61, engine 26, flight 6, format 34, net 1, port 73, render 27, test 3, tooling 4, ui 7, world 10.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -102,3 +102,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 89 | [Flying into something costs you both](worklog/0089-flying-into-something-costs-you-both.md) | 2026-09-21 | decomp, port, flight |
 | 90 | [Twenty four packet types](worklog/0090-twenty-four-packet-types.md) | 2026-09-21 | decomp, net |
 | 91 | [The lights are found at load and never broken](worklog/0091-the-lights-are-found-at-load-and-never-broken.md) | 2026-09-21 | decomp, format |
+| 92 | [A file no level uses, read from its writer](worklog/0092-a-file-no-level-uses-read-from-its-writer.md) | 2026-09-21 | decomp, format |

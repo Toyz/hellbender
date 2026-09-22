@@ -22,9 +22,12 @@ lit and 2 for unlit and 0 for neither.
 `+0x08` is the **broken** texture, and not one of those eight compares it.
 
 The load-time scan is `0x48bd60`. It has exactly one caller, `0x44c729`, in
-the level load, and it hands every light face it finds to `0x41bda0`. So the
-lights are found once, when the level loads, and something is placed at each
-one.
+the level load, and it hands every light face it finds to `0x41bda0`.
+
+*(Corrected in [[92]]: `0x41bda0` is not a light routine. It takes two packed
+world positions, pulls a cell out of bits 19 to 25 of each - seven bits, the
+grid's 0 to 127 - and walks the cells between them. The scan is registering
+the cells a light face spans, in the list it clears at `0x5cafe0`.)*
 
 What is not there is any path that writes a light's unlit or broken index
 back into the terrain. Eight copies of a test that answers "this is a lit

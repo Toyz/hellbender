@@ -2,7 +2,7 @@
 title: The .GLT lights, .QKE moving geometry and .TTY ground types
 status: partial
 covers: DATA\*.GLT, DATA\*.QKE, DATA\*.TTY
-worklog: 15, 47, 48, 91
+worklog: 15, 47, 48, 91, 92
 ---
 
 # .GLT, .QKE and .TTY
@@ -255,8 +255,23 @@ else. Its name comes from the save side: `0x41e0c0` replaces the level's
 extension with `.tty`, opens it in `data` with mode `wt`, and fails with
 `"Unable to save ground type list"`.
 
-So the format exists, the editor writes it, and no shipped level uses it. Its
-record shape cannot be read from the data.
+So the format exists, the editor writes it, and no shipped level uses it.
+
+Its record shape cannot be read from the data, but it can be read from the
+writer. `0x41e139` prints the count with `"%d\n"` from `0x6edfb0`, then walks
+an array of 20-byte records from `0x7367c2` printing each with `"%s,%d\n"` -
+a name from `+0x02` and a `u16` from `+0x00`. So:
+
+```
+2
+SOMETHING.RAW,3
+SOMEWHERE.RAW,1
+```
+
+A count, then a name and a number a line. Which name and which number - a
+texture and a ground type is the obvious reading, and the file's own title is
+"ground type list" - is not established, because nothing shipped exercises
+it.
 
 ## Unknown
 
@@ -270,12 +285,19 @@ lit, 2 for unlit, 0 for neither. `+0x08`, the broken texture, is not compared
 in any of them.
 
 The load-time scan is `0x48bd60`, called once, from the level load at
-`0x44c729`, and it hands each face it finds to `0x41bda0`. So the lights are
-found when the level loads and something is placed at each one. What swaps
-another has not been read, nor has what the list at `0x5cafe0` is for. In
+`0x44c729`. What it hands each light face to, `0x41bda0`, is not a light
+routine at all: it takes two packed world positions, pulls a cell out of bits
+19 to 25 of each - seven bits, 0 to 127, which is the grid - and walks the
+cells between them, three values a cell. Four other places call it. So the
+scan is registering the **cells** a light face spans in the list it clears
+first at `0x5cafe0`, not placing an object at each light.
+
+What writes a light's unlit or broken index back into the terrain has not
+been found. In
 `.QKE`: what the flags line's first number - the mode byte the resting state
 tests - selects beyond 1, and what a kind 3 ground entry does with the ship's
-cell. The record shape of `.TTY`, which no shipped level uses.
+cell. What the two fields of a `.TTY` record mean. Its shape is the writer's, and
+no shipped level has one to check a reading against.
 
 A ground quake and a box quake turn out to share their whole record shape;
 only the third line differs, a rectangle of cells against one cell and a box
