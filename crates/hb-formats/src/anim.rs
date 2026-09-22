@@ -239,12 +239,13 @@ impl Animated {
     /// short way round. The last frame interpolates back to the first.
     ///
     /// Each part is then drawn with a transform built from its own
-    /// interpolated angle and centre (`0x467980` hands both to `0x42aa30`).
+    /// interpolated angle and centre (`0x467a10` hands both to `0x42aa30`).
     /// **The `pivot` and `parent` fields take no part in it**: a part's
     /// centre is where it goes in model space, not an offset from its
     /// parent, which is why summing the chain put `TREX`'s head between its
-    /// shoulders. The load-time rescale (`0x4664e0`) scales the centres with
-    /// the vertices by the same factor, so the two are in one space.
+    /// shoulders. Centres and vertices are in one space as authored: the
+    /// rescale that would scale both (`0x4664e0`) belongs to the `.ASC`
+    /// importers, which the game never calls.
     pub fn pose(&self, seconds: f32) -> (Vec<Vertex>, Vec<Polygon>) {
         let mut vertices = Vec::with_capacity(self.vertex_count());
         let mut polygons = Vec::with_capacity(self.polygon_count());

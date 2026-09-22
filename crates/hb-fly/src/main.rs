@@ -1610,7 +1610,7 @@ fn main() -> Result<(), String> {
             if let Some(Some(art)) = cockpits.get(view) {
                 target.overlay(art);
             }
-            // The hand is drawn in the forward view only (`0x4205ef`).
+            // The hand is drawn in the forward view only (`0x420ab6`).
             if show_hand && view == 0 {
                 // Where the stick is: the flight model's own ramped inputs,
                 // which is what the engine hands the chooser after dividing
@@ -1909,7 +1909,7 @@ fn begin(
     )
 }
 
-/// The camera a level opens on, which is `0x45a780`.
+/// The camera a level opens on, which is `0x45a740`.
 ///
 /// It puts the eye straight over the ship - `0x42c980(ship.x, y, ship.z)` -
 /// looking straight down, `0x42c9a0(0x3fff, 0, 0)`, and switches to view mode

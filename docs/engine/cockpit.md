@@ -62,10 +62,12 @@ key held picks `hn`, and neither picks `hp`. The keys are `weaponKey` and
 `fireKey` from `[Control]`, read through the keyboard state array at
 `0x5b36c0`.
 
-`0x420607` draws it, at x 180 and with its bottom on the bottom of the frame -
-370 in the 640x480 layout - but only when the view is ahead (`0x4205ef`) and
+`0x420ace` draws it, at x 180 and with its bottom on the bottom of the frame -
+370 in the 640x480 layout - but only when the view is ahead (`0x420ab6`) and
 `[0x51265c]` is 1, which is `[Game]`'s `cockpitHandFlag`, whose default in the
-image is 1. The port draws it on the same terms, out of `hb-render`'s `cockpit`
+image is 1. That is inside `0x420a60`, the cockpit routine the frame calls.
+`0x4205b0` just before it has the same test and the same draw (`0x4205ef`,
+`0x420607`), but nothing calls it - an older copy left in the binary. The port draws it on the same terms, out of `hb-render`'s `cockpit`
 module.
 
 The height the engine gives the box is one row short of the picture in two of

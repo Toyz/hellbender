@@ -72,17 +72,19 @@ Every one of the 18 models has a maximum absolute vertex component of exactly
 models' 16,384, so a `.TXT` mesh has to be halved before it can be drawn at a
 [placement's](level-text.md) scale.
 
-The engine does not treat 32,767 as a bound the data must respect. `0x4664e0`
-walks every part of a loaded model, finds the largest absolute vertex
-component across all of them, and scales every vertex **and every keyframe
-centre** by `0x7fff` over that maximum - so the two are in one space, and
-since the shipped files already max at 32,767 the factor is one and nothing
-moves.
+The engine does not treat 32,767 as a bound the data must respect. There is a
+routine that would: `0x4664e0` walks every part of a model, finds the largest
+absolute vertex component across all of them, and scales every vertex **and
+every keyframe centre** by `0x7fff` over that maximum. But its only callers are
+the `.ASC` and `KEYFRAME.TXT` importers at `0x466930` and `0x469d80`, and
+nothing in the game calls those - they are the authoring side, left in the
+binary. The loader the game uses (`0x46cd60`, parsing in `0x46c6c0`) takes the
+numbers as written. The 32,767 is what that importer left behind, and since the
+factor at 32,767 is one, the file is exactly what it produced.
 
-It runs once, at load, before any pose. A part's centre then pushes it
-outside the bound and nothing pulls it back, which is why `FX-4` poses five
-model-widths across: "the extent is too large" is not evidence that a
-transform is wrong.
+A part's centre can push it outside the bound and nothing pulls it back, which
+is why `FX-4` poses five model-widths across: "the extent is too large" is not
+evidence that a transform is wrong.
 
 ## The contents
 
@@ -106,7 +108,7 @@ Each part is drawn with a transform built from its own interpolated angle and
 centre, and **nothing else**. `0x4684c0` turns the actor's clock into a frame
 index and a fraction, interpolates every part's angle and centre between that
 keyframe and the next into the part record at `+0x48` and `+0x54`, and
-`0x467980` hands the six values straight to `0x42aa30`, the routine that
+`0x467a10` hands the six values straight to `0x42aa30`, the routine that
 pushes a transform. Then it walks the part's vertices.
 
 So a part's `centerList` entry is **where it goes in model space**, not an
@@ -167,8 +169,9 @@ A part:
 +0x8c  pointer to the vertices, 36 bytes each in memory
 ```
 
-The two runtime fields are what `0x4684c0` writes each frame and `0x467980`
-draws with. They are also how the rest of the engine asks where a part is:
+The two runtime fields are what `0x4684c0` writes each frame and `0x467a10`
+draws with. (`0x467980` beside it does the same with the part's vertices, but
+nothing calls it.) They are also how the rest of the engine asks where a part is:
 class 14's aim takes a part's `+0x54` through the model matrix (`0x46edd0`)
 to find its gun.
 

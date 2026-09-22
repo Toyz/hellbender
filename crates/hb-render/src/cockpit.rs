@@ -2,7 +2,7 @@
 //!
 //! `0x41f900` builds the cockpit for the mode the game is in: it scales every
 //! position out of a 640x480 layout, loads `ckpt<h>.raw` and the 27 hands, and
-//! computes where the hand goes. `0x420607` draws one of them each frame, and
+//! computes where the hand goes. `0x420ace` draws one of them each frame, and
 //! `0x41fde0` chooses which.
 
 /// The three sets of nine hands, in the order their names are listed at
@@ -55,7 +55,7 @@ pub fn hand(set: usize, cell: usize, mode: u32) -> String {
 ///
 /// The engine scales a 640x480 layout: the hand is 280 by 110 there, its left
 /// edge at 180, and its bottom on the bottom of the frame (`0x41f956` on, and
-/// the draw at `0x420607`). At 320x200 that is 140 across, which is what the
+/// the draw at `0x420ace`). At 320x200 that is 140 across, which is what the
 /// art is, and 45 down, where the art is 46 - the engine's divide loses the
 /// row, and the picture hangs one past the bottom of the frame.
 pub fn hand_box(width: usize, height: usize) -> [usize; 4] {

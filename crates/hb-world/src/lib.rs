@@ -3,7 +3,7 @@
 //!
 //! Everything here is transcribed from `HELLBEND.EXE`, not invented:
 //! `groundTriangleMidpoint` at `0x428900`, `groundTriangleInt` at `0x428ac0`
-//! and `heightAtGrid` at `0x428c40`.
+//! and `heightAtGrid` at `0x428c40`, which nothing in the shipping game calls.
 
 pub mod grid;
 
