@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-106 entries: audio 7, build 2, content 10, decomp 69, engine 26, flight 7, format 40, net 1, port 83, render 31, test 6, tooling 5, ui 8, video 6, world 11.
+107 entries: audio 7, build 2, content 10, decomp 70, engine 26, flight 7, format 40, net 1, port 84, render 31, test 6, tooling 5, ui 8, video 6, world 11.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -117,3 +117,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 104 | [How a level starts](worklog/0104-how-a-level-starts.md) | 2026-09-21 | decomp, world, port |
 | 105 | [Flying out of a level](worklog/0105-flying-out-of-a-level.md) | 2026-09-21 | decomp, port, flight |
 | 106 | [Four films before the ground](worklog/0106-four-films-before-the-ground.md) | 2026-09-21 | decomp, port, video |
+| 107 | [The entry hook is empty](worklog/0107-the-entry-hook-is-empty.md) | 2026-09-21 | decomp, port |
