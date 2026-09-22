@@ -67,14 +67,16 @@ Both take their colour from `0x4566c0(1, t)`, which picks a palette index
 ## Lightning
 
 `0x49d220` runs as the level loads with the two numbers of [line
-42](../formats/lvl.md), 15 and 30 in every level, and when bit 2 is set arms
-one of five 40-byte slots at `0x5bc7c0`: a countdown of `15 + rand() % 30 + 1`
-seconds.
+42](../formats/lvl.md), 15.0 and 30.0 in 16.16 in every level, and when bit 2
+is set arms one of five 40-byte slots at `0x5bc7c0`: a countdown of `base +
+rand() % range + 1`, done on the 16.16 values as they are. `rand()` never
+reaches 30.0 in 16.16, so that is 15 seconds and a random part under half a
+second.
 
 `0x49d290` runs each frame the eye is at or above the ground. For each armed
 slot, when its countdown runs out:
 
-- the countdown restarts at `15 + rand() % 30`
+- the countdown restarts at `base + rand() % range` - again 15 to 15.5 seconds
 - the strike is placed at the sky layer's altitude, within 40 units of the eye
   in x and z: `((rand() << 8) % 0x500000) - 0x280000`
 - `lghtng.wav` plays there (`0x41f0b0`, priority 4)
@@ -83,27 +85,52 @@ slot, when its countdown runs out:
 - the models' light floor goes to full: the level's ambient (`0x666f40`, line
   19) is saved and replaced with `0xffff`, and `0x48a640` puts that in
   `0x51138c`, which the polygon lighter `0x48a6a0` reads
-- the sky swaps shading table, `0x53d988` for `0x53c988` (`0x451450`)
+- the sky brightens: `0x451450` copies a lit copy of the sky tile into the
+  texture page over the real one
 
 While the flash lasts, half a second (`+0x1c = 0x8000`), a bolt is drawn at
-the strike each frame through the draw callback `0x49d490`. When it ends, the
-ambient and the sky's table go back (`0x4514e0`). When the thunder's delay runs
-out, `thun-c.wav` plays at the strike.
+the strike each frame through the draw callback `0x49d490`, which the strike
+puts in the draw list (`0x42fa90`) at the strike's x and z and the eye's
+height. When it ends, the ambient goes back and `0x4514e0` copies the saved sky
+tile back. When the thunder's delay runs out, `thun-c.wav` plays at the strike.
+
+**The bright sky** is made once, as the level's sky is set up:
+`initBrightSky` (`0x451290`, which refuses a sky tile over 64 on a side) walks
+the tile in the texture page, saves each texel to `0x53d988`, and writes a
+lit one to `0x53c988`. Lit is `0x451570`: the texel's colour scaled by up to
+twice, but only so far as takes its brightest channel to 255, so the hue
+holds; then `0x485080` finds the nearest palette index, measuring
+`29|dr| + 58|dg| + 15|db|` and keeping the first of equals. The storm levels'
+skies are so dark - `PURPSKY.ACT` and `CAVSKY.ACT` come out as black and one
+dark red or grey in their levels' palettes - that twice as bright is still the
+same index, and a flash leaves them as they were.
+
+**The bolt** is `0x49d640`, drawn only while the eye is below the sky layer.
+From the strike it steps down to the floor (`0x41c300`): each step drops
+`(rand() << 16) & 0x3ffff` - 0 to 3 whole units - and moves `((rand() << 16)
+& 0x1ffff) - 0x10000` in x and in z. The mask keeps only `rand()`'s lowest bit,
+so a step moves nowhere or one unit toward -x and -z, never the other way,
+and every bolt leans the same way. Each step is a line in palette index 110
+or 111, picked per step, and the whole bolt is new each frame, so it
+flickers. A recursive version that forks (`0x49d4c0`) is in the binary and
+never called.
 
 ## What the port does
 
-`hb_sim::weather` is the snow and rain above: the pools, the scatter, the
-move and wrap, the gate, the streak's direction. `hb-render`'s `draw_flake`
-and `draw_streak` draw them straight into the frame after the world, with no
-depth test, the way the engine does.
+`hb_sim::weather` is all of the above: the pools, the scatter, the move and
+wrap, the gate, the streak's direction, the strike's timing and place, and the
+bolt. `hb-render`'s `draw_flake` and `draw_streak` draw snow and rain straight
+into the frame after the world with no depth test, the way the engine does;
+`Level::sky_remap_lit` is the bright sky, and during a flash `hb-fly` swaps it
+in and lights models at full ambient.
 
-Two differences are the port's. The remap at `0x606a20` is taken as the
-identity, as the HUD already takes it. And a streak leans by how far the eye
-moved in one of the port's frames, which at a higher frame rate than the
-original's is less far, so the rain stands straighter.
+Three differences are the port's. The remap at `0x606a20` is taken as the
+identity, as the HUD already takes it. A streak leans by how far the eye moved
+in one of the port's frames, which at a higher frame rate than the original's
+is less far, so the rain stands straighter. And the bolt is drawn after the
+world with a depth test on each pixel, where the engine sorts it into its
+draw list at one point and paints.
 
 ## Unknown
 
-The bolt (`0x49d490`, `0x49d640`, and the lines `0x49d4c0` draws), what the two
-sky tables at `0x53c988` and `0x53d988` hold, and how the remap at `0x606a20`
-is built. Lightning is not in the port yet.
+How the remap at `0x606a20` is built.

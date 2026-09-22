@@ -75,3 +75,70 @@ fn they_are_drawn_in_colour_ramp_one() {
     assert_eq!(weather::SNOW_INDEX, (15 * 0xffff >> 16) as u8);
     assert_eq!(weather::RAIN_INDEX, (15 * 0x6000 >> 16) as u8);
 }
+
+use hb_sim::weather::{bolt, Flash, Lightning, FLASH, STRIKE_REACH};
+
+/// The `.LVL`'s line 42 in every level, as stored.
+const BASE: i32 = 983_040;
+const RANGE: i32 = 1_966_080;
+
+#[test]
+fn lightning_strikes_every_fifteen_seconds_and_a_little() {
+    // The modulo is by 30.0 in 16.16 and `rand()` never reaches it, so the
+    // random part is under half a second.
+    for seed in 1..50 {
+        let l = Lightning::new(BASE, RANGE, &mut Rng::new(seed));
+        let c = l.strikes[0].countdown;
+        assert!((BASE..BASE + 0x8000 + 1).contains(&c), "{c}");
+    }
+}
+
+#[test]
+fn a_strike_flashes_for_half_a_second_and_thunders_after() {
+    let mut rng = Rng::new(5);
+    let mut l = Lightning::new(BASE, RANGE, &mut rng);
+    let sky = 128 << 16;
+    let mut seen = Vec::new();
+    let mut struck_at = None;
+    for frame in 0..30 * 40 {
+        for e in l.step(1.0 / 30.0, EYE, sky, &mut rng) {
+            if let Flash::Struck { at } = e {
+                struck_at.get_or_insert((frame, at));
+            }
+            seen.push((frame, e));
+        }
+    }
+    let (first, at) = struck_at.expect("no strike in forty seconds");
+    assert!((15 * 30..=16 * 30).contains(&first), "first strike at frame {first}");
+    // Within forty units of the eye, at the eye's own height for the sound.
+    assert!((at[0] - EYE[0]).abs() <= STRIKE_REACH && (at[2] - EYE[2]).abs() <= STRIKE_REACH);
+    assert_eq!(at[1], EYE[1]);
+    // Dark half a second later.
+    let dark = seen.iter().find(|(f, e)| *f > first && *e == Flash::Dark).unwrap().0;
+    assert_eq!(dark - first, (FLASH as f32 / 65536.0 * 30.0) as usize);
+    // Thunder comes, at the strike on the sky layer.
+    assert!(seen.iter().any(|(_, e)| matches!(e, Flash::Thunder { at } if at[1] == sky)));
+    // And a second strike about fifteen seconds after the first.
+    let strikes: Vec<usize> =
+        seen.iter().filter(|(_, e)| matches!(e, Flash::Struck { .. })).map(|(f, _)| *f).collect();
+    assert!(strikes.len() >= 2);
+    assert!((15 * 30..=16 * 30).contains(&(strikes[1] - strikes[0])));
+}
+
+#[test]
+fn the_bolt_comes_down_to_the_floor_in_small_steps() {
+    let top = [0, 128 << 16, 0];
+    let floor = 20 << 16;
+    let segments = bolt(top, |_| floor, &mut Rng::new(9));
+    assert!(!segments.is_empty());
+    assert_eq!(segments[0].0, top);
+    for w in segments.windows(2) {
+        assert_eq!(w[0].1, w[1].0, "the segments join");
+    }
+    for (a, b, colour) in &segments {
+        assert!((b[0] - a[0]).abs() <= 0x10000 && (b[2] - a[2]).abs() <= 0x10000);
+        assert!(a[1] - b[1] < 4 << 16 && a[1] >= b[1]);
+        assert!([110, 111].contains(colour));
+    }
+    assert!(segments.last().unwrap().1[1] <= floor);
+}

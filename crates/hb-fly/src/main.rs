@@ -592,6 +592,7 @@ fn main() -> Result<(), String> {
     // Snow and rain, and where the ship was when they last moved.
     let mut weather = hb_sim::weather::Weather::new(camera_at(&flight.camera), &mut rng);
     let mut weather_eye = camera_at(&flight.camera);
+    let mut lightning = lightning_for(&level, &mut rng);
     // The missile warning and the afterburner's note, while they are held.
     let mut warning: Option<u64> = None;
     let (mut burner, mut burning) = (None, false);
@@ -897,6 +898,7 @@ fn main() -> Result<(), String> {
             last_eye = eye_of(&flight.camera);
             weather = hb_sim::weather::Weather::new(camera_at(&flight.camera), &mut rng);
             weather_eye = camera_at(&flight.camera);
+            lightning = lightning_for(&level, &mut rng);
             ended = 0.0;
             dying = None;
             flash = None;
@@ -1406,8 +1408,45 @@ fn main() -> Result<(), String> {
         // Animated textures advance on the wall clock.
         // The animated models, before the scene borrows the level.
         level.animate(started.elapsed().as_secs_f32());
+        // Lightning (`0x49d290`), only with the eye at or above the ground,
+        // and the bolt of a strike that is lighting the sky, drawn afresh
+        // each frame.
+        let bolt = {
+            let eye = camera_at(&flight.camera);
+            let sky = (level.sky_height() * 65536.0) as i32;
+            if eye[1] >= 0 {
+                for event in lightning.step(dt, eye, sky, &mut rng) {
+                    let (name, at) = match event {
+                        hb_sim::weather::Flash::Struck { at } => ("lghtng.wav", Some(at)),
+                        hb_sim::weather::Flash::Thunder { at } => ("thun-c.wav", Some(at)),
+                        hb_sim::weather::Flash::Dark => ("", None),
+                    };
+                    if let (Some(at), Some(music), Some(s)) = (at, music.as_ref(), sound(name)) {
+                        let at = at.map(|v| v as f32 / 65536.0);
+                        music.effect(&s, hb_sim::combat::falloff(eye_of(&flight.camera), at));
+                    }
+                }
+            }
+            // The bolt, while the flash lasts and the eye is below the sky
+            // layer (`0x49d490`).
+            match lightning.flashing() {
+                Some(strike) if eye[1] <= sky => {
+                    let grid = hb_world::Grid::new(&level.terrain);
+                    hb_sim::weather::bolt(strike.at, |p| grid.ceiling_of_solid(p[0], p[2]), &mut rng)
+                }
+                _ => Vec::new(),
+            }
+        };
         let frames_now = level.texture_frames(started.elapsed().as_secs_f32());
         let mut scene = level.scene();
+        // A flash lights every model to full and swaps in the bright sky
+        // (`0x48a640`, `0x451450`); the ground's light was fixed at load.
+        if lightning.flashing().is_some() {
+            scene.sun_ambient = 1.0;
+            if let Some(lit) = level.sky_remap_lit.as_ref() {
+                scene.sky_remap = Some(lit);
+            }
+        }
         scene.frames = Some(&frames_now);
         scene.sky_scroll = level.sky_scroll(started.elapsed().as_secs_f32());
         scene.seconds = started.elapsed().as_secs_f32();
@@ -1624,6 +1663,7 @@ fn main() -> Result<(), String> {
                 }
             }
         }
+        hb_render::scene::draw_bolt(&mut target, &seen, &bolt);
         // Brackets on the locked target. The engine's lock display is not
         // read; this only shows what is locked. Not while the eye is off the
         // ship - nothing of the cockpit is.
@@ -1818,6 +1858,16 @@ fn main() -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// The level's lightning, armed as it loads when its weather has the bit
+/// (`0x49d220`), with the `.LVL`'s line 42 as the engine takes it.
+fn lightning_for(level: &Level, rng: &mut hb_sim::turret::Rng) -> hb_sim::weather::Lightning {
+    if !level.manifest.has_lightning() {
+        return hb_sim::weather::Lightning::default();
+    }
+    let [base, range] = level.manifest.weather_params[1];
+    hb_sim::weather::Lightning::new(base as i32, range as i32, rng)
 }
 
 /// Where a camera is, 16.16.
