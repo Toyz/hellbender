@@ -209,3 +209,63 @@ fn a_chamber_draws_what_is_in_it() {
     std::fs::write("/tmp/under.png", hb_formats::png::rgb(320, 200, &rgb)).unwrap();
     assert!(drawn.models > 0, "nothing was drawn in the chamber");
 }
+
+/// The lamps: every face the scan finds wears a light's lit or unlit texture,
+/// and `HOTH`'s are mostly on its tunnel ceilings.
+#[test]
+fn the_lamps_are_found_on_their_faces() {
+    let Some(level) = hb_render::Level::from_disc("hoth") else { return };
+    let lamps = &level.lamps;
+    assert!(lamps.lamps.len() > 100, "{}", lamps.lamps.len());
+    for lamp in &lamps.lamps {
+        let r = lamps.records[lamp.record];
+        let word = lamp.face.texture(&level.terrain) & 0x0fff;
+        assert!(Some(word) == r.lit || Some(word) == r.unlit, "{:?}", lamp.face);
+    }
+    let ceilings = lamps.lamps.iter().filter(|l| l.face.layer == hb_formats::terrain::Layer::ChamberCeiling).count();
+    assert!(ceilings * 2 > lamps.lamps.len());
+}
+
+/// Below the ground an object takes the lamps' light on top of the ambient.
+#[test]
+fn a_lamp_lights_what_is_under_the_ground() {
+    let Some(mut level) = hb_render::Level::from_disc("morbos") else { return };
+    let grid = hb_world::Grid::new(&level.terrain);
+    let under: Vec<usize> = level
+        .placements
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| p.y < 0 && grid.has_chamber(hb_world::grid::Cell::containing(p.x, p.z)))
+        .map(|(i, _)| i)
+        .collect();
+    let Some(&i) = under.first() else { return };
+    let p = level.placements[i];
+    let cell = hb_world::grid::Cell::containing(p.x, p.z);
+    let (lights, _) = level.lamps.step(1.0 / 30.0, (cell.x as usize, cell.z as usize));
+    println!("{} lights near the object", lights.len());
+    let at = [p.x, p.y, p.z].map(hb_formats::fixed::to_units);
+    let light = hb_sim::lights::light_at(at, &lights);
+    println!("light at it {light}");
+    let frame = |lights: &[hb_sim::lights::Light]| {
+        let mut target = hb_render::Target::new(320, 200);
+        target.clear(0);
+        let mut camera = hb_render::Camera::looking_at(p.x, p.y + (1 << 16), p.z - (6 << 16), hb_formats::Angle(0));
+        camera.pitch = hb_formats::Angle(0);
+        let mut scene = level.scene();
+        scene.lights = lights;
+        hb_render::draw_world(&mut target, &scene, &camera);
+        target.colour
+    };
+
+    let (dark, lit) = (frame(&[]), frame(&lights));
+    let differ = dark.iter().zip(&lit).filter(|(a, b)| a != b).count();
+    for (name, frame) in [("/tmp/lamp_off.png", &dark), ("/tmp/lamp_on.png", &lit)] {
+        let rgb: Vec<u8> = frame.iter().flat_map(|&i| level.palette.rgb(i)).collect();
+        std::fs::write(name, hb_formats::png::rgb(320, 200, &rgb)).unwrap();
+    }
+    println!("{differ} pixels change with the lamps on");
+    let _ = &mut level;
+    if light > 0.0 {
+        assert!(differ > 0);
+    }
+}

@@ -557,6 +557,9 @@ fn main() -> Result<(), String> {
     // The scatter an asteroid starts with, and anything else the loop needs
     // a number for.
     let mut rng = hb_sim::turret::Rng::new(0x5eed);
+    // Shots drawn so far, for the one in four that carries a light
+    // (`0x50f028`).
+    let mut shot_lights = 0usize;
     // Everything that starts again with a level (`Round`).
     let Round {
         mut flight, mut mission, mut followers, mut live, mut battle, mut colours, mut scenery,
@@ -1108,6 +1111,16 @@ fn main() -> Result<(), String> {
                 (hit[2] * 65536.0) as i32,
             );
             let started = doors.shot((cell.x, cell.z), hit[1] * hb_sim::quake::WORD);
+            // And a lamp on the face it hit takes the shot (`0x48c800`); one
+            // that goes out bursts where it was hit (`0x476db4`).
+            let face = hb_sim::lights::face_at(hit, &level.terrain);
+            let (paint, broke) = level.lamps.shot(face);
+            if let Some(paint) = paint {
+                paint.face.paint(&mut level.terrain, paint.texture);
+            }
+            if broke {
+                battle.burst(hit, 1.0);
+            }
             if trace_doors {
                 println!(
                     "shot: cell ({:3},{:3}) at {:6.1} words -> {started} door(s) started",
@@ -1379,8 +1392,26 @@ fn main() -> Result<(), String> {
                 _ => Vec::new(),
             }
         };
+        // The lamps (`0x48ae30`), and every fourth shot's own light
+        // (`0x476e8c`).
+        let lights = {
+            let eye = camera_at(&flight.camera);
+            let cell = hb_world::grid::Cell::containing(eye[0], eye[2]);
+            let (mut lights, paints) = level.lamps.step(dt, (cell.x as usize, cell.z as usize));
+            for paint in paints {
+                paint.face.paint(&mut level.terrain, paint.texture);
+            }
+            for flying in &battle.shots {
+                shot_lights += 1;
+                if shot_lights % 4 == 1 {
+                    lights.push(hb_sim::lights::Light::moving(flying.shot.position, hb_sim::lights::SHOT_LIGHT));
+                }
+            }
+            lights
+        };
         let frames_now = level.texture_frames(started.elapsed().as_secs_f32());
         let mut scene = level.scene();
+        scene.lights = &lights;
         // A flash lights every model to full and swaps in the bright sky
         // (`0x48a640`, `0x451450`); the ground's light was fixed at load.
         if lightning.flashing().is_some() {

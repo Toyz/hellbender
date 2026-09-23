@@ -51,6 +51,10 @@ pub struct Scene<'a> {
     pub sky_height: f32,
     /// The star field, for the levels set in space.
     pub stars: &'a [crate::level::Star],
+    /// This frame's lights - the lamps near enough and lit, and whatever is
+    /// in flight carrying one (`hb_sim::lights`). They light objects below
+    /// the ground.
+    pub lights: &'a [hb_sim::lights::Light],
     /// How many passes of it to draw: 1 for `stars.vox`, 2 for `space.vox`.
     pub star_passes: u8,
 }
@@ -249,7 +253,13 @@ fn draw_objects(target: &mut Target, scene: &Scene, camera: &Camera, drawn: &mut
         let radius = scene.mesh_radius.get(p.kind).copied().unwrap_or(1 << 16);
         let (wx, wz) = rebase(eye, p.x, p.z);
         let angles = [p.heading, p.pitch as u16, p.roll as u16];
-        if draw_mesh(target, scene, camera, mesh, textures, flips, wx, p.y, wz, radius, angles) {
+        // Below the ground an object is lit by the lamps and what is in
+        // flight, on top of the ambient, and the sun is off (`0x42f544`).
+        let below = (p.y < 0).then(|| {
+            let at = [p.x, p.y, p.z].map(hb_formats::fixed::to_units);
+            (scene.sun_ambient + hb_sim::lights::light_at(at, scene.lights)).min(1.0)
+        });
+        if draw_mesh(target, scene, camera, mesh, textures, flips, wx, p.y, wz, radius, angles, below) {
             drawn.models += 1;
         }
     }
@@ -287,6 +297,7 @@ fn draw_mesh(
     z: i32,
     scale: i32,
     angles: [u16; 3],
+    below: Option<f32>,
 ) -> bool {
     // The model's own right, up and forward in the world, from heading, pitch
     // and roll with the camera's conventions: heading 0 along +z, positive
@@ -317,6 +328,9 @@ fn draw_mesh(
     // clamped to 0..1. The engine turns the light into model space; turning
     // the normal into the world is the same product.
     let lit = |normal: [i32; 3]| -> f32 {
+        if let Some(light) = below {
+            return light;
+        }
         let n = normal.map(|c| c as f32 / 65536.0);
         let world: [f32; 3] = std::array::from_fn(|k| right[k] * n[0] + up[k] * n[1] + forward[k] * n[2]);
         let facing = -(world[0] * scene.sun[0] + world[1] * scene.sun[1] + world[2] * scene.sun[2]);

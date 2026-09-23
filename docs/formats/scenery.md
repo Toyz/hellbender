@@ -51,15 +51,10 @@ projects it (`0x41adf0`, `0x41b0b0`) and adds it to a list counted at
 `0x5cafe0`. Nothing in the level files marks a light; they are marked by what
 they are painted with.
 
-The eight numbers are not read out of the engine, and the load scan is not
-where they are used: `0x48bd60` touches a record's `+0x00` and `+0x04` and
-nothing else. Something reads `+0x2c`, `+0x34` and `+0x48` (`0x48afe7`,
-`0x48ca76`), which are inside the 92 bytes and past the indices, so the
-numbers are read somewhere - just not by the code that finds the lights. The first is a whole number
-of units in 16.16 - 2, 4, 6 or 10 - and the second is 90000 (1.373) or 65535
-(1.0). The third and sixth are smaller and less regular, 2.0 down to 0.03.
-The fourth is 6 in all 90 records and the fifth 1 in all but one. The seventh
-is 0, 4 or 6, the eighth 1 to 8.
+What the eight numbers do is on [the lamps page](../engine/lights.md): the
+reach in eighths, the strength, a blink's time on and off, which kinds of
+light a face gives, a starting phase, the shots it takes to break, and how
+few left make it blink.
 
 ```
 21 records  262144,90000,131072,6,1   32768,6,2
@@ -284,25 +279,12 @@ it.
 
 ## Unknown
 
-What the eight numbers of a `.GLT` record set, and what puts a light out.
+How the ground draw lights a box's corners from the lamps - see [the lamps
+page](../engine/lights.md), which has the rest of what a `.GLT` record does
+and what puts a light out. (The load scan's call to `0x41bda0`, once taken for
+registering a light's cells, is the chamber floor's height at the face: the
+scan is placing the lamp. `0x48b6b0` registers it.)
 
-What is known of the second: the records live at `0x5d0628`, 92 bytes each,
-counted by `0x5d05e0`, and the test "is this texture a light" is written out
-by hand in eight places rather than called - each one masks a texture word to
-twelve bits, walks the array comparing `+0x00` and `+0x04`, and answers 1 for
-lit, 2 for unlit, 0 for neither. `+0x08`, the broken texture, is not compared
-in any of them.
-
-The load-time scan is `0x48bd60`, called once, from the level load at
-`0x44c729`. What it hands each light face to, `0x41bda0`, is not a light
-routine at all: it takes two packed world positions, pulls a cell out of bits
-19 to 25 of each - seven bits, 0 to 127, which is the grid - and walks the
-cells between them, three values a cell. Four other places call it. So the
-scan is registering the **cells** a light face spans in the list it clears
-first at `0x5cafe0`, not placing an object at each light.
-
-What writes a light's unlit or broken index back into the terrain has not
-been found. In
 `.QKE`: what the flags line's first number - the mode byte the resting state
 tests - selects beyond 1, and what a kind 3 ground entry does with the ship's
 cell. What the two fields of a `.TTY` record mean. Its shape is the writer's, and

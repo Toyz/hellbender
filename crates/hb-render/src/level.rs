@@ -121,6 +121,8 @@ pub struct Level {
     pub ship_mesh: Option<usize>,
     /// The Valkyrie Cannon's three muzzle flashes.
     pub muzzle_mesh: [Option<usize>; 3],
+    /// The faces that are lights (`hb_sim::lights`).
+    pub lamps: hb_sim::lights::Lamps,
     /// The explosion's frames, `blast1.raw` upward.
     pub blast: Vec<Option<Image>>,
     /// Missile smoke's texture, `puff4.raw`, in the level's palette.
@@ -592,6 +594,35 @@ impl Level {
             .and_then(|b| hb_formats::course::parse(&b).ok())
             .unwrap_or_default();
 
+        // The lamps. The `.GLT` is line 32's name, or line 9's when that is
+        // empty, cut at the dot (`0x44c60a`); its textures are found in the
+        // level's list by name (`0x48c2a6`).
+        let lamps = {
+            let named = if manifest.ground_lights.trim().is_empty() {
+                manifest.files.get(7).cloned().unwrap_or_default()
+            } else {
+                manifest.ground_lights.clone()
+            };
+            let stem = named.split('.').next().unwrap_or("").to_ascii_lowercase();
+            let records = read("data", &format!("{stem}.glt"))
+                .and_then(|b| hb_formats::glt::parse(&b).ok())
+                .unwrap_or_default()
+                .into_iter()
+                .map(|light| {
+                    let find = |name: &str| {
+                        texture_names.iter().position(|n| n.eq_ignore_ascii_case(name.trim())).map(|i| i as u16)
+                    };
+                    hb_sim::lights::Record {
+                        lit: find(&light.on),
+                        unlit: find(&light.off),
+                        broken: find(&light.broken),
+                        numbers: light.numbers,
+                    }
+                })
+                .collect();
+            hb_sim::lights::Lamps::scan(records, &terrain)
+        };
+
         // Smaller copies of every texture, for the resolution the engine picks
         // by distance. How the engine made its smaller copies is not read;
         // these average each 2x2 in colour and look the result up in the
@@ -626,6 +657,7 @@ impl Level {
             destroy_sound,
             destroy_sound_name,
             courses,
+            lamps,
             animations,
             sky,
             sky_remap_lit: sky_remap.map(|table| bright_sky(&table, &palette)),
@@ -679,6 +711,7 @@ impl Level {
             sky_scroll: [0.0, 0.0],
             sky_height: self.sky_height(),
             stars: &self.stars,
+            lights: &[],
             star_passes: self.star_passes,
         }
     }

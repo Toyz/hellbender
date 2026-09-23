@@ -12,6 +12,7 @@ pub mod death;
 pub mod explosion;
 pub mod flight;
 pub mod flyer;
+pub mod lights;
 pub mod behaviour;
 pub mod mine;
 pub mod mission;
