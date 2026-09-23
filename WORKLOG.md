@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-120 entries: audio 7, build 2, content 10, decomp 78, engine 26, flight 7, format 40, net 1, port 96, render 36, test 6, tooling 6, ui 12, video 6, world 12.
+121 entries: audio 7, build 2, content 10, decomp 79, engine 26, flight 7, format 40, net 1, port 97, render 36, test 6, tooling 6, ui 12, video 6, world 12.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -131,3 +131,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 118 | [Missiles smoke, and the smoke thins](worklog/0118-missiles-smoke-and-the-smoke-thins.md) | 2026-09-22 | render, port |
 | 119 | [The lamps light the tunnels and go out when shot](worklog/0119-the-lamps-light-the-tunnels-and-go-out-when-shot.md) | 2026-09-22 | decomp, render, port |
 | 120 | [The corners of the world take the lamps' light](worklog/0120-the-corners-of-the-world-take-the-lamps-light.md) | 2026-09-22 | decomp, render, port |
+| 121 | [The steering is a rigid body with a spring on every angle](worklog/0121-the-steering-is-a-rigid-body-with-a-spring-on-every-angle.md) | 2026-09-22 | decomp, port |

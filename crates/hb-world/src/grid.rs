@@ -11,6 +11,10 @@ pub const WRAP: i32 = SIDE as i32 - 1;
 /// The world is 128 cells of 8.0 units: 1024.0 units square.
 pub const WORLD_SIZE: i64 = SIDE as i64 * CELL_SIZE as i64;
 
+/// What [`Grid::ceiling_over`] answers where nothing is overhead: 256 units
+/// (`[0x5b3668]`, set at `0x412ea4`).
+pub const NO_CEILING: i32 = 0x100_0000;
+
 /// A cell index pair. Always in range: constructing one wraps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cell {
@@ -386,8 +390,6 @@ impl<'a> Grid<'a> {
         Some((h[0] as f32 * w0 + h[1] as f32 * w1 + h[2] as f32 * w2) as i32)
     }
 
-    /// The top of whatever is at a world position: the ground, or a box
-    /// standing on it. What a flying thing must stay above.
     /// Every box within `reach` of (x, z), as a solid the collision can push
     /// against. The coordinates are in the copy of the wrapping world the
     /// query point is in, so they can be compared with it directly.
@@ -416,6 +418,8 @@ impl<'a> Grid<'a> {
         out
     }
 
+    /// The top of whatever is at a world position: the ground, or a box
+    /// standing on it. What a flying thing must stay above.
     pub fn ceiling_of_solid(&self, x: i32, z: i32) -> i32 {
         let cell = Cell::containing(x, z);
         let mut top = self.height_at(Layer::Ground, x, z).unwrap_or(0);
@@ -436,15 +440,70 @@ impl<'a> Grid<'a> {
         self.ceiling_of_solid(fixed(x), fixed(z)) as f32 / 65536.0
     }
 
+    /// `0x41c300`: the floor under a point, in 16.16 - what it would come
+    /// down on. Above the ground (`y >= 0`) that is the top of the cell's box
+    /// of set A if the point is above the box's bottom, else the ground, else
+    /// - where the ground is at zero, which is a way down - the chamber
+    /// floor. Below it, the top of the box of set B if the point is above its
+    /// bottom, else the chamber floor.
+    ///
+    /// A point exactly on a cell's low edge (`cell << 19 == x`, so only for
+    /// coordinates in `0..0x3f80000`) looks at the box behind it too and
+    /// takes whichever top is higher, in x and then in z. Heights compare at
+    /// the altitude's own scale, `y / 256`.
+    pub fn floor_under(&self, x: i32, y: i32, z: i32) -> i32 {
+        let level = y / 256;
+        let set = if y < 0 { &self.terrain.boxes_b } else { &self.terrain.boxes_a };
+        let (mut cx, mut cz) = ((x >> 19) & 127, (z >> 19) & 127);
+        let top = |cx: i32, cz: i32| set.top.at(cx, cz);
+        if cx << 19 == x && top(cx, cz) < top(cx - 1, cz) {
+            cx = (cx - 1) & 127;
+        }
+        if cz << 19 == z && top(cx, cz) < top(cx, cz - 1) {
+            cz = (cz - 1) & 127;
+        }
+        let (bottom, top) = (set.bottom.at(cx, cz), set.top.at(cx, cz));
+        if (bottom as i32) < level && top != bottom {
+            return (top as i32) << 8;
+        }
+        let chamber = || self.height_at(Layer::ChamberFloor, x, z).unwrap_or(0);
+        if y < 0 {
+            return chamber();
+        }
+        match self.height_at(Layer::Ground, x, z).unwrap_or(0) {
+            0 => chamber(),
+            ground => ground,
+        }
+    }
+
+    /// `0x41c4d0`: the ceiling over a point, in 16.16 - the bottom of the
+    /// cell's box of set A above the ground, or of set B below it, if the
+    /// point is under it; below the ground, else the chamber's ceiling; and
+    /// [`NO_CEILING`] where nothing is over it.
+    pub fn ceiling_over(&self, x: i32, y: i32, z: i32) -> i32 {
+        let level = y / 256;
+        let set = if y > 0 { &self.terrain.boxes_a } else { &self.terrain.boxes_b };
+        let bottom = set.bottom.at((x >> 19) & 127, (z >> 19) & 127) as i32;
+        if level < bottom {
+            return bottom << 8;
+        }
+        if y > 0 {
+            return NO_CEILING;
+        }
+        match self.height_at(Layer::ChamberCeiling, x, z).unwrap_or(0) {
+            0 => NO_CEILING,
+            ceiling => ceiling,
+        }
+    }
+
     /// Whether a cell carries a box in the given set.
     ///
     /// A box is absent when its bottom and top are equal, not when either is
-    /// zero. That matters for box set B, whose altitudes are measured downward
-    /// so that its "nothing here" byte of 255 becomes an altitude of zero and
-    /// its byte 0 becomes -32,640: testing the top against zero calls almost
-    /// every cell a box. In `FLOAT`, bottom equals top in 15,242 cells for set
-    /// A and 15,308 for set B, which is the right order of magnitude for a
-    /// level with a few hundred structures.
+    /// zero. That matters for box set B, whose altitudes are measured downward:
+    /// an empty cell has both bytes 0, which is -32,640, so testing the top
+    /// against zero calls almost every cell a box. In `FLOAT`, bottom equals
+    /// top in 15,242 cells for set A and 15,308 for set B, which is the right
+    /// order of magnitude for a level with a few hundred structures.
     pub fn has_box(&self, layer: Layer, cell: Cell) -> bool {
         match self.box_span(layer, cell) {
             Some((bottom, top)) => bottom != top,

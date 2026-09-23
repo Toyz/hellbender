@@ -111,8 +111,10 @@ vertical step of 128 world units. But two of the six layers first subtract 255:
 ```
 
 So the ground and box set A occupy 0 to 32,640 and the chambers and box set B
-occupy -32,640 to 0. The byte that means "nothing here" is 0 for the upward
-layers and 255 for the downward ones, and both resolve to altitude zero. Across
+occupy -32,640 to 0. An empty cell of box set B has bottom and top both at
+byte 0, -32,640 - in all 15,300 to 16,300 empty cells of each of `FLOAT`,
+`HOTH`, `IOWAH`, `MORBOS`, `ROID` and `SHIP` - so a box is told by its bottom
+and top differing, never by either being zero. Across
 `FLOAT`, `HOTH`, `ROID` and `SHIP` no downward layer produces a positive value
 and no upward layer a negative one.
 

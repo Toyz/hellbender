@@ -42,14 +42,22 @@ pub fn wrapped(d: f32) -> f32 {
 /// in its units.
 pub const TURN: f32 = 65536.0;
 
+/// Radians in one unit of the 16-bit circle. The engine keeps the same
+/// factor as a double at `0x4ef508` and multiplies by it rather than
+/// dividing.
+pub const RADIANS_PER_UNIT: f32 = std::f32::consts::TAU / TURN;
+
+/// And its inverse, the engine's `0x4ef4f8` (10,430.378).
+pub const UNITS_PER_RADIAN: f32 = TURN / std::f32::consts::TAU;
+
 /// An angle in the 16-bit circle, as radians.
 pub fn radians(circle: f32) -> f32 {
-    circle * std::f32::consts::TAU / TURN
+    circle * RADIANS_PER_UNIT
 }
 
 /// Radians into the 16-bit circle, 0 up to a whole turn.
 pub fn circle(radians: f32) -> f32 {
-    (radians / std::f32::consts::TAU * TURN).rem_euclid(TURN)
+    (radians * UNITS_PER_RADIAN).rem_euclid(TURN)
 }
 
 /// An angle, or the difference of two, folded into minus half a turn to

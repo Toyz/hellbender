@@ -80,3 +80,39 @@ fn levels_with_chambers_keep_them_under_the_ground() {
     }
     assert!(with >= 8, "{with} levels have chambers");
 }
+
+/// `0x41c300` and `0x41c4d0` in a tunnel and on a building: underground the
+/// floor and ceiling are the chamber's; over a box the floor is its top, and
+/// under it the ceiling is its bottom.
+#[test]
+fn the_floor_and_ceiling_at_a_point() {
+    let Some(pod) = hb_pod::game_pod("GAME.POD") else { return };
+    let terrain = terrain(&pod, "hoth");
+    let grid = Grid::new(&terrain);
+    let middle = |c: i32| (c << 19) + (4 << 16);
+
+    let open = (0..128 * 128)
+        .map(|i| Cell::new(i % 128, i / 128))
+        .find(|&c| {
+            grid.has_chamber(c)
+                && grid.height_at_grid(Layer::ChamberCeiling, c.x, c.z) > grid.height_at_grid(Layer::ChamberFloor, c.x, c.z)
+                && !grid.has_box_b(c)
+        })
+        .expect("a tunnel with no hanging box");
+    let (x, z) = (middle(open.x), middle(open.z));
+    let floor = grid.height_at(Layer::ChamberFloor, x, z).unwrap();
+    let y = floor + (1 << 16);
+    assert_eq!(grid.floor_under(x, y, z), floor);
+    let roof = grid.height_at(Layer::ChamberCeiling, x, z).unwrap();
+    assert_eq!(grid.ceiling_over(x, y, z), roof, "the chamber's ceiling is overhead");
+
+    let building = (0..128 * 128)
+        .map(|i| Cell::new(i % 128, i / 128))
+        .find(|&c| grid.has_box_a(c) && grid.box_span(Layer::BoxA, c).unwrap().0 > (4 << 16))
+        .expect("a box standing clear of the ground");
+    let (bottom, top) = grid.box_span(Layer::BoxA, building).unwrap();
+    let (x, z) = (middle(building.x), middle(building.z));
+    assert_eq!(grid.floor_under(x, top + (1 << 16), z), top, "on its roof");
+    assert_eq!(grid.ceiling_over(x, bottom - (1 << 16), z), bottom, "under it");
+    assert_eq!(grid.ceiling_over(x, top + (1 << 16), z), hb_world::grid::NO_CEILING);
+}

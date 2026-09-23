@@ -33,8 +33,8 @@
 //! The engine's model has no strafe and no vertical thrust: the side and
 //! vertical velocities are only ever halved.
 
-/// One turn of the engine's circle.
-const TURN: f32 = 65536.0;
+use hb_formats::fixed::{circle, radians, TURN};
+
 /// `0x2492`, the input scale.
 const SEVENTH: f32 = 9362.0 / 65536.0;
 /// `0xbb80`: how much of the yaw input banks the ship.
@@ -109,7 +109,7 @@ fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
 impl Ship {
     /// A ship at a position, level, facing a heading in the engine's circle.
     pub fn new(position: [f32; 3], heading: f32) -> Ship {
-        let h = heading / TURN * std::f32::consts::TAU;
+        let h = radians(heading);
         let (s, c) = h.sin_cos();
         Ship {
             position,
@@ -132,7 +132,6 @@ impl Ship {
         let pitch = (-f[1]).clamp(-1.0, 1.0).asin();
         let heading = f[0].atan2(f[2]);
         let roll = self.right[1].atan2(self.up[1]);
-        let circle = |r: f32| (r / std::f32::consts::TAU * TURN).rem_euclid(TURN);
         [circle(pitch), circle(roll), circle(heading)]
     }
 
@@ -218,7 +217,7 @@ impl Ship {
 
         if self.auto_level {
             let [pitch, roll, _] = self.angles();
-            let s = (pitch / TURN * std::f32::consts::TAU).sin();
+            let s = radians(pitch).sin();
             let weight = 1.0 - s * s;
             // The roll as a signed 16-bit angle, in turns. Past a quarter turn
             // the engine subtracts half a turn without wrapping again

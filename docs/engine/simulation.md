@@ -2,7 +2,7 @@
 title: The simulation
 status: partial
 covers: HELLBEND.EXE logic phases, crates/hb-sim
-worklog: 26, 27, 28, 31, 32, 33, 34, 35, 37, 38, 40, 41
+worklog: 26, 27, 28, 31, 32, 33, 34, 35, 37, 38, 40, 41, 121
 ---
 
 # The simulation
@@ -251,13 +251,87 @@ units - 30 to 50 and 8 to 32 across the shipped types.
 What it adds up to is a strafing run: in at the player, two or three shots,
 past, out to the attack range at twice the player's speed, round, and in again.
 
-The steering itself, `0x4944c0`, is not read beyond its outline: it predicts
-the next position from the velocity and lifts the target above the ground by a
-clearance (`type+0x98`) when that would be underground, takes the target's
-direction as a heading (`atan2(dx, dz)`) and a pitch, negates it for mode 1,
-and integrates a rigid body in x87. `hb_sim::flyer` turns heading and pitch
-toward the target at the type's turn rate (65,536 is a turn a second) and flies
-along its nose.
+How it flies is [the steering](#the-steering). The routine asks it for a
+thrust factor of 1, or 2 when situation 4 has it chasing at twice the player's
+speed (`0x496c30`). In phase 200 with the player ahead of it but off its nose
+(situation 6) it asks for mode 3 (`0x496ce4`): it points at the player's lead
+point rather than at the player. Phase 900 is mode 3 at speed 0.
+
+## The steering
+
+`0x4944c0` is how everything that flies moves - the flyers, the mine layers,
+the hover craft, the transports - and every one of those routines calls it
+once a frame with a target, a speed, the type's turn rate (`+0x68`, 65,536 a
+turn a second), a thrust factor and a mode. It is a rigid body. The actor
+keeps a velocity in its own frame at `+0x15c`, `+0x160` and `+0x164` - right,
+up, forward - and roll, pitch and yaw rates at `+0x168`, `+0x16c` and `+0x170`.
+
+**Where to point.** The target's direction as a heading, `atan2(dx, dz)`, and
+a pitch, `-atan2(dy, flat)`: away from the target in mode 1 (`0x494853`
+negates the direction), at the player's lead point in modes 3 and 4. With the
+target more than a unit off the nose and the actor moving forward at a unit a
+second or more (`0x494921`) - and not in phase 2000 within eight units of it -
+it banks as well: the roll that puts the target overhead, `-atan2(across,
+|up|)` in its own frame, and the pitch and yaw rates are held to the turn rate
+split by that bank. Otherwise it wants to be level.
+
+**Turning** is a spring and a damper on each angle (`0x494ee7`):
+
+```
+pitch  4 x (wanted - pitch)          - 2.5 x pitch rate
+yaw    4 x (wanted - heading), short way round - 2.5 x yaw rate
+roll   5 x (wanted - roll),    short way round - 2.5 x roll rate
+```
+
+A rate already at the turn rate is not pushed further that way (`0x494f3d`).
+Kicks from outside at `+0x184`, `+0x188` and `+0x18c` are added and cleared.
+The rates step by the frame time, then the angles.
+
+**Thrust** is along the nose at 8 units a second squared (`0x49000000`) times
+the factor, backward in modes 2 and 4, where the speed is negated too. Once
+the forward speed reaches the speed asked for, the thrust becomes minus the
+forward speed (`0x49525b`): it settles on the speed, and asked for none it
+slows by a factor of e a second. The sideways and vertical speeds decay by a
+tenth a second (`0x4952b7`). A push from outside at `+0x178` is added and
+cleared.
+
+**Moving.** The velocity is turned into the world by the actor's matrix
+(`0x4953aa`), which `0x40b1c0` builds from the angles after every behaviour
+routine - so by last frame's angles - and added to the position. `+0x174` keeps
+the distance to the target, which the behaviour routines test next frame.
+
+**The ground.** Before any of that, all but classes 43, 44, 50, 59, 60 and 61
+look ahead (`0x494702`): if the target is below the floor under where this
+frame's motion would put it, plus the type's clearance, they aim at that
+height instead, and write it back into the caller's point. The motion it
+predicts with is a stack slot the routine only fills at its end (`0x4953b2`),
+so it is whatever the previous call left - usually another actor's. It then
+asks `0x4279b0` whether the way there meets a surface and moves the target's x
+and z to where it does. After moving, the height is held by class (`0x495528`):
+
+| classes | floor | ceiling |
+| --- | --- | --- |
+| 7, 38, 39, 53-58, 64 | the floor plus the clearance, and never below the clearance | the ceiling less the clearance |
+| 43-45, 59-61 | the floor plus the clearance, underground too | the same |
+| the rest | none | the same |
+
+Where the two cross, the floor is looked for again just under the ceiling; a
+height caught between them goes to the middle. The clearance is the type's
+`+0x98`, which `0x404d40` also copies over the radius at `+0x08` after the
+`.DEF` is read, so it is the radius.
+
+The floor is `0x41c300`: above the ground, the top of the cell's box of set A
+if the point is above the box's bottom, else the ground, else - where the
+ground is at zero - the chamber floor; below it, the top of the box of set B
+if above its bottom, else the chamber floor. A point exactly on a cell's low
+edge takes the higher top of the two cells. The ceiling is `0x41c4d0`: the
+bottom of the box over the point, or below the ground the chamber's ceiling,
+or 256 units (`[0x5b3668]`) with nothing overhead.
+
+**The lead point** (`0x4922a0`) is the player's position plus his velocity
+times the time a shot at the type's shot speed takes to reach him, allowing
+for how fast he is drawing away - his position alone for a type with no shot
+speed. Its heading and pitch go to the actor's `+0x60` and `+0x58`.
 
 ## The mine layers, class 55
 
@@ -325,7 +399,7 @@ Inside the tether:
 | 2006 | speed 0, steering mode 3, facing the player - on station | 200, when the player is inside the attack range |
 | 200 | chases, mode 0 | 2000 when it could not turn in time; 2002 inside the retreat range |
 | 2000 | flies away, mode 1 | 201 when more than 8 units off |
-| 2002 | stays on the player; inside the retreat range, mode 2 at no more than the player's own speed (`0x50cc50`) | 201 if dragged off the tether |
+| 2002 | stays on the player; inside the retreat range, mode 2 - backing off, facing him - at no less than the player's own speed (`0x4979fa`) | 201 if dragged off the tether |
 | 201 | flies home, mode 0, **at the distance it has to cover** (`0x49794e` passes that distance as the speed) | 2006 within 8 units of the post |
 
 The turn-in-time test in phase 200 is the fighters': `sqrt((R + r + 2)^2 -
@@ -333,10 +407,10 @@ r^2)` with `r` the turning radius. After it has moved it asks `0x492940`
 whether the player is in its own sights and fires through the same gun the
 turrets use.
 
-Steering modes 0 and 1 are the ones [the flyers](#the-flyers) use, toward and
-away. Modes 2 and 3 appear only here and what `0x4944c0` does differently
-with them has not been read; this port flies mode 2 as a capped approach and
-mode 3 as standing still.
+Modes 2 and 3 are [the steering's](#the-steering): mode 2 thrusts backward,
+so in 2002 it keeps its nose on the player while it backs away at least as
+fast as he closes; mode 3 turns it to face his lead point. The hover craft
+always asks for a thrust factor of 1.
 
 ## Time
 
@@ -729,7 +803,7 @@ missiles and the player's health and shield. What is its own:
 | Shots and missiles are points | The engine draws models by kind (`0x4769cf`). |
 | A group model is its first child | Only the SAM site uses one. The engine's frame advance is not read. |
 | Turrets and flyers only among the 65 classes shoot | The rest are not read. Classes 56, 59 and 60 borrow the class-53 routine. |
-| A flyer steers by turning heading and pitch at its turn rate | The engine's `0x4944c0` is an x87 rigid-body integrator not yet read. |
+| A flyer's look-ahead uses its own velocity, and does not ask whether the way there meets a surface | The engine's reads another call's stack; `0x4279b0`'s answer is not ported. |
 
 The fire button is the space bar, because `HELLBEND.INI` binds `fireKey=57`,
 which is the space bar's scan code - and 636 of the 638 key presses in the

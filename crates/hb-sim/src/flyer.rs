@@ -43,22 +43,20 @@
 //!
 //! What it drops goes into a pool of its own - see [`crate::mine::laid`].
 //!
-//! This port's own - the flying: the engine's steering, `0x4944c0`, is 1,250
-//! instructions of x87 rigid-body integration not yet read. What is known of
-//! it is used: the target's direction as a heading and a pitch, the -1 for
-//! mode 1, the turn rate at 2 pi / 65,536 radians a second a unit, and the
-//! ground check that lifts the target when the predicted position would be
-//! below the ground plus a clearance. Here a flyer turns its heading and
-//! pitch toward the target at the turn rate and flies along its nose; that it
-//! is aimed means the player is within its 30-degree cone.
+//! The flying itself is [`crate::steer`], `0x4944c0`, which every one of these
+//! calls once a frame with a target, a mode, a speed, the type's turn rate and
+//! a thrust factor: 1, or 2 for a fighter chasing at twice the player's speed
+//! (`0x496c30`). A fighter in phase 200 with the player ahead of it but off its
+//! nose faces the player's lead point (mode 3, `0x496ce4`).
 
 use crate::mine::laid::Field as Laid;
 use crate::mine::laid::AHEAD;
-use hb_formats::fixed::{circle, signed, TURN};
+use hb_formats::fixed::{circle, radians, signed, RADIANS_PER_UNIT, UNITS_PER_RADIAN};
 use hb_formats::mrgl::Model;
 use hb_formats::text::{EnemyDef, Placement};
 
 use crate::combat::{position_of, wrapped};
+use crate::steer::{self, Body, Mode, Order, Surfaces};
 use crate::turret::{Launch, Rng, Turret};
 
 const CONE: f32 = 0.523_598_8;
@@ -71,8 +69,11 @@ pub struct Target {
     pub right: [f32; 3],
     pub up: [f32; 3],
     pub forward: [f32; 3],
-    /// Forward speed, units a second.
+    /// Forward speed, units a second (`0x50cc50`).
     pub speed: f32,
+    /// Velocity in the world, units a second (`0x5b3a00`), for the lead
+    /// point.
+    pub velocity: [f32; 3],
     /// Whether the player is still flying. A mine layer will not lay one
     /// over a wreck (`0x49661e`).
     pub alive: bool,
@@ -80,11 +81,8 @@ pub struct Target {
 
 #[derive(Debug, Clone)]
 pub struct Flyer {
-    pub position: [f32; 3],
-    /// The engine's circle, as floats so small turns accumulate.
-    pub heading: f32,
-    pub pitch: f32,
-    pub roll: f32,
+    /// Its pose and motion, as the steering keeps them.
+    pub body: Body,
     pub phase: u32,
     /// Class 55 rather than 7 or 53: it lays mines, breaks at half the turn
     /// rate instead of an eighth, and does not turn for home on the retreat
@@ -100,10 +98,6 @@ pub struct Flyer {
 
 fn dot(a: [f32; 3], b: [f32; 3]) -> f32 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-
-fn radians(angle: f32) -> f32 {
-    angle / TURN * std::f32::consts::TAU
 }
 
 /// The engine's cone answer for a point seen in a frame: 1 in the 30-degree
@@ -138,10 +132,7 @@ pub fn axes(heading: f32, pitch: f32, roll: f32) -> [[f32; 3]; 3] {
 impl Flyer {
     pub fn new(p: &Placement) -> Flyer {
         Flyer {
-            position: position_of(p),
-            heading: p.heading as f32,
-            pitch: 0.0,
-            roll: 0.0,
+            body: Body::new(position_of(p), p.heading as f32),
             phase: 0,
             break_point: [0.0; 3],
             closest: 0.0,
@@ -157,12 +148,7 @@ impl Flyer {
         Flyer { lays: true, ..Flyer::new(p) }
     }
 
-    fn forward(&self) -> [f32; 3] {
-        axes(self.heading, self.pitch, 0.0)[2]
-    }
-
-    /// One frame of `0x4967b0`. `ground` answers the height of the solid
-    /// surface at an x and z.
+    /// One frame of `0x4967b0`.
     #[allow(clippy::too_many_arguments)]
     pub fn step(
         &mut self,
@@ -170,23 +156,25 @@ impl Flyer {
         mesh: Option<&Model>,
         player: &Target,
         dt: f32,
-        ground: impl Fn(f32, f32) -> f32,
+        world: &impl Surfaces,
         rng: &mut Rng,
     ) -> Option<Launch> {
         if self.phase == 0 {
             self.phase = 200;
             return None;
         }
+        let at = self.body.position;
         let d = [
-            wrapped(player.position[0] - self.position[0]),
-            player.position[1] - self.position[1],
-            wrapped(player.position[2] - self.position[2]),
+            wrapped(player.position[0] - at[0]),
+            player.position[1] - at[1],
+            wrapped(player.position[2] - at[2]),
         ];
         let distance = dot(d, d).sqrt();
         let attack = def_range(def, 0);
         let retreat = def_range(def, 1);
         let mut speed = def.move_rate as f32 / 65536.0;
-        let mut turn = def.turn_rate as f32 / 65536.0 * std::f32::consts::TAU;
+        let mut turn = def.turn_rate as f32 * RADIANS_PER_UNIT;
+        let mut thrust = 1.0;
         let radius = def.radius() as f32 / 65536.0;
 
         // Phase 200 turns to an attack pass once close enough that it could
@@ -202,12 +190,12 @@ impl Flyer {
         // The situation.
         let [pr, pu, pf] = [player.right, player.up, player.forward];
         let me_in_his_sights = cone([dot(d, pr) * -1.0, dot(d, pu) * -1.0, dot(d, pf) * -1.0]);
-        let [mr, mu, mf] = axes(self.heading, self.pitch, self.roll);
+        let [mr, mu, mf] = self.body.axes();
         let him_in_mine = cone([dot(d, mr), dot(d, mu), dot(d, mf)]);
         let player_heading = circle(pf[0].atan2(pf[2]));
         let player_pitch = circle((-pf[1]).clamp(-1.0, 1.0).asin());
-        let aligned = radians(signed(player_heading - self.heading)).abs() < CONE
-            && radians(signed(player_pitch - self.pitch)).abs() < CONE;
+        let aligned = radians(signed(player_heading - self.body.heading)).abs() < CONE
+            && radians(signed(player_pitch - self.body.pitch)).abs() < CONE;
         let situation = if me_in_his_sights == 1 && him_in_mine == 1 {
             1
         } else if aligned && him_in_mine == 1 {
@@ -227,11 +215,18 @@ impl Flyer {
         match situation {
             1 if distance < 32.0 => self.phase = 201,
             4 if self.phase != 2012 => {
-                speed = speed.max(twice_player);
+                if twice_player > speed {
+                    speed = twice_player;
+                    // The fighter's own: it pushes twice as hard to get there.
+                    if !self.lays {
+                        thrust = 2.0;
+                    }
+                }
                 // Level within 30 degrees (`0x4ef598`, 5,461 in the circle).
-                self.phase = if signed(self.roll).abs() < 5461.333 {
+                let roll = signed(self.body.roll);
+                self.phase = if roll.abs() < 5461.333 {
                     2011
-                } else if signed(self.roll) > 0.0 {
+                } else if roll > 0.0 {
                     2008
                 } else {
                     2009
@@ -246,9 +241,12 @@ impl Flyer {
         }
 
         let mut target = player.position;
-        let mut away = false;
+        let mut mode = Mode::Toward;
         match self.phase {
             200 => {
+                if situation == 6 && !self.lays {
+                    mode = Mode::Facing;
+                }
                 // The layer has no such test: it goes round again rather
                 // than turning for home (`0x496482` tests nothing else).
                 if !self.lays && retreat > distance {
@@ -260,15 +258,18 @@ impl Flyer {
                 // The layer breaks at half the turn rate (`0x49650c`), the
                 // fighters at an eighth.
                 turn /= if self.lays { 2.0 } else { 8.0 };
-                away = true;
+                mode = Mode::Away;
                 if distance > attack {
                     self.phase = 200;
                 }
             }
-            900 => speed = 0.0,
+            900 => {
+                speed = 0.0;
+                mode = Mode::Facing;
+            }
             2000 => {
                 speed = speed.max(twice_player);
-                away = true;
+                mode = Mode::Away;
                 if distance > attack {
                     self.phase = 200;
                 }
@@ -288,11 +289,7 @@ impl Flyer {
             // and leave a mine there (`0x49658f`).
             2002 => {
                 target = std::array::from_fn(|k| player.position[k] + player.forward[k] * AHEAD);
-                let t = [
-                    wrapped(target[0] - self.position[0]),
-                    target[1] - self.position[1],
-                    wrapped(target[2] - self.position[2]),
-                ];
+                let t = [wrapped(target[0] - at[0]), target[1] - at[1], wrapped(target[2] - at[2])];
                 let to_target = dot(t, t).sqrt();
                 if self.closest > to_target {
                     self.closest = to_target;
@@ -300,10 +297,11 @@ impl Flyer {
                     // Stopped closing: drop it here and break away.
                     self.closest = 2048.0;
                     self.phase = 201;
-                    if player.alive && Laid::clear_of(self.position, player.position) {
-                        self.fly(def, target, false, speed, turn, dt, &ground);
+                    if player.alive && Laid::clear_of(at, player.position) {
+                        let breaking = self.phase == 2000;
+                        fly(&mut self.body, breaking, def, player, target, mode, speed, turn, thrust, dt, world);
                         return Some(Launch::Mine {
-                            at: self.position,
+                            at: self.body.position,
                             radius: retreat,
                             damage: def.shot_damage as f32 / 65536.0,
                         });
@@ -312,11 +310,7 @@ impl Flyer {
             }
             2012 => {
                 target = self.break_point;
-                let t = [
-                    wrapped(target[0] - self.position[0]),
-                    target[1] - self.position[1],
-                    wrapped(target[2] - self.position[2]),
-                ];
+                let t = [wrapped(target[0] - at[0]), target[1] - at[1], wrapped(target[2] - at[2])];
                 let to_target = dot(t, t).sqrt();
                 if self.closest > to_target {
                     self.closest = to_target;
@@ -327,73 +321,52 @@ impl Flyer {
             _ => {}
         }
 
-        self.fly(def, target, away, speed, turn, dt, &ground);
+        let breaking = self.phase == 2000;
+        fly(&mut self.body, breaking, def, player, target, mode, speed, turn, thrust, dt, world);
 
         // Fire within the attack range when aimed (`0x496f68`).
         if attack > distance && him_in_mine == 1 {
-            return self.gun.trigger(def, mesh, self.position, player.position, dt, 2.0 * speed, rng);
+            let at = self.body.position;
+            return self.gun.trigger(def, mesh, at, player.position, dt, 2.0 * speed, rng);
         }
         None
     }
+}
 
-    /// Steer toward a point and move along the nose. Public so the hover
-    /// craft ([`Hover`]) can use the same flying as the fighters.
-    pub fn fly(
-        &mut self,
-        def: &EnemyDef,
-        target: [f32; 3],
-        away: bool,
-        speed: f32,
-        turn: f32,
-        dt: f32,
-        ground: &impl Fn(f32, f32) -> f32,
+/// One frame of the steering toward `target`: `turn` in radians a second,
+/// `speed` in units a second. `breaking` is whether the actor is in phase
+/// 2000. The lead point for modes 3 and 4 is worked out here from the
+/// type's shot speed (`0x4922a0`).
+#[allow(clippy::too_many_arguments)]
+pub fn fly(
+    body: &mut Body,
+    breaking: bool,
+    def: &EnemyDef,
+    player: &Target,
+    target: [f32; 3],
+    mode: Mode,
+    speed: f32,
+    turn: f32,
+    thrust: f32,
+    dt: f32,
+    world: &impl Surfaces,
     ) {
-        let clearance = def.radius() as f32 / 65536.0 + 2.0;
-        let mut t = [
-            wrapped(target[0] - self.position[0]),
-            target[1] - self.position[1],
-            wrapped(target[2] - self.position[2]),
-        ];
-        // The ground check: if the next position would be below the ground
-        // plus a clearance, aim at that height instead.
-        let f = self.forward();
-        let ahead = [self.position[0] + f[0] * speed * dt, self.position[1] + f[1] * speed * dt, self.position[2] + f[2] * speed * dt];
-        let floor = ground(ahead[0], ahead[2]) + clearance;
-        if ahead[1] < floor {
-            t[1] = floor - self.position[1];
-        }
-        if away {
-            t = [-t[0], -t[1], -t[2]];
-            if ahead[1] < floor {
-                t[1] = floor - self.position[1];
-            }
-        }
-        let horizontal = (t[0] * t[0] + t[2] * t[2]).sqrt();
-        let want_heading = circle(t[0].atan2(t[2]));
-        let want_pitch = circle(-(t[1].atan2(horizontal)));
-        let step = circle(turn * dt).min(32768.0);
-        let heading_error = signed(want_heading - self.heading);
-        let pitch_error = signed(want_pitch - self.pitch);
-        self.heading = (self.heading + heading_error.clamp(-step, step)).rem_euclid(TURN);
-        let pitch = signed(self.pitch + pitch_error.clamp(-step, step)).clamp(-14000.0, 14000.0);
-        self.pitch = pitch.rem_euclid(TURN);
-        // Bank into the turn: the port's own, for the look of it.
-        let bank = (-heading_error * 2.0).clamp(-10923.0, 10923.0);
-        let roll = signed(self.roll);
-        self.roll = (roll + (bank - roll) * (4.0 * dt).min(1.0)).rem_euclid(TURN);
-
-        let f = self.forward();
-        for k in 0..3 {
-            self.position[k] += f[k] * speed * dt;
-        }
-        let floor = ground(self.position[0], self.position[2]) + clearance * 0.5;
-        if self.position[1] < floor {
-            self.position[1] = floor;
-        }
-        let wrap = |v: f32| (v + 512.0).rem_euclid(1024.0) - 512.0;
-        self.position[0] = wrap(self.position[0]);
-        self.position[2] = wrap(self.position[2]);
-    }
+    let aim = matches!(mode, Mode::Facing | Mode::BackingFacing).then(|| {
+        let shot = def.shot_speed() as f32 / 65536.0;
+        steer::lead(body.position, player.position, player.velocity, shot, dt)
+    });
+    let order = Order {
+        target,
+        mode,
+        speed,
+        turn: turn * UNITS_PER_RADIAN,
+        thrust,
+        class: def.class() as i32,
+        clearance: def.radius() as f32 / 65536.0,
+        breaking,
+        aim,
+    };
+    body.steer(&order, world, dt);
 }
 
 /// `!NewAtakRet`'s first two values - attack and retreat range, whole units
@@ -420,7 +393,8 @@ fn def_range(def: &EnemyDef, which: usize) -> f32 {
 /// - **2000** flies away (mode 1) until it is more than eight units off, then
 ///   201.
 /// - **2002** stays on the player, and inside the retreat range switches to
-///   steering mode 2 at no more than the player's own speed (`0x50cc50`).
+///   steering mode 2 - backing off - at no less than the player's own speed
+///   (`0x4979fa`).
 /// - **201** flies home (mode 0). Within eight units of the post it goes back
 ///   to 2006.
 ///
@@ -432,8 +406,9 @@ fn def_range(def: &EnemyDef, which: usize) -> f32 {
 /// same test and the same gun as the fighters.
 #[derive(Debug, Clone)]
 pub struct Hover {
-    /// The flying, shared with the fighters.
-    pub body: Flyer,
+    /// Its pose and motion, and its gun, the fighters'.
+    pub body: Body,
+    pub gun: Turret,
     /// Where it was placed, which it will not stray far from.
     pub post: [f32; 3],
     pub phase: u32,
@@ -451,8 +426,8 @@ pub const OFF: f32 = 8.0;
 
 impl Hover {
     pub fn new(p: &Placement) -> Hover {
-        let body = Flyer::new(p);
-        Hover { post: body.position, body, phase: 2006, was: 2006 }
+        let body = Body::new(position_of(p), p.heading as f32);
+        Hover { post: body.position, body, gun: Turret::new(p), phase: 2006, was: 2006 }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -462,7 +437,7 @@ impl Hover {
         mesh: Option<&Model>,
         player: &Target,
         dt: f32,
-        ground: impl Fn(f32, f32) -> f32,
+        world: &impl Surfaces,
         rng: &mut Rng,
     ) -> Option<Launch> {
         let d = [
@@ -474,7 +449,7 @@ impl Hover {
         let attack = def_range(def, 0);
         let retreat = def_range(def, 1);
         let mut speed = def.move_rate as f32 / 65536.0;
-        let turn = def.turn_rate as f32 / 65536.0 * std::f32::consts::TAU;
+        let turn = def.turn_rate as f32 * RADIANS_PER_UNIT;
         let radius = def.radius() as f32 / 65536.0;
 
         // How far it has been drawn off its post, flat (`0x49778c`).
@@ -508,7 +483,7 @@ impl Hover {
         };
 
         let mut target = player.position;
-        let mut away = false;
+        let mut mode = Mode::Toward;
         match self.phase {
             200 | 2002 if !tethered => {
                 if behind() {
@@ -522,13 +497,13 @@ impl Hover {
             }
             2002 => {
                 if !arrived && retreat > distance {
-                    // Steering mode 2, at no more than the player's own
-                    // speed. What mode 2 does differently is not read.
-                    speed = speed.min(player.speed.max(0.0));
+                    // Backing off, at least as fast as he comes.
+                    mode = Mode::Backing;
+                    speed = speed.max(player.speed);
                 }
             }
             2000 => {
-                away = true;
+                mode = Mode::Away;
                 if !arrived && distance > OFF {
                     self.phase = 201;
                 }
@@ -547,18 +522,20 @@ impl Hover {
             // On station: still, facing him, until he is close enough.
             _ => {
                 speed = 0.0;
+                mode = Mode::Facing;
                 if !arrived && distance < attack {
                     self.phase = 200;
                 }
             }
         }
 
-        self.body.fly(def, target, away, speed, turn, dt, &ground);
+        let breaking = self.phase == 2000;
+        fly(&mut self.body, breaking, def, player, target, mode, speed, turn, 1.0, dt, world);
 
         // And then it shoots, if he is in front of it (`0x497a7b`).
-        let [mr, mu, mf] = axes(self.body.heading, self.body.pitch, self.body.roll);
+        let [mr, mu, mf] = self.body.axes();
         if cone([dot(d, mr), dot(d, mu), dot(d, mf)]) == 1 {
-            return self.body.gun.trigger(
+            return self.gun.trigger(
                 def,
                 mesh,
                 self.body.position,

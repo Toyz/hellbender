@@ -6,6 +6,7 @@ use hb_formats::text::Placement;
 use hb_render::Level;
 use hb_sim::combat::{self, Health, HitVolume, Pilot, Shot, Side, Stop};
 use hb_sim::flyer::{Flyer, Hover, Target};
+use hb_sim::steer::{Body, Surfaces};
 use hb_sim::explosion::Blasts;
 use hb_sim::powerup::{self, Field, Stores};
 use hb_sim::weapons::{Guns, Pose, Volley};
@@ -161,7 +162,7 @@ impl Battle {
             .chain(drivers.iter_mut())
             .map(|(_, t)| t)
             .chain(flyers.iter_mut().map(|(_, f)| &mut f.gun))
-            .chain(hovers.iter_mut().map(|(_, h)| &mut h.body.gun))
+            .chain(hovers.iter_mut().map(|(_, h)| &mut h.gun))
         {
             gun.waited = hb_sim::turret::first_wait(&mut rng);
         }
@@ -214,6 +215,7 @@ impl Battle {
         dt: f32,
         solid: &impl Fn([f32; 3]) -> bool,
         ground: &impl Fn(f32, f32) -> f32,
+        world: &impl Surfaces,
     ) -> Vec<Noise> {
         let mut noises = Vec::new();
         self.clock += dt;
@@ -300,15 +302,16 @@ impl Battle {
                 up: axes[1],
                 forward: axes[2],
                 speed,
+                velocity,
                 alive: self.pilot.alive(),
             };
             for (i, flyer) in &mut self.flyers {
-                if self.health[*i].destroyed || !combat::in_range(player, flyer.position) {
+                if self.health[*i].destroyed || !combat::in_range(player, flyer.body.position) {
                     continue;
                 }
                 let def = &level.kinds[level.placements[*i].kind];
                 let mesh = level.meshes.get(level.placements[*i].kind).and_then(Option::as_ref);
-                match flyer.step(def, mesh, &seen, dt, ground, &mut self.rng) {
+                match flyer.step(def, mesh, &seen, dt, world, &mut self.rng) {
                     Some(Launch::Shot(s)) => self.shots.push(Flying::new(s)),
                     Some(Launch::Missile(m)) => self.missiles.push(m),
                     Some(Launch::Mine { at, radius, damage }) => {
@@ -316,13 +319,7 @@ impl Battle {
                     }
                     None => {}
                 }
-                let placed = &mut live[*i];
-                placed.x = hb_formats::fixed::from_units(flyer.position[0]);
-                placed.y = hb_formats::fixed::from_units(flyer.position[1]);
-                placed.z = hb_formats::fixed::from_units(flyer.position[2]);
-                placed.heading = flyer.heading as u16;
-                placed.pitch = flyer.pitch as i32;
-                placed.roll = flyer.roll as i32;
+                place(&mut live[*i], &flyer.body);
             }
             // And the hover craft, which sit on their posts until he comes.
             for (i, hover) in &mut self.hovers {
@@ -331,7 +328,7 @@ impl Battle {
                 }
                 let def = &level.kinds[level.placements[*i].kind];
                 let mesh = level.meshes.get(level.placements[*i].kind).and_then(Option::as_ref);
-                match hover.step(def, mesh, &seen, dt, ground, &mut self.rng) {
+                match hover.step(def, mesh, &seen, dt, world, &mut self.rng) {
                     Some(Launch::Shot(s)) => self.shots.push(Flying::new(s)),
                     Some(Launch::Missile(m)) => self.missiles.push(m),
                     Some(Launch::Mine { at, radius, damage }) => {
@@ -339,13 +336,7 @@ impl Battle {
                     }
                     None => {}
                 }
-                let placed = &mut live[*i];
-                placed.x = hb_formats::fixed::from_units(hover.body.position[0]);
-                placed.y = hb_formats::fixed::from_units(hover.body.position[1]);
-                placed.z = hb_formats::fixed::from_units(hover.body.position[2]);
-                placed.heading = hover.body.heading as u16;
-                placed.pitch = hover.body.pitch as i32;
-                placed.roll = hover.body.roll as i32;
+                place(&mut live[*i], &hover.body);
             }
         }
 
@@ -659,4 +650,13 @@ impl hb_sim::mission::World for Standing<'_> {
             }
         }
     }
+}
+
+/// Where a flying actor is, for drawing and for shots to find it.
+fn place(placed: &mut Placement, body: &Body) {
+    let [x, y, z] = body.position.map(hb_formats::fixed::from_units);
+    (placed.x, placed.y, placed.z) = (x, y, z);
+    placed.heading = body.heading as u16;
+    placed.pitch = body.pitch as i32;
+    placed.roll = body.roll as i32;
 }

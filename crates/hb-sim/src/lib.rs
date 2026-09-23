@@ -20,6 +20,7 @@ pub mod phrases;
 pub mod powerup;
 pub mod quake;
 pub mod smoke;
+pub mod steer;
 pub mod turret;
 pub mod weather;
 pub mod weapons;

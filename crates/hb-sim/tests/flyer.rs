@@ -3,6 +3,7 @@
 use hb_formats::text::{EnemyDef, Placement, SecondWeapon};
 use hb_sim::combat::{step_shot, Pilot, Stop};
 use hb_sim::flyer::{Flyer, Target};
+use hb_sim::steer::Flat;
 use hb_sim::turret::{Launch, Rng};
 
 fn hornet() -> EnemyDef {
@@ -28,6 +29,7 @@ fn player_at(position: [f32; 3]) -> Target {
         up: [0.0, 1.0, 0.0],
         forward: [0.0, 0.0, 1.0],
         speed: 0.0,
+        velocity: [0.0; 3],
         alive: true,
     }
 }
@@ -42,7 +44,7 @@ fn a_flyer_makes_passes_and_shoots_on_the_way_in() {
     let (mut phases, mut shots, mut closest, mut pilot) = (Vec::new(), Vec::new(), f32::MAX, Pilot::default());
     let dt = 1.0 / 30.0;
     for _ in 0..(40.0 / dt) as usize {
-        if let Some(Launch::Shot(s)) = flyer.step(&def, None, &player, dt, |_, _| 0.0, &mut rng) {
+        if let Some(Launch::Shot(s)) = flyer.step(&def, None, &player, dt, &Flat(0.0), &mut rng) {
             shots.push(s);
         }
         shots.retain_mut(|s| match step_shot(s, dt, &[], &[], |_| false, player.position, |_| false) {
@@ -56,9 +58,9 @@ fn a_flyer_makes_passes_and_shoots_on_the_way_in() {
         if phases.last() != Some(&flyer.phase) {
             phases.push(flyer.phase);
         }
-        let d = (0..3).map(|k| (flyer.position[k] - player.position[k]).powi(2)).sum::<f32>().sqrt();
+        let d = (0..3).map(|k| (flyer.body.position[k] - player.position[k]).powi(2)).sum::<f32>().sqrt();
         closest = closest.min(d);
-        assert!(flyer.position[1] > 0.0, "flew into the ground");
+        assert!(flyer.body.position[1] > 0.0, "flew into the ground");
     }
     // In, a pass, out, and round again - more than once in 40 seconds.
     let passes = phases.windows(2).filter(|w| w[0] == 200 && (w[1] == 2000 || w[1] == 201)).count();
@@ -77,8 +79,8 @@ fn it_breaks_away_when_the_player_is_on_its_tail() {
     player.speed = 16.0;
     let mut rng = Rng::new(1);
     let dt = 1.0 / 30.0;
-    flyer.step(&def, None, &player, dt, |_, _| 0.0, &mut rng);
-    flyer.step(&def, None, &player, dt, |_, _| 0.0, &mut rng);
+    flyer.step(&def, None, &player, dt, &Flat(0.0), &mut rng);
+    flyer.step(&def, None, &player, dt, &Flat(0.0), &mut rng);
     // Level, so it breaks upward: 2011 sets a point above the player and
     // flies to it.
     assert_eq!(flyer.phase, 2012, "phase {}", flyer.phase);
@@ -102,7 +104,7 @@ fn a_mine_layer_drops_one_in_front_of_the_player() {
     // and off his nose.
     let player = player_at([6.0, 0.0, 0.0]);
     let mut rng = Rng::new(7);
-    let ground = |_: f32, _: f32| -100.0;
+    let ground = &Flat(-100.0);
 
     let mut laid = None;
     for _ in 0..600 {
@@ -138,7 +140,7 @@ fn a_fighter_lays_nothing() {
     let mut rng = Rng::new(7);
     for _ in 0..600 {
         if let Some(Launch::Mine { .. }) =
-            flyer.step(&def, None, &player, 1.0 / 30.0, |_, _| -100.0, &mut rng)
+            flyer.step(&def, None, &player, 1.0 / 30.0, &Flat(-100.0), &mut rng)
         {
             panic!("a class 53 laid a mine");
         }
@@ -159,7 +161,7 @@ fn a_hover_craft_holds_its_post_and_comes_back_to_it() {
     let place = Placement { kind: 0, hit_points: 65536, x: 0, y: 0, z: 0, heading: 0, pitch: 0, roll: 0 };
     let mut hover = Hover::new(&place);
     let mut rng = Rng::new(3);
-    let ground = |_: f32, _: f32| -100.0;
+    let ground = &Flat(-100.0);
     let post = hover.body.position;
 
     // Well outside the attack range of 42: it stays put.
@@ -206,6 +208,6 @@ fn a_hover_craft_off_its_tether_turns_for_home() {
     let mut player = player_at([0.0, 0.0, 340.0]);
     player.forward = [0.0, 0.0, 1.0];
     let mut rng = Rng::new(3);
-    hover.step(&def, None, &player, 1.0 / 30.0, |_, _| -100.0, &mut rng);
+    hover.step(&def, None, &player, 1.0 / 30.0, &Flat(-100.0), &mut rng);
     assert_eq!(hover.phase, 201, "it should be heading home");
 }

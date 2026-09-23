@@ -1052,9 +1052,9 @@ fn main() -> Result<(), String> {
         let ground = |x: f32, z: f32| grid.solid_top(x, z);
         let axes = [flight.ship.right, flight.ship.up, flight.ship.forward];
         let noises = if demo.is_none() {
-            battle.step(&level, &mut live, eye, velocity, Some((&axes, flight.ship.speed())), dt, &solid, &ground)
+            battle.step(&level, &mut live, eye, velocity, Some((&axes, flight.ship.speed())), dt, &solid, &ground, &grid)
         } else {
-            battle.step(&level, &mut live, [0.0, 1.0e6, 0.0], [0.0; 3], None, dt, &|_| false, &ground)
+            battle.step(&level, &mut live, [0.0, 1.0e6, 0.0], [0.0; 3], None, dt, &|_| false, &ground, &grid)
         };
         // The afterburner: a kick and then a held engine note for as long as
         // it burns (`0x47d6a3` plays `blast7.wav`, then `engine4.wav` with
