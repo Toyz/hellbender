@@ -7,7 +7,7 @@ One file per entry under
 
 Code says what; the worklog says *how we found out* and *why it is that way*.
 
-123 entries: audio 7, build 2, content 10, decomp 81, engine 26, flight 7, format 40, net 1, port 99, render 36, test 6, tooling 6, ui 12, video 6, world 12.
+124 entries: audio 7, build 2, content 10, decomp 82, engine 26, flight 7, format 40, net 1, port 100, render 36, test 6, tooling 6, ui 12, video 6, world 12.
 
 | # | Entry | Date | Area |
 | ---: | --- | --- | --- |
@@ -134,3 +134,4 @@ Code says what; the worklog says *how we found out* and *why it is that way*.
 | 121 | [The steering is a rigid body with a spring on every angle](worklog/0121-the-steering-is-a-rigid-body-with-a-spring-on-every-angle.md) | 2026-09-22 | decomp, port |
 | 122 | [The transports, and the one that loses you FLOAT](worklog/0122-the-transports-and-the-one-that-loses-you-float.md) | 2026-09-22 | decomp, port |
 | 123 | [The demo plays back as the engine plays it](worklog/0123-the-demo-plays-back-as-the-engine-plays-it.md) | 2026-09-22 | decomp, port |
+| 124 | [What a demo presses, and the hand it shows](worklog/0124-what-a-demo-presses-and-the-hand-it-shows.md) | 2026-09-22 | decomp, port |

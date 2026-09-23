@@ -861,11 +861,26 @@ fn main() -> Result<(), String> {
         } else if demo.is_some() {
             replay = true;
         }
+        // The game's keys this frame, as the engine's key array holds them
+        // (`0x5b36c0`), which everything that reads a key reads. In a demo
+        // `0x44d180` clears it and writes only the recording: the trigger
+        // from the pose, and the key presses.
         let replayed: Vec<Key> =
             recorded.iter().flat_map(|f| f.keys.iter().filter_map(|&code| keys::key_of(code as u8))).collect();
         let pressed = |key: Option<Key>| {
-            key.is_some_and(|k| window.is_key_pressed(k, minifb::KeyRepeat::No) || replayed.contains(&k))
+            key.is_some_and(|k| match demo {
+                Some(_) => replayed.contains(&k),
+                None => window.is_key_pressed(k, minifb::KeyRepeat::No),
+            })
         };
+        let held = |key: Option<Key>, button: usize| match demo {
+            Some(_) => key.is_some_and(|k| replayed.contains(&k)),
+            None => {
+                key.is_some_and(|k| window.is_key_down(k)) || joystick.as_ref().is_some_and(|s| s.button(button))
+            }
+        };
+        let fire_held = held(binds.fire, stick::FIRE) || recorded.as_ref().is_some_and(|f| f.fire);
+        let weapon_held = held(binds.weapon, stick::WEAPON);
         if window.is_key_pressed(binds.hud, minifb::KeyRepeat::No) {
             show_hud = !show_hud && hud_font.is_some();
         }
@@ -990,10 +1005,7 @@ fn main() -> Result<(), String> {
                 candidates[i].lockable(selected)
             });
             let burn = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
-            let firing = binds.fire.is_some_and(|k| window.is_key_down(k))
-                || joystick.as_ref().is_some_and(|s| s.button(stick::FIRE))
-                || recorded.as_ref().is_some_and(|f| f.fire);
-            let (volleys, mut voices) = battle.trigger(firing, burn, dt, &pose);
+            let (volleys, mut voices) = battle.trigger(fire_held, burn, dt, &pose);
             for (key, weapon) in binds.weapons.iter().zip(keys::WEAPON_ROWS) {
                 if pressed(*key) {
                     voices.extend(battle.guns.select(weapon, &battle.stores));
@@ -1722,15 +1734,11 @@ fn main() -> Result<(), String> {
                 // which is what the engine hands the chooser after dividing
                 // its `0x2492` scale back out.
                 let [up, down, left, right, ..] = flight.ship.keys;
-                let held = |k: Option<minifb::Key>| k.is_some_and(|k| window.is_key_down(k));
-                let set = if held(binds.weapon)
-                    || joystick.as_ref().is_some_and(|s| s.button(stick::WEAPON))
-                {
-                    hb_render::cockpit::WEAPON
-                } else if held(binds.fire)
-                    || joystick.as_ref().is_some_and(|s| s.button(stick::FIRE))
-                {
+                // The trigger before the weapon key (`0x41fe27`).
+                let set = if fire_held {
                     hb_render::cockpit::FIRE
+                } else if weapon_held {
+                    hb_render::cockpit::WEAPON
                 } else {
                     hb_render::cockpit::REST
                 };

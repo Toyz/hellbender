@@ -57,10 +57,20 @@ row    = y < -0x40 ? 0 : y > 0x40 ? 2 : 1
 index  = row * 3 + column
 ```
 
-Then the set: the weapon key held (or its joystick button) picks `ht`, the fire
-key held picks `hn`, and neither picks `hp`. The keys are `weaponKey` and
-`fireKey` from `[Control]`, read through the keyboard state array at
-`0x5b36c0`.
+Then the set: the fire key held (or its joystick button) picks `hn`, else the
+weapon key held picks `ht`, else `hp` - the trigger is tested first
+(`0x41fe27`). The keys are `fireKey` and `weaponKey` from `[Control]`, read
+through the keyboard state array at `0x5b36c0`.
+
+The chooser is called from the player's own update (`0x463aa0`), which runs
+during a recorded demo as in play. A demo's player clears that key array
+every frame and writes only the recording into it - the trigger and the
+recorded key presses ([`.DMO`](../formats/demo.md)) - and the recording has
+no stick in it, only the ship's pose. So in a demo the stick's ramps fall to
+nothing and the hand stays centred, taking the firing hand whenever the
+recorded trigger is held. With a joystick configured (`0x512578` above 1)
+the ramps come from the device instead (`0x45bf90`), so a stick held during
+the attract mode would move it.
 
 `0x420ace` draws it, at x 180 and with its bottom on the bottom of the frame -
 370 in the 640x480 layout - but only when the view is ahead (`0x420ab6`) and
