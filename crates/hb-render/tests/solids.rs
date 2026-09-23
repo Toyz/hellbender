@@ -269,3 +269,47 @@ fn a_lamp_lights_what_is_under_the_ground() {
         assert!(differ > 0);
     }
 }
+
+/// The lamps light the tunnel itself: each floor and ceiling corner near one
+/// takes its light on top of its shade.
+#[test]
+fn the_lamps_light_the_tunnel_around_them() {
+    use hb_formats::terrain::Layer;
+    let Some(mut level) = hb_render::Level::from_disc("hoth") else { return };
+    let Some(lamp) = level
+        .lamps
+        .lamps
+        .iter()
+        .find(|l| l.face.layer == Layer::ChamberCeiling && l.state == hb_sim::lights::State::Lit)
+        .cloned()
+    else {
+        return;
+    };
+    let (lights, _) = level.lamps.step(1.0 / 30.0, lamp.face.cell);
+    let grid = hb_world::Grid::new(&level.terrain);
+    let (cx, cz) = (lamp.face.cell.0 as i32, lamp.face.cell.1 as i32);
+    let floor = grid.height_at_grid(Layer::ChamberFloor, cx, cz).unwrap();
+    let ceiling = grid.height_at_grid(Layer::ChamberCeiling, cx, cz).unwrap();
+    let (x, z) = ((cx << 19) + (4 << 16), (cz << 19) + (4 << 16));
+    let frame = |lights: &[hb_sim::lights::Light]| {
+        let mut target = hb_render::Target::new(320, 200);
+        target.clear(0);
+        let mut camera =
+            hb_render::Camera::looking_at(x, (floor + ceiling) / 2, z - (12 << 16), hb_formats::Angle(0));
+        camera.pitch = hb_formats::Angle(0);
+        let mut scene = level.scene();
+        scene.placements = &[];
+        scene.lights = lights;
+        hb_render::draw_world(&mut target, &scene, &camera);
+        target.colour
+    };
+    let (dark, lit) = (frame(&[]), frame(&lights));
+    let differ = dark.iter().zip(&lit).filter(|(a, b)| a != b).count();
+    for (name, frame) in [("/tmp/tunnel_off.png", &dark), ("/tmp/tunnel_on.png", &lit)] {
+        let rgb: Vec<u8> = frame.iter().flat_map(|&i| level.palette.rgb(i)).collect();
+        std::fs::write(name, hb_formats::png::rgb(320, 200, &rgb)).unwrap();
+    }
+    println!("{} lights; {differ} pixels change", lights.len());
+    let _ = &mut level;
+    assert!(differ > 5_000, "{differ}");
+}

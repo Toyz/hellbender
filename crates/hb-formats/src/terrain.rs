@@ -110,6 +110,19 @@ impl BoxFace {
             BoxFace::Bottom => [(0, 0, false), (1, 0, false), (1, 1, false), (0, 1, false)],
         }
     }
+
+    /// The way the face looks, which the box draw hands to `0x48a6a0` to
+    /// light it by the sun (`0x41655a` and the five calls like it).
+    pub fn normal(self) -> [i32; 3] {
+        match self {
+            BoxFace::NegZ => [0, 0, -1],
+            BoxFace::PosZ => [0, 0, 1],
+            BoxFace::PosX => [1, 0, 0],
+            BoxFace::NegX => [-1, 0, 0],
+            BoxFace::Top => [0, 1, 0],
+            BoxFace::Bottom => [0, -1, 0],
+        }
+    }
 }
 /// Two per chamber: floor and ceiling.
 pub const CHAMBER_TEXTURES: usize = 2;
@@ -325,7 +338,8 @@ pub struct Shading {
     pub ground: Vec<[u8; 2]>,
     /// One per cell.
     pub box_a: Vec<u8>,
-    /// Three per cell.
+    /// Three per cell: the chamber floor's intensity at the cell's origin,
+    /// the ceiling's, and two flags - see [`Shading::chamber_intensity`].
     pub chambers: Vec<[u8; 3]>,
     /// One per cell.
     pub box_b: Vec<u8>,
@@ -382,6 +396,23 @@ impl Shading {
     /// Bit 8, whatever it means.
     pub fn ground_flag(&self, x: i32, z: i32) -> bool {
         self.ground_at(x, z)[1] & 1 != 0
+    }
+
+    pub fn chamber_at(&self, x: i32, z: i32) -> [u8; 3] {
+        self.chambers[(z as usize & (SIDE - 1)) * SIDE + (x as usize & (SIDE - 1))]
+    }
+
+    /// The chamber floor's or ceiling's intensity at the grid point `(x, z)`,
+    /// or `None` where it takes the level's ambient instead. The chamber
+    /// draws light each corner from its own cell as the ground's does: the
+    /// floor from the first byte unless the third's bit 0 is set (`0x418fe4`),
+    /// the ceiling from the second unless bit 1 is (`0x41944c`).
+    pub fn chamber_intensity(&self, x: i32, z: i32, ceiling: bool) -> Option<u8> {
+        let [floor, roof, flags] = self.chamber_at(x, z);
+        match ceiling {
+            false => (flags & 1 == 0).then_some(floor),
+            true => (flags & 2 == 0).then_some(roof),
+        }
     }
 }
 

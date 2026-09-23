@@ -33,8 +33,12 @@ This page is about the port. What the original does is under
   `0x413940` do it - see [terrain](../formats/terrain.md).
 - Light: each ground vertex takes its own grid point's shade, or the level's
   ambient when the point is in shadow, and the ground is Gouraud shaded between
-  them. A box corner is full light or ambient by its shadow bit. Box faces are
-  the engine's, sign and all, and a side hidden by its neighbour's box is not
+  them. A chamber's floor and ceiling are lit the same way from their own
+  bytes. A box corner is the ambient if its shadow bit is set, else the
+  face's light from the sun by its normal. Every corner of the ground, a
+  chamber and a box adds the lamps' light at it - see
+  [lamps](lights.md). Box faces are the engine's, sign and all; a face that
+  looks away from the eye, or a side hidden by its neighbour's box, is not
   drawn; nor is ground inside a box.
 - Models are lit per polygon as the ground is lit, by the level's light and
   ambient (`.LVL` lines 18 and 19, set at `0x44c105`): `0x48a6a0` gives the
@@ -44,9 +48,8 @@ This page is about the port. What the original does is under
   0x18 handler); 0x0f and 0x11 are drawn at full light. Until worklog 36 every
   model was drawn at full light. A flat polygon (0x19) picks its colour from a
   palette band by the same light instead - see
-  [the model format](../formats/mrgl.md). What `0x48b550` adds to the ambient
-  per object - a local light grid around the object, likely explosions or the
-  headlight - is not modelled.
+  [the model format](../formats/mrgl.md). Below the ground a model is lit by
+  the ambient plus the [lamps'](lights.md) light at it, and the sun is off.
 - Powerups and other sprite-like models: a flipbook texture turned by the
   clock, on a polygon whose texel 0 is not drawn (`0x4a5b1a`).
 - Shots and missiles: the model their weapon row names, at size 1.0, turned
@@ -90,7 +93,6 @@ port that later reads the engine should revisit them.
 | Depth buffer | The engine's visibility scheme is not known. This sorts cells back to front by distance and settles the rest with a z-buffer. |
 | Heading 0 looks along +z and increases toward +x | No longer a choice: the recorded demo flight measures it to a median 0.8 degrees. The port had the direction backwards until then. |
 | The 118 colourless polygons are skipped | Four models have polygons with neither a material nor a flat colour before them, so nothing says what colour they are. |
-| A chamber is lit flat by the low byte of its 24-bit shade | The value is not decomposed. |
 | Past the draw distance is the fog colour | The fog ramp's last row sends every colour to one index; the frame is filled with it before the sky, so the band between the last cell and the horizon is fog rather than a hole. |
 
 ## The units

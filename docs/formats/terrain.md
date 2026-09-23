@@ -262,9 +262,9 @@ in this order:
 1  ground[+4]       the two together are one little-endian value
 2  ground[+5]
 3  box A[+0x10]
-4  chamber[+8]      the three together are one 24-bit value
-5  chamber[+9]
-6  chamber[+10]
+4  chamber[+8]      the floor's intensity
+5  chamber[+9]      the ceiling's intensity
+6  chamber[+10]     bit 0: the floor takes the ambient; bit 1: the ceiling
 7  box B[+0x10]
 ```
 
@@ -294,13 +294,25 @@ of a cell's four vertices the value of the cell whose origin that vertex is
 byte (`0x41c8cd`) and, for each of the box's corners, casts 48 units
 (`0x300000`) toward the light and tests the segment against the terrain
 (`0x413580`), setting the corner's bit if something is in the way. `15`, the
-commonest value in `HOTH`, is the four bottom corners shadowed. The box drawer
-repeats the test live and gives a shadowed corner the ambient and a lit one
-full light (`0x415e45`). Bit n is taken to be box vertex n, bottom corners 0-3
-then top 4-7, which is the order the first two tests run in.
+commonest value in `HOTH`, is the four bottom corners shadowed. Bit n is box
+corner n, bottom corners 0-3 then top 4-7, each in the ground's order - the
+drawer tests them in that order (`0x41572a` to `0x4157ed`) and asks for the
+lamps' light at the corners in the same order (`0x415825`). A shadowed corner
+gets the ambient. A lit one is marked, and each face gives its marked corners
+its own light from the sun: `0x48a6a0` of the face's normal, the ambient plus
+the rest of the way to full by how squarely the face looks into the light
+(`0x416563` and five like it). So a box's faces are shaded by which way they
+look, as a model's polygons are. The drawer also casts again for points that
+`0x415120` adds to a face (`0x415e35`), which is not read.
 
-The chambers are lit the same way from a second direction and ambient, the
-`.LVL`'s lines 20 and 21 (`0x41d161`).
+**A chamber's three bytes are two intensities and two flags.** Read as one
+number they span about 24,000 to 240,000, which is what a floor byte, a
+ceiling byte and a flags byte of 0 to 3 give. The chamber drawers light each
+corner from its own cell's record as the ground drawer does: the floor from
+`+8`, or the ambient if bit 0 of `+10` is set (`0x418fe4`); the ceiling from
+`+9`, or the ambient if bit 1 is (`0x41944c`). The computation lights the
+chambers from a second direction and ambient, the `.LVL`'s lines 20 and 21
+(`0x41d161`).
 
 It is a **cache**, not source data. When the file is absent the engine prints
 `No .LTE file.  Shading database for the last time during loading.  Phew!` and
@@ -468,10 +480,6 @@ part. That reads as an index into the level's [texture list](lvl.md) plus flags
 in the high bits, not as a colour. It is not confirmed.
 
 ## Unknown
-
-What the chamber's 24-bit shading value decomposes into - it spans about 24,000
-to 240,000, so it is not the same shape as the ground's. Which bit of a box's
-shadow byte is which corner beyond the first two tests.
 
 The one remaining spare byte in each box cell (+17) and in each chamber cell
 (+11). Why `0xABB9` is not `0xAAAB`. What the `[0x5d29e0] == 256` case that

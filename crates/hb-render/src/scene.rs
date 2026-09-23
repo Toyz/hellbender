@@ -323,18 +323,14 @@ fn draw_mesh(
         camera.to_view(x + world[0] as i32, y + world[1] as i32, z + world[2] as i32)
     };
 
-    // A polygon's light (`0x48a6a0`): the ambient, plus the rest of the way to
-    // full by how squarely it faces into the light - `-dot(normal, light)`,
-    // clamped to 0..1. The engine turns the light into model space; turning
-    // the normal into the world is the same product.
+    // The engine turns the light into model space; turning the normal into
+    // the world is the same product.
     let lit = |normal: [i32; 3]| -> f32 {
         if let Some(light) = below {
             return light;
         }
         let n = normal.map(|c| c as f32 / 65536.0);
-        let world: [f32; 3] = std::array::from_fn(|k| right[k] * n[0] + up[k] * n[1] + forward[k] * n[2]);
-        let facing = -(world[0] * scene.sun[0] + world[1] * scene.sun[1] + world[2] * scene.sun[2]);
-        (scene.sun_ambient + facing.clamp(0.0, 1.0) * (1.0 - scene.sun_ambient)).clamp(0.0, 1.0)
+        sun_light(scene, std::array::from_fn(|k| right[k] * n[0] + up[k] * n[1] + forward[k] * n[2]))
     };
     let shade = shade_for(scene, camera);
     // The indexed polygons' span routine (`0x4a5b1a`) skips texel 0, so their
@@ -582,6 +578,30 @@ fn ground_light(scene: &Scene, x: i32, z: i32) -> f32 {
     }
 }
 
+/// A face's light from the sun (`0x48a6a0`), 0 to 1: the ambient, plus the
+/// rest of the way to full by how squarely the face looks into the light -
+/// `-dot(normal, light)`, clamped to 0..1.
+fn sun_light(scene: &Scene, normal: [f32; 3]) -> f32 {
+    let facing = -(normal[0] * scene.sun[0] + normal[1] * scene.sun[1] + normal[2] * scene.sun[2]);
+    (scene.sun_ambient + facing.clamp(0.0, 1.0) * (1.0 - scene.sun_ambient)).clamp(0.0, 1.0)
+}
+
+/// What the lamps, and anything in flight carrying a light, add to a corner
+/// of the world at grid point `(x, z)` and `height`. Once a frame `0x413d80`
+/// asks `0x48b550` at every ground vertex within ten cells of the eye and
+/// `0x418a60` at every chamber floor and ceiling vertex, and a box asks at
+/// its eight corners as it is drawn (`0x415825`); each draw adds the answer
+/// to the corner's light (`0x4144b0`, `0x4165ab`). A whole light is 256 on
+/// top of the shade, and nothing clamps the sum before the span does.
+fn lamp_light(scene: &Scene, x: i32, z: i32, height: i32) -> f32 {
+    if scene.lights.is_empty() {
+        return 0.0;
+    }
+    use hb_formats::fixed::to_units;
+    let at = [to_units(x * CELL_SIZE), to_units(height), to_units(z * CELL_SIZE)];
+    hb_sim::lights::light_at(at, scene.lights) * 256.0
+}
+
 fn draw_ground(
     target: &mut Target,
     scene: &Scene,
@@ -615,11 +635,12 @@ fn draw_ground(
     for (i, (dx, dz)) in [(0, 0), (1, 0), (1, 1), (0, 1)].into_iter().enumerate() {
         let (wx, wz) = (origin.0 + dx * CELL_SIZE, origin.1 + dz * CELL_SIZE);
         let (u, v) = uvs[i];
+        let (x, y, z) = (cell.x + dx, height(dx, dz), cell.z + dz);
         quad[i] = Near {
-            at: camera.to_view(wx, height(dx, dz), wz),
+            at: camera.to_view(wx, y, wz),
             u,
             v,
-            light: ground_light(scene, cell.x + dx, cell.z + dz),
+            light: ground_light(scene, x, z) + lamp_light(scene, x, z, y),
         };
     }
     let average = quad.iter().map(|c| c.at[2].max(NEAR)).sum::<f32>() / 4.0;
@@ -658,15 +679,13 @@ fn draw_chamber(
     if !scene.grid.has_chamber(cell) {
         return;
     }
-    // The chamber's 24-bit shading value is not decomposed; its low byte
-    // stands in, flat across the cell.
-    let light = scene
-        .grid
-        .terrain
-        .shading
-        .as_ref()
-        .map(|s| s.chambers[cell.index()][0] as f32)
-        .unwrap_or(255.0);
+    let light = |layer: Layer, x: i32, z: i32| -> f32 {
+        let ceiling = layer == Layer::ChamberCeiling;
+        match scene.grid.terrain.shading.as_ref() {
+            Some(s) => s.chamber_intensity(x, z, ceiling).map_or(scene.ambient as f32, f32::from),
+            None => 255.0,
+        }
+    };
     let shade = shade_for(scene, camera);
 
     for (face, layer) in [(0usize, Layer::ChamberFloor), (1, Layer::ChamberCeiling)] {
@@ -687,11 +706,10 @@ fn draw_chamber(
             for (point, corner) in corners.iter_mut().zip(tri.corners) {
                 let (dx, dz) = corner.offset();
                 let (wx, wz) = corner_world(origin, corner);
-                let height = scene
-                    .grid
-                    .height_at_grid(layer, cell.x + dx, cell.z + dz)
-                    .unwrap_or(0);
+                let (x, z) = (cell.x + dx, cell.z + dz);
+                let height = scene.grid.height_at_grid(layer, x, z).unwrap_or(0);
                 let (u, v) = uvs[quad_corner(corner)];
+                let light = light(layer, x, z) + lamp_light(scene, x, z, height);
                 *point = Near { at: camera.to_view(wx, height, wz), u, v, light };
             }
             let points = clipped_face(target.width, target.height, &corners);
@@ -707,12 +725,12 @@ fn draw_chamber(
     }
 }
 
-/// A box: four sides and a top, each from its own slot, with the engine's
-/// corners and texture coordinates (see [`BoxFace`]).
+/// A box: four sides, a top and a bottom, each from its own slot, with the
+/// engine's corners and texture coordinates (see [`BoxFace`]).
 ///
-/// The bottom is not drawn: it cannot be seen from outside. A side is skipped
-/// when the neighbouring box on that side covers it top to bottom, as the
-/// engine does before each face.
+/// A face is drawn only when it looks toward the eye, so a bottom shows only
+/// from below. A side is skipped when the neighbouring box on that side
+/// covers it top to bottom, as the engine does before each face.
 fn draw_box(
     target: &mut Target,
     scene: &Scene,
@@ -731,10 +749,12 @@ fn draw_box(
     // A box's `.LTE` byte is not a shade but eight shadow bits, one per
     // corner: the computation at `0x41c8cd` clears it, then for each corner
     // casts 48 units toward the light (`0x413580`) and sets the corner's bit
-    // if something is in the way. The drawer gives a shadowed corner the
-    // level's ambient and a lit one full light (`0x415e45`). Bit n is taken to
-    // be box vertex n - bottom corners 0-3 then top 4-7, in the ground's
-    // order - which is the order the first two tests run in.
+    // if something is in the way. Bit n is box corner n - bottom corners 0-3
+    // then top 4-7, in the ground's order (`0x41572a` to `0x4157ed`). The
+    // drawer gives a shadowed corner the level's ambient and marks a lit one;
+    // each face then gives its marked corners its own light from the sun
+    // (`0x48a6a0` of its normal, `0x416563`) and adds the lamps' light at
+    // every corner.
     let shadows = scene
         .grid
         .terrain
@@ -745,22 +765,28 @@ fn draw_box(
             _ => s.box_a[cell.index()],
         })
         .unwrap_or(0);
-    let corner_light = |dx: i32, dz: i32, up: bool| {
+    let corner_light = |dx: i32, dz: i32, up: bool, sun: f32| {
         let n = match (dx, dz) {
             (0, 0) => 0,
             (1, 0) => 1,
             (1, 1) => 2,
             _ => 3,
         } + if up { 4 } else { 0 };
-        if shadows & (1 << n) != 0 {
-            scene.ambient as f32
-        } else {
-            255.0
-        }
+        let light = if shadows & (1 << n) != 0 { scene.ambient as f32 } else { sun };
+        light + lamp_light(scene, cell.x + dx, cell.z + dz, if up { top } else { bottom })
     };
     let shade = shade_for(scene, camera);
 
-    for face in [BoxFace::NegZ, BoxFace::PosZ, BoxFace::PosX, BoxFace::NegX, BoxFace::Top] {
+    for face in BoxFace::ALL {
+        // Only a face that looks toward the eye is drawn (`0x456650`).
+        let normal = face.normal();
+        let (dx, dz, up) = face.corners()[0];
+        let on = [origin.0 + dx * CELL_SIZE, if up { top } else { bottom }, origin.1 + dz * CELL_SIZE];
+        let eye = [camera.x, camera.y, camera.z];
+        let toward: i64 = (0..3).map(|k| normal[k] as i64 * eye[k].wrapping_sub(on[k]) as i64).sum();
+        if toward <= 0 {
+            continue;
+        }
         let neighbour = match face {
             BoxFace::NegZ => Some((0, -1)),
             BoxFace::PosZ => Some((0, 1)),
@@ -786,13 +812,14 @@ fn draw_box(
             continue;
         };
         let uvs = word.corner_uvs(UV_LO, UV_HI);
+        let sun = sun_light(scene, normal.map(|c| c as f32)) * 255.0;
         let mut quad = [Near::default(); 4];
         for (i, (dx, dz, up)) in face.corners().into_iter().enumerate() {
             let (wx, wz) = (origin.0 + dx * CELL_SIZE, origin.1 + dz * CELL_SIZE);
             let y = if up { top } else { bottom };
             let (u, v) = uvs[i];
             quad[i] =
-                Near { at: camera.to_view(wx, y, wz), u, v, light: corner_light(dx, dz, up) };
+                Near { at: camera.to_view(wx, y, wz), u, v, light: corner_light(dx, dz, up, sun) };
         }
         let average = quad.iter().map(|c| c.at[2].max(NEAR)).sum::<f32>() / 4.0;
         let points = clipped_face(target.width, target.height, &quad);

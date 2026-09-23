@@ -39,7 +39,7 @@ How the game works, subsystem by subsystem.
 | --- | --- | --- |
 | [The cockpit and the hand on the stick](engine/cockpit.md) | partial | ART\CKPT*.RAW, ART\HN*.RAW, ART\HP*.RAW, ART\HT*.RAW, ART\KNOB*.RAW, HELLBEND.EXE:0x41f900 |
 | [The HUD](engine/hud.md) | partial | HELLBEND.EXE:0x44e5e0, crates/hb-render/src/hud.rs |
-| [Lamps and the lights they give](engine/lights.md) | partial | DATA\*.GLT, HELLBEND.EXE:0x48bd60, 0x48b6b0, 0x48ae30, 0x48c800, 0x48b550 |
+| [Lamps and the lights they give](engine/lights.md) | partial | DATA\*.GLT, HELLBEND.EXE:0x48bd60, 0x48b6b0, 0x48ae30, 0x48c800, 0x48b550, 0x413d80, 0x418a60, 0x4144b0 |
 | [Multiplayer](engine/network.md) | partial | HELLBEND.EXE:0x434540, system/DPSERIAL.DLL, system/DPSOCKET.DLL, system/DPWSOCK.DLL, LEVELS\NETLVL1-3.LVL |
 | [How the game is put together](engine/overview.md) | partial | HELLBEND.EXE |
 | [The original's polygon pipeline](engine/rasteriser.md) | partial | HELLBEND.EXE:0x40f7b0, 0x437f90, 0x437b20, 0x4a723f, 0x4a76ac |

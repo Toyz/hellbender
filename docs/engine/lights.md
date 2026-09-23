@@ -1,8 +1,8 @@
 ---
 title: Lamps and the lights they give
 status: partial
-covers: DATA\*.GLT, HELLBEND.EXE:0x48bd60, 0x48b6b0, 0x48ae30, 0x48c800, 0x48b550
-worklog: 119
+covers: DATA\*.GLT, HELLBEND.EXE:0x48bd60, 0x48b6b0, 0x48ae30, 0x48c800, 0x48b550, 0x413d80, 0x418a60, 0x4144b0
+worklog: 119, 120
 ---
 
 # Lamps and the lights they give
@@ -87,10 +87,26 @@ weight goes negative in its box's corners.
 The object draw (`0x42f4f0`) asks it for any object **below the ground**: the
 light at the object is added to the ambient and the sun is turned off
 (`0x48a670(0, 0, 0)`) while the object is drawn. That is what lights the
-tunnels' machinery. The ground draw asks at each corner of a box
-(`0x415825`); how it uses the answer is not read. `0x413d80` asks at every
-ground vertex around the eye and stores the answers at `0x52f390`, and nothing
-reads that array.
+tunnels' machinery.
+
+The world's own corners ask too, and take the answer on top of their shade:
+
+- `0x413d80` asks at every ground vertex from ten cells before the eye to
+  eleven after, on both axes, at the ground's height there, and keeps the
+  answers in rows of 22 indexed from the eye's own vertex at `0x52f390` - the
+  array starts 230 entries before it, at `0x52eff8`, which is where the
+  ground's cell draw (`0x414bf0`) reads its four corners from.
+- `0x418a60` does the same for the chamber floor (eye at `0x52a7f0`) and
+  ceiling (`0x525680`) at their heights, read by the floor's draw
+  (`0x418d70`, from `0x52a458`) and the ceiling's (`0x419230`).
+- The box draw (`0x415420`) asks at a box's eight corners as it draws it
+  (`0x415825`), bottom then top, each in the ground's order.
+
+`0x4144b0`, the cell routine the ground and chambers draw through, adds each
+corner's answer to its light (`+0x14`) before drawing; the box draw adds them
+itself for each face (`0x4165ab`). A corner's light is its shade shifted up
+eight, so a whole light adds 256 to a shade of 0 to 255. Nothing clamps the
+sum there.
 
 ## Shooting one
 
@@ -109,12 +125,14 @@ to blink.
 
 `hb_sim::lights` is all of the above but the grid, which it does without -
 the per-axis test is the same, and only the ten-per-cell cap is lost.
-`hb-render` loads the lamps with the level and lights objects below the ground;
+`hb-render` loads the lamps with the level and lights objects below the
+ground with them, and every ground, chamber and box corner near them;
 `hb-fly` steps them, paints their faces, adds every fourth shot's light and
-sends shot hits to them.
+sends shot hits to them. The port asks at each corner as it draws rather than
+filling the arrays.
 
 ## Unknown
 
-How the ground draw lights a box's corners from `0x48b550`; what `0x48a9e0`
-adds; a missile's light's strength; and `0x48bb50`, which the scan asks where
-a box face is - the port takes the middle of the face.
+What `0x48a9e0` adds; a missile's light's strength; what the span routine
+does with a light past full; and `0x48bb50`, which the scan asks where a box
+face is - the port takes the middle of the face.
