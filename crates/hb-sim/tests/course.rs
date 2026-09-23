@@ -32,11 +32,11 @@ fn flat(_: [f32; 3]) -> f32 {
 /// Run a follower for `seconds` at 30 frames a second, recording each point
 /// it takes as its target.
 fn run(f: &mut Follower, seconds: f32) -> Vec<usize> {
-    let mut targets = vec![f.target];
+    let mut targets = vec![f.walk.target];
     for _ in 0..(seconds * 30.0) as usize {
         f.step(1.0 / 30.0, flat);
-        if targets.last() != Some(&f.target) {
-            targets.push(f.target);
+        if targets.last() != Some(&f.walk.target) {
+            targets.push(f.walk.target);
         }
     }
     targets
@@ -49,7 +49,7 @@ fn it_is_put_on_the_nearest_point_on_its_third_frame() {
     let mut f = Follower::new(&square(1), &placed(52, 55), &car(), 0).unwrap();
     assert_eq!(f.phase, Phase::Start);
     f.step(1.0 / 30.0, flat);
-    assert_eq!((f.phase, f.target), (Phase::Placed, 2));
+    assert_eq!((f.phase, f.walk.target), (Phase::Placed, 2));
     assert_eq!(f.position, [52 << 16, 0, 55 << 16], "phase 0 does not move it");
     f.step(1.0 / 30.0, flat);
     assert_eq!(f.phase, Phase::Following);
@@ -63,7 +63,7 @@ fn the_nearest_point_is_measured_across_the_worlds_edge() {
     let course = Course::Points { ground: 0, periodic: 0, points: vec![p(0), p(-500)] };
     let mut f = Follower::new(&course, &placed(500, 0), &car(), 0).unwrap();
     f.step(1.0 / 30.0, flat);
-    assert_eq!(f.target, 1);
+    assert_eq!(f.walk.target, 1);
 }
 
 #[test]
@@ -88,13 +88,13 @@ fn it_steers_along_its_heading_rather_than_sliding_to_the_point() {
     f.step(1.0 / 30.0, flat);
     // Within eight units of point 0, so it takes point 1 at once.
     f.step(1.0 / 30.0, flat);
-    assert_eq!(f.target, 1);
+    assert_eq!(f.walk.target, 1);
     assert!(f.position[2] > 0, "it moved along its old heading, +z");
     assert!(f.heading > 0 && f.heading < 0x4000, "and is turning toward +x: {:#x}", f.heading);
     for _ in 0..300 {
         f.step(1.0 / 30.0, flat);
     }
-    assert!((f.heading - 0x4000).abs() < 0x400 || f.target == 0, "{:#x}", f.heading);
+    assert!((f.heading - 0x4000).abs() < 0x400 || f.walk.target == 0, "{:#x}", f.heading);
 }
 
 #[test]
@@ -162,15 +162,15 @@ fn every_shipped_follower_follows() {
             // from the point it last took to the one it is heading for.
             let mut from = None;
             for _ in 0..1800 {
-                let was = f.target;
+                let was = f.walk.target;
                 f.step(1.0 / 30.0, flat);
                 if f.phase != Phase::Following {
                     continue;
                 }
-                if was != f.target || from.is_none() {
+                if was != f.walk.target || from.is_none() {
                     from = Some(was);
                 }
-                let off = off_leg(f.position_fixed(), points[from.unwrap()], points[f.target]);
+                let off = off_leg(f.position_fixed(), points[from.unwrap()], points[f.walk.target]);
                 assert!(off < 50.0, "{stem}: {} is {off} units off course {}", kind.name, kind.course);
             }
             followed += 1;

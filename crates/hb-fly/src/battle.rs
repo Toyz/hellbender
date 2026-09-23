@@ -7,7 +7,7 @@ use hb_formats::text::Placement;
 use hb_render::Level;
 use hb_sim::combat::{self, Health, HitVolume, Pilot, Shot, Side, Stop};
 use hb_sim::flyer::{Flyer, Hover, Target};
-use hb_sim::steer::{Body, Surfaces};
+use hb_sim::steer::Surfaces;
 use hb_sim::explosion::Blasts;
 use hb_sim::powerup::{self, Field, Stores};
 use hb_sim::weapons::{Guns, Pose, Volley};
@@ -44,6 +44,9 @@ pub enum Noise {
     NearMiss(i32, [f32; 3]),
     /// The player was killed.
     Died,
+    /// A phrase to play and show, by its sound's name - a transport's
+    /// escape sound.
+    Phrase(String),
 }
 
 /// A shot in flight, with what its near-miss test remembers.
@@ -320,7 +323,7 @@ impl Battle {
                     }
                     None => {}
                 }
-                place(&mut live[*i], &flyer.body);
+                flyer.body.write_to(&mut live[*i]);
             }
             // And the hover craft, which sit on their posts until he comes.
             for (i, hover) in &mut self.hovers {
@@ -337,7 +340,7 @@ impl Battle {
                     }
                     None => {}
                 }
-                place(&mut live[*i], &hover.body);
+                hover.body.write_to(&mut live[*i]);
             }
         }
 
@@ -583,6 +586,16 @@ impl Battle {
         (volleys, voices)
     }
 
+    /// An actor that has left the level: its hit points cleared, as the
+    /// engine clears `+0x1c` (`0x40a2a6`, `0x422ec0`), so no shot tests it
+    /// again. Not a kill - nothing counts it as one.
+    pub fn leave(&mut self, i: usize) {
+        if let Some(h) = self.health.get_mut(i) {
+            h.hit_points = 0.0;
+            h.destroyed = true;
+        }
+    }
+
     /// One puff this wide, and nothing else.
     pub fn burst(&mut self, at: [f32; 3], size: f32) {
         self.blasts.puff(at, size);
@@ -646,13 +659,4 @@ impl hb_sim::mission::World for Standing<'_> {
             }
         }
     }
-}
-
-/// Where a flying actor is, for drawing and for shots to find it.
-fn place(placed: &mut Placement, body: &Body) {
-    let [x, y, z] = body.position.map(hb_formats::fixed::from_units);
-    (placed.x, placed.y, placed.z) = (x, y, z);
-    placed.heading = body.heading as u16;
-    placed.pitch = body.pitch as i32;
-    placed.roll = body.roll as i32;
 }

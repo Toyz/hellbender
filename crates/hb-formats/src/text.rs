@@ -195,6 +195,12 @@ pub struct EnemyDef {
     /// Line 12, type offset 0x21c: played at the muzzle on every shot. `null`
     /// in every shipped record.
     pub fire_sound: Option<String>,
+    /// Line 23, type offset 0x258: the phrase's sound a transport plays when
+    /// it gets away (`0x422ed2`) - "Transport has escaped.", "Rishi safe".
+    pub escape_sound: Option<String>,
+    /// Line 24, type offset 0x278: the one played when it is destroyed
+    /// (`0x40d448`).
+    pub destroy_sound: Option<String>,
     /// The intact model.
     pub model: String,
     /// The wrecked model. `wbunker.bin` pairs with `wbnkruin.bin`; everything
@@ -426,6 +432,8 @@ pub fn enemy_defs(data: &[u8]) -> Result<Vec<EnemyDef>> {
                 shot_speed: second[3],
             },
             fire_sound: sound(12),
+            escape_sound: sound(23),
+            destroy_sound: sound(24),
             fields,
             model: head[6].trim().to_string(),
             wreck: head[7].trim().to_string(),

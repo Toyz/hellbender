@@ -37,8 +37,9 @@
 //! It then asks `0x4279b0` whether the segment to that point meets a surface
 //! and moves the target to where it does; that is not ported.
 
-use hb_formats::fixed::{over_the_top, signed, to_units, RADIANS_PER_UNIT as K, TURN};
-use hb_formats::vector::{add, along, angles_of, axes, from_frame, in_world, length, offset, scale};
+use hb_formats::fixed::{from_units, over_the_top, signed, to_units, RADIANS_PER_UNIT as K, TURN};
+use hb_formats::text::Placement;
+use hb_formats::vector::{add, along, angles_of, axes, direction, from_frame, in_world, length, offset, scale};
 use hb_world::Grid;
 
 
@@ -157,6 +158,14 @@ impl Body {
         Body { position, heading, ..Body::default() }
     }
 
+    /// Where it is, into the placement the renderer and the fight read.
+    pub fn write_to(&self, placed: &mut Placement) {
+        [placed.x, placed.y, placed.z] = self.position.map(from_units);
+        placed.heading = self.heading as u16;
+        placed.pitch = self.pitch as i32;
+        placed.roll = self.roll as i32;
+    }
+
     /// Its axes - right, up, forward - as the actor's matrix holds them
     /// (`0x40b1c0`).
     pub fn axes(&self) -> [[f32; 3]; 3] {
@@ -265,6 +274,28 @@ impl Body {
         self.push = [0.0; 3];
         self.twist = [0.0; 3];
         target
+    }
+}
+
+impl Body {
+    /// `0x407960`, the simpler way some routines fly. The heading and pitch
+    /// move toward the wanted ones by `rate` - the turn rate as a fraction a
+    /// second, the type's `+0x68` over 65,536 - times the error, so they close
+    /// by that fraction a second; the roll becomes minus half the heading's
+    /// step; and it moves along the nose it had at the start of the frame at
+    /// `speed`, then is held above the floor plus the clearance and under the
+    /// ceiling less it. The rigid body's velocity and rates are left alone.
+    pub fn glide(&mut self, wanted: (f32, f32), rate: f32, speed: f32, clearance: f32, world: &impl Surfaces, dt: f32) {
+        let forward = direction(self.heading, self.pitch);
+        let step = rate * dt;
+        let turned = signed(wanted.0 - self.heading) * step;
+        self.pitch = (signed(self.pitch) + (wanted.1 - signed(self.pitch)) * step).rem_euclid(TURN);
+        self.roll = (-turned / 2.0).rem_euclid(TURN);
+        self.heading = (self.heading + turned).rem_euclid(TURN);
+        let mut at = add(self.position, scale(forward, speed * dt));
+        at[1] = at[1].max(world.floor(at) + clearance);
+        at[1] = at[1].min(world.ceiling(at) - clearance);
+        self.position = in_world(at);
     }
 }
 

@@ -5,9 +5,12 @@
 //! seven routines that look one up through `0x49da10`. A type of any other
 //! class can name a course in its `.DEF` and the engine never reads it. Class
 //! 47 is 285 of the 302 placements that do: the cars, boats and morbots, the
-//! T-rexes, the Kraaken. The other six - 17 placements, the transports and
-//! `FX4` - have routines of their own that are not read yet; this crate runs
-//! them on class 47's, which is its choice and not the engine's.
+//! T-rexes, the Kraaken. The transports, 50 to 52, are [`crate::transport`];
+//! class 62, `FX4`, has a routine of its own that is not read yet, and this
+//! crate runs it on class 47's, which is its choice and not the engine's.
+//!
+//! What every course routine shares is here: [`Walk`], the point an actor is
+//! heading for and how it moves on to the next, and [`nearest`] and [`aim`].
 //!
 //! It is a phase machine over the actor's `+0x64`:
 //!
@@ -37,8 +40,9 @@
 //! The arithmetic is the engine's 16.16 throughout.
 
 use hb_formats::course::Course;
-use hb_formats::fixed::{cos, distance, from_units, mul, sin, to_units, wrap};
+use hb_formats::fixed::{cos, distance, from_units, mul, over_the_top, sin, to_units, wrap};
 use hb_formats::text::{EnemyDef, Placement};
+use hb_formats::vector::{angles_of, dot, length, normalise, offset};
 
 /// The classes whose routines read a course.
 pub const COURSE_CLASSES: [i64; 7] = [46, 47, 48, 50, 51, 52, 62];
@@ -62,10 +66,95 @@ pub enum Phase {
     Following,
 }
 
+/// Where an actor is along its course: the point it is heading for
+/// (`+0x140`), which way it walks (`+0x144`, 1 forward - the placement loader
+/// starts it at 1, `0x4059da`), and whether the course loops (record
+/// `+0x08`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Walk {
+    pub target: usize,
+    pub direction: i32,
+    pub periodic: bool,
+    pub len: usize,
+}
+
+impl Walk {
+    pub fn new(len: usize, periodic: bool) -> Walk {
+        Walk { target: 0, direction: 1, periodic, len }
+    }
+
+    /// An index past either end brought back (`0x423af0`): round to the
+    /// other end on a looping course; on a plain one, folded back - -1 to 1,
+    /// `len` to `len - 1`.
+    fn fold(&self, index: i32) -> i32 {
+        let n = self.len as i32;
+        match (self.periodic, index < 0, index >= n) {
+            (true, true, _) => n - index.abs() % n,
+            (true, _, true) => index % n,
+            (false, true, _) => index.abs() % n,
+            (false, _, true) => n - index % n - 1,
+            _ => index,
+        }
+    }
+
+    /// On to the next point (`0x423264`, `0x423af0`): forward or back by the
+    /// direction, and at an end of a plain course the direction turns round.
+    pub fn advance(&mut self) {
+        let was = self.target as i32 + if self.direction == 1 { 1 } else { -1 };
+        let now = self.fold(was);
+        if now != was && !self.periodic {
+            self.direction = -self.direction;
+        }
+        self.target = now as usize;
+    }
+
+    /// The point it came from, the start of the leg it is on (`0x423ca0`).
+    pub fn behind(&self) -> usize {
+        let back = self.target as i32 - if self.direction == 1 { 1 } else { -1 };
+        self.fold(back) as usize
+    }
+
+    /// Whether the point it is heading for is the course's last.
+    pub fn at_last(&self) -> bool {
+        self.target + 1 == self.len
+    }
+}
+
+/// The index of the point nearest `at` (`0x42b960`, world-wrapped straight
+/// line), the first of equals.
+pub fn nearest(points: &[[i32; 3]], at: [i32; 3]) -> usize {
+    let mut best = (0x4000_0000, 0);
+    for (i, &p) in points.iter().enumerate() {
+        let d = distance(at, p);
+        if best.0 > d {
+            best = (d, i);
+        }
+    }
+    best.1
+}
+
+/// `0x423ca0`: whether an actor at `at` has passed the point it is heading
+/// for - how far it is along the leg from the point before, at least the
+/// leg's length. A leg of no length never passes: the engine normalises it
+/// without a guard (`0x487770`) and the comparison with the NaN that makes
+/// comes out false.
+pub fn passed(points: &[[f32; 3]], walk: &Walk, at: [f32; 3]) -> bool {
+    let from = points[walk.behind()];
+    let leg = offset(from, points[walk.target]);
+    let long = length(leg);
+    long > 0.0 && dot(offset(from, at), normalise(leg)) >= long
+}
+
+/// `0x423b60`: the heading and pitch from `from` to `to`, in the circle,
+/// folded over the top - the actor's `+0x48` and `+0x40`.
+pub fn aim(from: [f32; 3], to: [f32; 3]) -> (f32, f32) {
+    let (heading, pitch) = angles_of(offset(from, to));
+    over_the_top(heading, pitch)
+}
+
 #[derive(Debug, Clone)]
 pub struct Follower {
     points: Vec<[i32; 3]>,
-    periodic: bool,
     /// 16.16 world units, the actor's `+0x00..+0x08`.
     pub position: [i32; 3],
     /// The engine's 16-bit circle, `+0x14`.
@@ -74,10 +163,7 @@ pub struct Follower {
     pub pitch: i32,
     /// The heading it is turning toward, `+0x48`.
     pub wanted: i32,
-    /// The point it is heading for, `+0x140`.
-    pub target: usize,
-    /// `+0x144`: 1 walks the course forward, anything else backward.
-    pub direction: i32,
+    pub walk: Walk,
     pub phase: Phase,
     /// 16.16 units a second: the type's move rate and the actor's own bias.
     pub speed: i32,
@@ -113,14 +199,12 @@ impl Follower {
         };
         let (speed_bias, turn_bias) = bias(index, kind.turn_rate);
         Some(Follower {
+            walk: Walk::new(points.len(), periodic),
             points,
-            periodic,
             position: [wrap(placement.x), placement.y, wrap(placement.z)],
             heading: placement.heading as i32,
             pitch: placement.pitch,
             wanted: 0,
-            target: 0,
-            direction: 1,
             phase: Phase::Start,
             speed: kind.move_rate + speed_bias,
             turn: kind.turn_rate + turn_bias,
@@ -133,18 +217,11 @@ impl Follower {
     pub fn step(&mut self, dt: f32, floor: impl Fn([f32; 3]) -> f32) {
         match self.phase {
             Phase::Start => {
-                let mut best = 0x4000_0000;
-                for (i, &p) in self.points.iter().enumerate() {
-                    let d = distance(self.position, p);
-                    if best > d {
-                        best = d;
-                        self.target = i;
-                    }
-                }
+                self.walk.target = nearest(&self.points, self.position);
                 self.phase = Phase::Placed;
             }
             Phase::Placed => {
-                self.position = self.points[self.target];
+                self.position = self.points[self.walk.target];
                 self.phase = Phase::Following;
             }
             Phase::Following => self.follow(dt, floor),
@@ -153,47 +230,19 @@ impl Follower {
 
     /// `0x423b60`: aim at a point.
     fn aim(&mut self, at: [i32; 3]) {
-        let dx = wrap(at[0].wrapping_sub(self.position[0])) as f64;
-        let dz = wrap(at[2].wrapping_sub(self.position[2])) as f64;
-        self.wanted = (dx.atan2(dz) * (65536.0 / std::f64::consts::TAU)) as i32;
-    }
-
-    /// The next point along, `0x423264`: forward or back by `direction`, and
-    /// at an end either round to the other end or back the way it came.
-    fn next(&mut self) {
-        let n = self.points.len() as i32;
-        let was = self.target as i32 + if self.direction == 1 { 1 } else { -1 };
-        let now = if self.periodic {
-            if was < 0 {
-                n - was.abs() % n
-            } else if was >= n {
-                was % n
-            } else {
-                was
-            }
-        } else if was < 0 {
-            was.abs() % n
-        } else if was >= n {
-            n - was % n - 1
-        } else {
-            was
-        };
-        if now != was && !self.periodic {
-            self.direction = -self.direction;
-        }
-        self.target = now as usize;
+        self.wanted = aim(self.position.map(to_units), at.map(to_units)).0 as i32;
     }
 
     /// `0x4231b0`.
     fn follow(&mut self, dt: f32, floor: impl Fn([f32; 3]) -> f32) {
-        let point = self.points[self.target];
+        let point = self.points[self.walk.target];
         self.aim(point);
         self.position[1] = point[1];
         let dx = wrap(point[0].wrapping_sub(self.position[0])).abs();
         let dz = wrap(point[2].wrapping_sub(self.position[2])).abs();
         if dx < REACHED && dz < REACHED {
-            self.next();
-            self.aim(self.points[self.target]);
+            self.walk.advance();
+            self.aim(self.points[self.walk.target]);
         }
 
         let dt = from_units(dt);

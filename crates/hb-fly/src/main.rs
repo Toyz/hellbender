@@ -549,7 +549,7 @@ fn main() -> Result<(), String> {
     let mut shot_lights = 0usize;
     // Everything that starts again with a level (`Round`).
     let Round {
-        mut flight, mut mission, mut followers, mut live, mut battle, mut colours, mut scenery,
+        mut flight, mut mission, mut followers, mut transports, mut live, mut battle, mut colours, mut scenery,
         mut doors, mut hoverers, mut gone, mut last_eye, mut weather, mut weather_eye,
         mut lightning
     } = begin(&level, &mut rng);
@@ -840,8 +840,8 @@ fn main() -> Result<(), String> {
             describe(&level);
             play_music(&level);
             Round {
-                flight, mission, followers, live, battle, colours, scenery, doors, hoverers,
-                gone, last_eye, weather, weather_eye, lightning
+                flight, mission, followers, transports, live, battle, colours, scenery, doors,
+                hoverers, gone, last_eye, weather, weather_eye, lightning
             } = begin(&level, &mut rng);
             ended = 0.0;
             dying = None;
@@ -1029,11 +1029,30 @@ fn main() -> Result<(), String> {
         // In a demo the recorded flight cannot dodge, so nothing shoots back.
         let ground = |x: f32, z: f32| grid.solid_top(x, z);
         let axes = [flight.ship.right, flight.ship.up, flight.ship.forward];
-        let noises = if demo.is_none() {
+        let mut noises = if demo.is_none() {
             battle.step(&level, &mut live, eye, velocity, Some((&axes, flight.ship.speed())), dt, &solid, &ground, &grid)
         } else {
             battle.step(&level, &mut live, [0.0, 1.0e6, 0.0], [0.0; 3], None, dt, &|_| false, &ground, &grid)
         };
+        // The transports (`hb_sim::transport`), which think only inside the
+        // same 80-unit box. One that gets away is gone, not killed; one that
+        // escapes to the sky loses the level.
+        for (i, transport) in &mut transports {
+            if battle.health[*i].destroyed || !hb_sim::combat::in_range(eye, transport.body.position) {
+                continue;
+            }
+            if let Some(end) = transport.step(dt, eye, level.sky_height(), &grid) {
+                gone[*i] = true;
+                battle.leave(*i);
+                if let Some(name) = &level.kinds[level.placements[*i].kind].escape_sound {
+                    noises.push(battle::Noise::Phrase(name.clone()));
+                }
+                if end == hb_sim::transport::Gone::Escaped {
+                    mission.fail();
+                }
+            }
+            transport.body.write_to(&mut live[*i]);
+        }
         // The afterburner: a kick and then a held engine note for as long as
         // it burns (`0x47d6a3` plays `blast7.wav`, then `engine4.wav` with
         // the voice's loop flag set).
@@ -1115,7 +1134,7 @@ fn main() -> Result<(), String> {
                     if level.kinds[kind].friendly {
                         mission.friendly_lost();
                         if level.kinds[kind].class() == 50 {
-                            mission.escort_lost();
+                            mission.fail();
                         }
                     }
                     let own = level.destroy_sound[kind]
@@ -1127,7 +1146,8 @@ fn main() -> Result<(), String> {
                     }
                     // And the words that go with it, which the engine finds
                     // by the sound's own file name (`0x4548a9`).
-                    if let Some(said) = level.destroy_sound_name[kind]
+                    if let Some(said) = level.kinds[kind]
+                        .destroy_sound
                         .as_deref()
                         .and_then(hb_sim::phrases::by_sound)
                     {
@@ -1143,6 +1163,12 @@ fn main() -> Result<(), String> {
                 battle::Noise::Died => {
                     println!("shot down ({} so far) - back to the start", battle.deaths);
                     ("blast7.wav".to_string(), 1.0)
+                }
+                battle::Noise::Phrase(name) => {
+                    if let Some(said) = hb_sim::phrases::by_sound(&name) {
+                        say(&mut panel, &mut saying, said.text);
+                    }
+                    (name, 1.0)
                 }
             };
             if let (Some(music), Some(s)) = (music.as_ref(), sound(&name)) {
@@ -1179,8 +1205,8 @@ fn main() -> Result<(), String> {
                 Some(hb_sim::death::Wants::Over) => {
                     println!("shot down ({} so far) - starting again", battle.deaths);
                     Round {
-                        flight, mission, followers, live, battle, colours, scenery, doors,
-                        hoverers, gone, last_eye, weather, weather_eye, lightning
+                        flight, mission, followers, transports, live, battle, colours, scenery,
+                        doors, hoverers, gone, last_eye, weather, weather_eye, lightning
                     } = begin(&level, &mut rng);
                     dying = None;
                     ended = 0.0;
@@ -1313,9 +1339,10 @@ fn main() -> Result<(), String> {
             }
             if moved.gone {
                 // The engine clears the actor's `+0x1c`, which takes it out
-                // of the loop that thinks and the one that draws. It is not
-                // a kill, so nothing here counts it as one.
+                // of the loop that thinks, the one that draws and the shots'
+                // tests. It is not a kill, so nothing here counts it as one.
                 gone[*i] = true;
+                battle.leave(*i);
             }
         }
 
@@ -1885,6 +1912,25 @@ fn scenery_of(level: &Level) -> Vec<hb_sim::collide::Solid> {
 /// skipped, as the engine's "Bad course ID for enemy" diagnostic implies it
 /// copes.
 fn followers_for(level: &Level) -> Vec<(usize, hb_sim::Follower)> {
+    on_courses(level, |course, p, kind, i| {
+        if hb_sim::transport::Kind::of(kind.class()).is_some() {
+            return None;
+        }
+        hb_sim::Follower::new(course, p, kind, i)
+    })
+}
+
+/// The transports, classes 50 to 52, which have routines of their own.
+fn transports_for(level: &Level) -> Vec<(usize, hb_sim::transport::Transport)> {
+    on_courses(level, hb_sim::transport::Transport::new)
+}
+
+/// Every placement of a course class with its course, made into whatever
+/// `make` makes of it.
+fn on_courses<T>(
+    level: &Level,
+    make: impl Fn(&hb_formats::course::Course, &hb_formats::text::Placement, &hb_formats::text::EnemyDef, usize) -> Option<T>,
+) -> Vec<(usize, T)> {
     level
         .placements
         .iter()
@@ -1895,7 +1941,7 @@ fn followers_for(level: &Level) -> Vec<(usize, hb_sim::Follower)> {
                 return None;
             }
             let course = level.courses.get(usize::try_from(kind.course).ok()?)?;
-            Some((i, hb_sim::Follower::new(course, p, kind, i)?))
+            Some((i, make(course, p, kind, i)?))
         })
         .collect()
 }
@@ -1951,6 +1997,8 @@ struct Round {
     /// The placements that follow a course. `live` is the copy the renderer
     /// draws, rewritten from them and the fight each frame.
     followers: Vec<(usize, hb_sim::Follower)>,
+    /// The transports, classes 50 to 52.
+    transports: Vec<(usize, hb_sim::transport::Transport)>,
     live: Vec<hb_formats::text::Placement>,
     battle: battle::Battle,
     colours: ShotColours,
@@ -1991,11 +2039,13 @@ fn begin(level: &Level, rng: &mut hb_sim::turret::Rng) -> Round {
     let flight = Flight::new(start_camera(level, &mission));
     let at = camera_at(&flight.camera);
     let followers = followers_for(level);
+    let transports = transports_for(level);
     let doors = doors_of(level);
     println!(
-        "sim: {} of {} objects follow a course, {} turrets, {} flyers, {} doors, {} moving patches of ground",
+        "sim: {} of {} objects follow a course, {} transports, {} turrets, {} flyers, {} doors, {} moving patches of ground",
         followers.len(),
         level.placements.len(),
+        transports.len(),
         battle.turret_count(),
         battle.flyer_count(),
         doors.doors.len(),
@@ -2007,6 +2057,7 @@ fn begin(level: &Level, rng: &mut hb_sim::turret::Rng) -> Round {
         weather_eye: at,
         lightning: lightning_for(level, rng),
         followers,
+        transports,
         live: level.placements.clone(),
         gone: vec![false; level.placements.len()],
         colours: ShotColours::for_palette(&level.palette),

@@ -56,8 +56,8 @@ records. See below.
 20  @ Friendly flag
 21  0
 22  { Escape and destroy sound files
-23  null                                    escape sound
-24  null                                    destroy sound
+23  null                                    escape sound, type +0x258
+24  null                                    destroy sound, type +0x278
 ```
 
 What the first line's fields are, measured across all 1,848 records:

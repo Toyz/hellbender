@@ -356,9 +356,10 @@ impl Mission {
         }
     }
 
-    /// The escorted shuttle - the friendly class-50 actor `0x424fc0` finds -
-    /// was destroyed (`0x40d7ca`).
-    pub fn escort_lost(&mut self) {
+    /// The level is lost (`0x512720`): the escorted shuttle - the friendly
+    /// class-50 actor `0x424fc0` finds - was destroyed (`0x40d7ca`), or a
+    /// class-52 transport reached the sky (`0x422ec7`).
+    pub fn fail(&mut self) {
         if self.outcome.is_none() {
             self.outcome = Some(Outcome::Failed);
         }

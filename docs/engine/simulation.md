@@ -2,7 +2,7 @@
 title: The simulation
 status: partial
 covers: HELLBEND.EXE logic phases, crates/hb-sim
-worklog: 26, 27, 28, 31, 32, 33, 34, 35, 37, 38, 40, 41, 121
+worklog: 26, 27, 28, 31, 32, 33, 34, 35, 37, 38, 40, 41, 113, 121, 122
 ---
 
 # The simulation
@@ -79,9 +79,65 @@ type's move and turn rates: 0, +1/4, -1/2 or -1/4 of a unit a second by the
 index's low two bits. The turn takes half when the whole would not be
 positive. Nine identical cars on one course do not move as one.
 
-`hb_sim::course` is this, in the engine's 16.16. The other six course classes -
-17 placements, the transports and `FX4` - run on it too in the port, which is
-the port's choice: their routines are not read yet.
+`hb_sim::course` is this, in the engine's 16.16, and the pieces every course
+routine shares: the walk from point to point, the nearest point, the aim
+(`0x423b60`) and the passed test (`0x423ca0`). The transports are below.
+Class 62, `FX4`, runs on class 47's routine in the port, which is the port's
+choice: its own is not read yet.
+
+## The transports, classes 50 to 52
+
+Sixteen placements have routines of their own: `logicTransportDisappear`
+(`0x421d90`, class 50 - the Rishi in `IOWAH2`, the Coalition shuttle and
+transport in `IOWAH3`), `logicTransportTakeoffLand` (`0x4220f0`, class 51 -
+a troop transport in `IOWAH2` and two recon craft in `ROID3`) and
+`logicTransportTakeoffLandLeave` (`0x422790`, class 52 - the ten "Shipping
+out!" transports of `FLOAT` and `FLOAT2`). All three fly with
+[the steering](#the-steering) at a thrust factor of a half, mode 0, and
+take the next point once they have passed the one they were making for
+(`0x423ca0`: how far along the leg from the point before, at least its
+length).
+
+**Class 50** finds its nearest point and flies there - or, on a course whose
+first number (the ground flag) is set, is put on it - and follows the
+course. Within eight units on every axis of the last point it is gone: its
+`+0x1c` is cleared, a burst goes off (`0x4017d0`) and its escape sound plays
+(`0x454880`, type `+0x258`: the Rishi's `rshi-saf.wav`, the shuttles'
+`shut-esc.wav`). Nothing else - the level is neither won nor lost by it.
+
+**Class 51** starts by taking off: four units a second straight up, turning
+a sixteenth of a circle a second, for four seconds (phase 400). It flies to
+its first point (2) and along the course (3). Within 24 units of the
+course's end - the last point going forward, the first coming back - it
+stops thrusting and turns toward a point eight units along its own nose from
+the player (1001, the steering at speed 0) until its forward speed is under
+`0x14`; comes down at four units a second, levelling out, to the floor plus
+the type's `+0x14` (1000); turns round, sits four seconds (2000), and takes
+off again. On a plain course it then goes nowhere. Its target is still the
+last point, and the leg `0x423ca0` measures runs from the target plus one,
+folded back, which is the same point: a leg of no length, normalised
+without a guard (`0x487770`) into NaNs, so the comparison never passes. It
+circles its last point for good. All three shipped are on plain courses.
+
+**Class 52** differs from 51 in three places. It flies to its first point
+with `0x407960` rather than the steering, aiming with `0x423b60`; it lands
+only at the course's last point, within eight units; and after its four
+seconds on the ground it takes off again (2001) and climbs toward the sky
+layer (3000). Within eight units of the sky it is gone - burst, escape sound
+(`trp-esc.wav`, "Transport has escaped.") - and `0x422ec7` sets `0x512720`:
+**the level is lost**. So `FLOAT`'s transports have to be shot down before
+they get away.
+
+`0x407960` is the simpler way to fly that several routines use. The heading
+and pitch close on the wanted ones (`+0x48`, `+0x40`) by the turn rate over
+65,536 as a fraction a second; the roll becomes minus half the heading's
+step; the actor moves along the nose it had at the start of the frame and is
+held between the floor plus its clearance and the ceiling less it.
+`0x423b60` sets the wanted pair: the heading and pitch to a point, folded
+over the top.
+
+Like every actor, a transport thinks only inside the 80-unit box around the
+eye.
 
 ## Behaviour classes
 
@@ -873,10 +929,12 @@ or "Mission complete..." by whether its index is odd.
 (`0x5125cc`); a level with a jump zone never gets there, and is left through
 it instead. **It is lost** (`0x512720`) when a point's clock runs out - it
 says "20 seconds" at 20 and counts down aloud from 10 - when the third
-placement of a friendly type (`+0x254`) is destroyed (`0x40d412`), or when a
+placement of a friendly type (`+0x254`) is destroyed (`0x40d412`), when a
 shot destroys the friendly class-50 actor - the escorted shuttle, which
 `0x424fc0` finds as the first actor of class 50 with the friendly flag
-(`0x40d7ca`). The flag also chooses the level's death movie afterwards
+(`0x40d7ca`) - or when a class-52 transport reaches the sky
+([the transports](#the-transports-classes-50-to-52)).
+ The flag also chooses the level's death movie afterwards
 (`0x45baf6`).
 
 **Beacons** (key `keyBeacon`, B): a point of kind 11 at the player, appended
@@ -1133,8 +1191,10 @@ two need.
 
 ## Unknown
 
-The course routines other than class 47's: the transports' take off, land
-and leave, and `FX4`'s attitude following.
+`FX4`'s course routine (`0x4213a0`, attitude following), and classes 46 and
+48, which no shipped placement uses. The burst a transport leaves in
+(`0x4017d0`) and the rest of the particle effects at `0x401000` to
+`0x402000`.
 
 The behaviour classes still unread, by how many placements they drive: 55
 with 49 and 58 with 34, both of which live in the `0x49` range with the
