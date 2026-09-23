@@ -37,11 +37,10 @@
 //! It then asks `0x4279b0` whether the segment to that point meets a surface
 //! and moves the target to where it does; that is not ported.
 
-use hb_formats::fixed::{signed, RADIANS_PER_UNIT as K, TURN};
+use hb_formats::fixed::{over_the_top, signed, RADIANS_PER_UNIT as K, TURN};
+use hb_formats::vector::{add, along, angles_of, axes, from_frame, in_world, length, offset, scale};
 use hb_world::Grid;
 
-use crate::combat::wrapped;
-use crate::flyer::axes;
 
 /// What the steering is asked to do, its last argument.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -170,11 +169,11 @@ impl Body {
     pub fn steer(&mut self, order: &Order, world: &impl Surfaces, dt: f32) -> [f32; 3] {
         let p = self.position;
         let mut target = order.target;
-        let mut d = [wrapped(target[0] - p[0]), target[1] - p[1], wrapped(target[2] - p[2])];
+        let mut d = offset(p, target);
         let distance = length(d);
 
         if !NO_LOOKAHEAD.contains(&order.class) {
-            let ahead = std::array::from_fn(|k| p[k] + self.moving[k] * dt);
+            let ahead = add(p, scale(self.moving, dt));
             let floor = world.floor(ahead) + order.clearance;
             if target[1] < floor {
                 target[1] = floor;
@@ -187,17 +186,17 @@ impl Body {
 
         // Where it wants to point, and how fast it may turn to get there.
         let turn = order.turn * K;
-        let flat = (d[0] * d[0] + d[2] * d[2]).sqrt();
-        let [right, up, forward] = self.axes();
-        let local = [dot(d, right), dot(d, up), dot(d, forward)];
+        let axes = self.axes();
+        let local = along(d, &axes);
         let across = (local[0] * local[0] + local[1] * local[1]).sqrt();
         let (cos, sin) = if across == 0.0 { (1.0, 0.0) } else { (local[1] / across, local[0] / across) };
         let banks =
             across >= 1.0 && self.velocity[2] >= 1.0 && !(order.breaking && distance < 8.0);
-        let (mut yaw, mut climb) = (d[0].atan2(d[2]), -d[1].atan2(flat));
-        if let (Mode::Facing | Mode::BackingFacing, Some((h, p))) = (order.mode, order.aim) {
-            (yaw, climb) = (h * K, p * K);
+        let (mut yaw, mut climb) = angles_of(d);
+        if let (Mode::Facing | Mode::BackingFacing, Some(aim)) = (order.mode, order.aim) {
+            (yaw, climb) = aim;
         }
+        let (yaw, climb) = (yaw * K, climb * K);
         let (bank, pitch_cap, yaw_cap) = if banks {
             (-local[0].atan2(local[1].abs()), -turn * cos, turn * sin)
         } else {
@@ -250,14 +249,14 @@ impl Body {
             thrust = -v[2];
         }
         let a = [-0.1 * v[0] + self.push[0], -0.1 * v[1] + self.push[1], thrust + self.push[2]];
-        let v: [f32; 3] = std::array::from_fn(|k| v[k] + a[k] * dt);
+        let v = add(v, scale(a, dt));
 
         // Moved by last frame's axes, which is the matrix the actor still has.
-        let moving: [f32; 3] = std::array::from_fn(|k| right[k] * v[0] + up[k] * v[1] + forward[k] * v[2]);
-        let mut at: [f32; 3] = std::array::from_fn(|k| p[k] + moving[k] * dt);
+        let moving = from_frame(v, &axes);
+        let mut at = add(p, scale(moving, dt));
         at[1] = hold(at, order, world);
 
-        self.position = [wrapped(at[0]), at[1], wrapped(at[2])];
+        self.position = in_world(at);
         self.velocity = v;
         self.moving = moving;
         self.spin = [w_roll, w_pitch, w_yaw].map(|w| w / K);
@@ -314,14 +313,6 @@ fn hold(at: [f32; 3], order: &Order, world: &impl Surfaces) -> f32 {
     }
 }
 
-fn dot(a: [f32; 3], b: [f32; 3]) -> f32 {
-    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-
-fn length(a: [f32; 3]) -> f32 {
-    dot(a, a).sqrt()
-}
-
 /// Into -pi..pi, the way the engine's loops bring an angle round.
 fn around(a: f32) -> f32 {
     use std::f32::consts::{PI, TAU};
@@ -341,20 +332,11 @@ fn around(a: f32) -> f32 {
 /// away. A type with no shot speed points at him. Written to the actor's
 /// `+0x60` and `+0x58`, which modes 3 and 4 steer by.
 pub fn lead(from: [f32; 3], player: [f32; 3], velocity: [f32; 3], shot_speed: f32, dt: f32) -> (f32, f32) {
-    let d = [wrapped(player[0] - from[0]), player[1] - from[1], wrapped(player[2] - from[2])];
-    let next: [f32; 3] = std::array::from_fn(|k| player[k] + velocity[k] * dt);
-    let n = [wrapped(next[0] - from[0]), next[1] - from[1], wrapped(next[2] - from[2])];
+    let d = offset(from, player);
     let now = length(d);
-    let receding = (length(n) - now) / dt;
+    let receding = (length(offset(from, add(player, scale(velocity, dt)))) - now) / dt;
     let t = if shot_speed == 0.0 { 0.0 } else { now / (shot_speed - receding) };
-    let a: [f32; 3] = std::array::from_fn(|k| d[k] + velocity[k] * t);
-    let mut heading = a[0].atan2(a[2]) / K;
-    let mut pitch = -a[1].atan2((a[0] * a[0] + a[2] * a[2]).sqrt()) / K;
-    // Over the top: the engine folds a pitch past a quarter turn back and
-    // turns the heading round (`0x49246c`), which atan2 never needs.
-    if pitch > 16384.0 {
-        pitch = 32768.0 - pitch;
-        heading += 32768.0;
-    }
+    let (heading, pitch) = angles_of(add(d, scale(velocity, t)));
+    let (heading, pitch) = over_the_top(heading, pitch);
     (heading.rem_euclid(TURN), pitch)
 }

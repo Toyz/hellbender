@@ -25,6 +25,7 @@ pub mod raw;
 pub mod smk;
 pub mod terrain;
 pub mod text;
+pub mod vector;
 
 use std::fmt;
 

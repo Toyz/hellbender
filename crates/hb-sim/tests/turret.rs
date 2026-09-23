@@ -52,7 +52,7 @@ fn it_leads_a_moving_target() {
     let def = gun(50 * 65536, 100 << 16, 40 << 16, 2);
     let mut t = Turret::new(&at_origin());
     run(&mut t, &def, [0.0, 0.0, 40.0], [20.0, 0.0, 0.0], 2.0);
-    let expected = 20f32.atan2(40.0) * 65536.0 / std::f32::consts::TAU;
+    let expected = 20f32.atan2(40.0) * hb_formats::fixed::UNITS_PER_RADIAN;
     assert!((t.heading - expected).abs() < 30.0, "{} vs {expected}", t.heading);
 }
 

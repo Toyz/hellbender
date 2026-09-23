@@ -123,9 +123,7 @@ impl Flight {
         self.was = self.ship.position;
         self.ship.step(&controls, dt);
         // The engine keeps every position in the signed world.
-        let wrap = |v: f32| (v + 512.0).rem_euclid(1024.0) - 512.0;
-        self.ship.position[0] = wrap(self.ship.position[0]);
-        self.ship.position[2] = wrap(self.ship.position[2]);
+        self.ship.position = hb_formats::vector::in_world(self.ship.position);
         self.sync_camera();
     }
 
@@ -135,19 +133,14 @@ impl Flight {
         self.ship.auto_level = false;
         self.ship.throttle = 1.0;
         // `angles` gives the circle unsigned; the nose comes up to -0x3f00.
-        let pitch = {
-            let p = self.ship.angles()[0] / 65536.0;
-            if p > 0.5 { p - 1.0 } else { p }
-        };
+        let pitch = hb_formats::fixed::signed(self.ship.angles()[0]) / hb_formats::fixed::TURN;
         if pitch > -jump::PITCH {
             let by = (jump::SPIN * dt).min(pitch + jump::PITCH);
             self.ship.pitch_by(-by);
         }
         self.was = self.ship.position;
         self.ship.step(&hb_sim::flight::Controls::default(), dt);
-        let wrap = |v: f32| (v + 512.0).rem_euclid(1024.0) - 512.0;
-        self.ship.position[0] = wrap(self.ship.position[0]);
-        self.ship.position[2] = wrap(self.ship.position[2]);
+        self.ship.position = hb_formats::vector::in_world(self.ship.position);
         self.sync_camera();
     }
 
@@ -174,19 +167,13 @@ impl Flight {
             return;
         }
         let target = self.ship.position;
-        let travel: [f32; 3] = std::array::from_fn(|k| {
-            if k == 1 {
-                target[k] - self.was[k]
-            } else {
-                hb_sim::combat::wrapped(target[k] - self.was[k])
-            }
-        });
-        let length = (travel[0] * travel[0] + travel[1] * travel[1] + travel[2] * travel[2]).sqrt();
+        let travel = hb_formats::vector::offset(self.was, target);
+        let length = hb_formats::vector::length(travel);
         let pieces = (length / (hb_sim::collide::SHIP / 2.0)).ceil().max(1.0) as usize;
         let mut at = target;
         for piece in 1..=pieces {
             let t = piece as f32 / pieces as f32;
-            let along: [f32; 3] = std::array::from_fn(|k| self.was[k] + travel[k] * t);
+            let along = hb_formats::vector::add(self.was, hb_formats::vector::scale(travel, t));
             let (resolved, held) = self.resolve(grid, scenery, along);
             at = resolved;
             if held {
@@ -226,7 +213,7 @@ impl Flight {
                     position[k] >= lo && position[k] <= hi
                 } else {
                     let middle = (lo + hi) / 2.0;
-                    hb_sim::combat::wrapped(position[k] - middle).abs() <= (hi - lo) / 2.0
+                    hb_formats::fixed::wrapped(position[k] - middle).abs() <= (hi - lo) / 2.0
                 }
             })
         }));
@@ -944,11 +931,7 @@ fn main() -> Result<(), String> {
         target.clear(0);
         let eye = eye_of(&flight.camera);
         let velocity = if dt > 0.0 {
-            [
-                hb_sim::combat::wrapped(eye[0] - last_eye[0]) / dt,
-                (eye[1] - last_eye[1]) / dt,
-                hb_sim::combat::wrapped(eye[2] - last_eye[2]) / dt,
-            ]
+            hb_formats::vector::scale(hb_formats::vector::offset(last_eye, eye), 1.0 / dt)
         } else {
             [0.0; 3]
         };
@@ -957,7 +940,6 @@ fn main() -> Result<(), String> {
         // The guns, the afterburner's fuel, and the energy that feeds both:
         // `hb_sim::weapons`, from the trigger at `0x47db11` on.
         if demo.is_none() && battle.pilot.alive() {
-            let v = flight.ship.world_velocity();
             let pose = hb_sim::weapons::Pose {
                 position: eye,
                 right: flight.ship.right,
@@ -965,7 +947,7 @@ fn main() -> Result<(), String> {
                 forward: flight.ship.forward,
                 pitch: flight.camera.pitch.0 as i16 as f32,
                 heading: flight.camera.yaw.0 as f32,
-                speed: (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt(),
+                speed: hb_formats::vector::length(flight.ship.world_velocity()),
             };
             // The missile lock (`keyMissileLock`, V): what the selected weapon
             // can lock on, as `0x47bbd0` judges it.
@@ -975,11 +957,7 @@ fn main() -> Result<(), String> {
                 .enumerate()
                 .map(|(i, p)| {
                     let at = hb_sim::combat::position_of(p);
-                    let near = [
-                        eye[0] + hb_sim::combat::wrapped(at[0] - eye[0]),
-                        at[1],
-                        eye[2] + hb_sim::combat::wrapped(at[2] - eye[2]),
-                    ];
+                    let near = hb_formats::vector::nearest(eye, at);
                     let kind = &level.kinds[level.placements[i].kind];
                     hb_sim::weapons::Candidate {
                         class: kind.class(),
@@ -1451,13 +1429,7 @@ fn main() -> Result<(), String> {
         // flight, except the kinds the engine holds facing the eye, and the
         // Valkyrie's three muzzle flashes in turn. A kind whose model did
         // not load stays a spark.
-        let near = |p: [f32; 3]| {
-            [
-                eye[0] + hb_sim::combat::wrapped(p[0] - eye[0]),
-                p[1],
-                eye[2] + hb_sim::combat::wrapped(p[2] - eye[2]),
-            ]
-        };
+        let near = |p: [f32; 3]| hb_formats::vector::nearest(eye, p);
         let shot_at = |drawn: &mut Vec<hb_formats::text::Placement>, mesh, at: [f32; 3], angles: (u16, u16)| {
             drawn.push(hb_formats::text::Placement {
                 kind: mesh,
@@ -1472,9 +1444,8 @@ fn main() -> Result<(), String> {
         };
         // Which way a velocity points, in the engine's circle.
         let along = |v: [f32; 3]| {
-            let turn = 65536.0 / std::f32::consts::TAU;
-            let flat = (v[0] * v[0] + v[2] * v[2]).sqrt();
-            ((v[0].atan2(v[2]) * turn) as i32 as u16, (-v[1].atan2(flat) * turn) as i32 as u16)
+            let (heading, pitch) = hb_formats::vector::angles_of(v);
+            (heading as i32 as u16, pitch as i32 as u16)
         };
         let mut sparks: Vec<([f32; 3], u8)> = Vec::new();
         let mut muzzle_frame = 0usize;
@@ -1592,10 +1563,7 @@ fn main() -> Result<(), String> {
         if let Some(texture) = level.puff.as_ref() {
             for (segment, radius) in battle.smoke.shown() {
                 let from = near(segment.from);
-                let to: [f32; 3] = std::array::from_fn(|k| {
-                    let d = segment.to[k] - segment.from[k];
-                    from[k] + if k == 1 { d } else { hb_sim::combat::wrapped(d) }
-                });
+                let to = hb_formats::vector::add(from, hb_formats::vector::offset(segment.from, segment.to));
                 hb_render::scene::draw_smoke(&mut target, &scene, &seen, from, to, radius, texture);
             }
         }
@@ -1658,11 +1626,8 @@ fn main() -> Result<(), String> {
                 if health.destroyed || !hb_sim::combat::in_range(eye, at) {
                     return;
                 }
-                let v = seen.to_view(
-                    hb_formats::fixed::from_units(eye[0] + hb_sim::combat::wrapped(at[0] - eye[0])),
-                    hb_formats::fixed::from_units(at[1]),
-                    hb_formats::fixed::from_units(eye[2] + hb_sim::combat::wrapped(at[2] - eye[2])),
-                );
+                let [x, y, z] = hb_formats::vector::nearest(eye, at).map(hb_formats::fixed::from_units);
+                let v = seen.to_view(x, y, z);
                 // In front, and inside ninety degrees each way.
                 if v[2] <= 0.0 || v[0].abs() > v[2] || v[1].abs() > v[2] {
                     return;
@@ -1762,8 +1727,7 @@ fn main() -> Result<(), String> {
                     })
                     .map(|(i, p)| {
                         let at = hb_sim::combat::position_of(p);
-                        let dx = hb_sim::combat::wrapped(at[0] - eye[0]);
-                        let dz = hb_sim::combat::wrapped(at[2] - eye[2]);
+                        let [dx, _, dz] = hb_formats::vector::offset(eye, at);
                         let class = level.kinds[level.placements[i].kind].class();
                         hb_render::hud::Blip {
                             right: dx * cos - dz * sin,
@@ -1969,15 +1933,7 @@ struct ShotColours {
 
 impl ShotColours {
     fn for_palette(palette: &hb_formats::act::Palette) -> ShotColours {
-        let nearest = |want: [i32; 3]| -> u8 {
-            (240u8..=255)
-                .min_by_key(|&i| {
-                    let [r, g, b] = palette.rgb(i);
-                    let d = [r as i32 - want[0], g as i32 - want[1], b as i32 - want[2]];
-                    d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
-                })
-                .unwrap_or(255)
-        };
+        let nearest = |want: [u8; 3]| palette.nearest_in(want, 240..=255);
         ShotColours {
             player: 255,
             enemy: nearest([255, 40, 20]),

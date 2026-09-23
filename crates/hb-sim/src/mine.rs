@@ -20,7 +20,7 @@
 //!
 //! See `docs/engine/simulation.md`.
 
-use crate::combat::wrapped;
+use hb_formats::vector::{scale, sub, within};
 
 /// Slower than this and the drop is refused: `0x61a80` in 16.16.
 pub const SPEED: f32 = 400_000.0 / 65_536.0;
@@ -84,7 +84,7 @@ impl Field {
         }
         let free = self.slots.iter().position(Option::is_none)?;
         self.slots[free] = Some(Mine {
-            at: std::array::from_fn(|k| at[k] - back[k] * BEHIND),
+            at: sub(at, scale(back, BEHIND)),
             angles: [0.0; 2],
             damage,
             armed: false,
@@ -128,9 +128,7 @@ impl Field {
 /// The engine's test: each axis apart, wrapped for the world's edge, against
 /// the trigger radius (`0x4797cb`).
 fn near(mine: [f32; 3], ship: [f32; 3]) -> bool {
-    wrapped(mine[0] - ship[0]).abs() < TRIGGER
-        && (mine[1] - ship[1]).abs() < TRIGGER
-        && wrapped(mine[2] - ship[2]).abs() < TRIGGER
+    within(ship, mine, TRIGGER)
 }
 
 /// The mines the enemy lays, which are a different thing in a different
@@ -142,7 +140,7 @@ fn near(mine: [f32; 3], ship: [f32; 3]) -> bool {
 /// world's edge; inside all three, the player takes the laying type's shot
 /// damage scaled by how far in he is, and the mine is gone.
 pub mod laid {
-    use crate::combat::wrapped;
+    use hb_formats::vector::{distance, flat_length, offset, within};
 
     /// A hundred slots, as the player's pool has.
     pub const SLOTS: usize = super::SLOTS;
@@ -200,8 +198,7 @@ pub mod laid {
         /// Whether a mine may be laid here at all: the flat distance from the
         /// player has to be over [`CLEAR`] (`0x496666`).
         pub fn clear_of(at: [f32; 3], player: [f32; 3]) -> bool {
-            let (dx, dz) = (wrapped(at[0] - player[0]), wrapped(at[2] - player[2]));
-            (dx * dx + dz * dz).sqrt() > CLEAR
+            flat_length(offset(player, at)) > CLEAR
         }
 
         /// One frame against the player. Returns what went off.
@@ -209,17 +206,12 @@ pub mod laid {
             let mut blasts = Vec::new();
             for slot in &mut self.slots {
                 let Some(mine) = *slot else { continue };
-                let d = [
-                    wrapped(mine.at[0] - player[0]),
-                    wrapped(mine.at[1] - player[1]),
-                    wrapped(mine.at[2] - player[2]),
-                ];
                 // A box on each axis first, as the engine does, then the
                 // real distance for the falloff.
-                if d.iter().any(|v| v.abs() >= mine.radius) {
+                if !within(player, mine.at, mine.radius) {
                     continue;
                 }
-                let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+                let distance = distance(player, mine.at);
                 let scale = if mine.radius > 0.0 {
                     ((mine.radius - distance).abs() / mine.radius).max(LEAST)
                 } else {

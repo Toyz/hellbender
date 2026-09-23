@@ -28,7 +28,7 @@
 //! off (`0x42f559`) - the lamps are what light the tunnels. Box corners take it
 //! too (`0x415825`); how is not read yet.
 
-use hb_formats::fixed::wrapped;
+use hb_formats::vector::{dot, length, offset, within};
 use hb_formats::terrain::{Layer, Terrain};
 use hb_world::grid::{Cell, Grid};
 
@@ -356,16 +356,15 @@ impl Lamps {
 pub fn light_at(point: [f32; 3], lights: &[Light]) -> f32 {
     let mut sum = 0.0;
     for l in lights {
-        let d = [wrapped(point[0] - l.at[0]), point[1] - l.at[1], wrapped(point[2] - l.at[2])];
-        if d.iter().any(|c| c.abs() >= l.reach) {
+        if !within(l.at, point, l.reach) {
             continue;
         }
-        let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+        let d = offset(l.at, point);
+        let distance = length(d);
         sum += match l.kind {
             Kind::Round => l.strength * (l.reach - distance) / l.reach,
             Kind::Cone => {
-                let along = d[0] * l.normal[0] + d[1] * l.normal[1] + d[2] * l.normal[2];
-                if distance * std::f32::consts::FRAC_1_SQRT_2 < along { l.strength } else { 0.0 }
+                if distance * std::f32::consts::FRAC_1_SQRT_2 < dot(d, l.normal) { l.strength } else { 0.0 }
             }
             Kind::Flat => l.strength,
         };

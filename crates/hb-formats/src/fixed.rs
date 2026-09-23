@@ -67,6 +67,21 @@ pub fn signed(a: f32) -> f32 {
     (a + TURN / 2.0).rem_euclid(TURN) - TURN / 2.0
 }
 
+/// An aim folded back over the top, as the aiming routines do after taking a
+/// pitch (`0x4078c8`, `0x49246c`): past a quarter turn up or down the pitch
+/// is brought back and the heading turned half round. Going down, the engine
+/// adds half a turn to the pitch rather than reflecting it. With the pitch
+/// from `atan2` against a flat distance neither branch can be taken.
+pub fn over_the_top(heading: f32, pitch: f32) -> (f32, f32) {
+    if pitch > TURN / 4.0 {
+        (heading + TURN / 2.0, TURN / 2.0 - pitch)
+    } else if pitch < -TURN / 4.0 {
+        (heading + TURN / 2.0, pitch + TURN / 2.0)
+    } else {
+        (heading, pitch)
+    }
+}
+
 /// The engine's sine and cosine of an angle in the 16-bit circle, 16.16
 /// (`0x429ea0`, `0x429ed0`). The engine interpolates a 256-entry table; this
 /// is the curve the table samples.

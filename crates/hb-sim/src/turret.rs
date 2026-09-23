@@ -31,11 +31,12 @@
 //! first and skips the update when it reports the actor out of range
 //! (`0x42f7b9`). See [`crate::combat::in_range`].
 
-use hb_formats::fixed::signed;
+use hb_formats::fixed::{over_the_top, signed, TURN};
 use hb_formats::mrgl::Model;
 use hb_formats::text::{EnemyDef, Placement};
+use hb_formats::vector::{add, angles_of, direction, dot, length, offset, scale};
 
-use crate::combat::{direction, position_of, to_world, wrapped, Shot, Side};
+use crate::combat::{position_of, to_world, Shot, Side};
 
 /// The guided missile's weapon kind.
 pub const GUIDED: i32 = 19;
@@ -147,35 +148,22 @@ impl Turret {
         let at = position_of(p);
         // The aim is measured from the gun where the type names one.
         let eye = self.aim_from.unwrap_or(at);
-        let d = [wrapped(player[0] - eye[0]), player[1] - eye[1], wrapped(player[2] - eye[2])];
-        let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+        let d = offset(eye, player);
+        let distance = length(d);
         let speed = def.shot_speed() as f32 / 65536.0;
         // Two turret types have no shot speed; the engine divides by it anyway.
         let flight = if speed > 0.0 { distance / speed } else { 0.0 };
-        let lead_x = d[0] + player_velocity[0] * flight;
-        let lead_z = d[2] + player_velocity[2] * flight;
-        let mut wanted = lead_x.atan2(lead_z) * 65536.0 / std::f32::consts::TAU;
+        let lead = add(d, scale(player_velocity, flight));
+        let mut wanted = angles_of(lead).0;
 
         // Class 10 asks for pitch 0. Class 1 leads in y as well and aims up
-        // and down, wrapping the pair past vertical the way `0x4078c8` does:
-        // past a quarter turn the pitch reflects and the heading turns
-        // about, and below minus a quarter the engine adds half a turn to
-        // both, which is not the mirror of the first and is left as it is.
+        // and down, folded over the top the way `0x4078c8` does.
         let mut wanted_pitch = 0.0;
         if self.aim != Aim::Flat {
             // Class 3 takes no lead at all: it aims where the player is.
-            let (lead_x, lead_z) = if self.aim == Aim::Direct { (d[0], d[2]) } else { (lead_x, lead_z) };
-            wanted = lead_x.atan2(lead_z) * 65536.0 / std::f32::consts::TAU;
-            let lead_y = if self.aim == Aim::Direct { d[1] } else { d[1] + player_velocity[1] * flight };
-            let flat = (lead_x * lead_x + lead_z * lead_z).sqrt();
-            wanted_pitch = -lead_y.atan2(flat) * 65536.0 / std::f32::consts::TAU;
-            if wanted_pitch > 16384.0 {
-                wanted_pitch = 32768.0 - wanted_pitch;
-                wanted += 32768.0;
-            } else if wanted_pitch < -16384.0 {
-                wanted_pitch += 32768.0;
-                wanted += 32768.0;
-            }
+            let aim = if self.aim == Aim::Direct { d } else { lead };
+            let (heading, pitch) = angles_of(aim);
+            (wanted, wanted_pitch) = over_the_top(heading, pitch);
         }
 
         let ease = def.turn_rate as f32 / 65536.0 * dt;
@@ -254,9 +242,7 @@ impl Turret {
             self.pitch + BARREL_PITCH[barrel] as f32,
         );
         // Only when the player is ahead of the barrel (`0x406fc6`).
-        let behind = wrapped(at[0] - player[0]) * dir[0]
-            + (at[1] - player[1]) * dir[1]
-            + wrapped(at[2] - player[2]) * dir[2];
+        let behind = dot(offset(player, at), dir);
         if behind > 0.0 {
             return None;
         }
@@ -447,18 +433,11 @@ impl Missile {
         for _ in 0..Missile::SUBSTEPS {
             self.speed = (self.speed + Missile::ACCELERATION * step).min(Missile::TOP_SPEED);
             if let Some(target) = seek(self) {
-                let d = [
-                    wrapped(target[0] - self.position[0]),
-                    target[1] - self.position[1],
-                    wrapped(target[2] - self.position[2]),
-                ];
-                let turn = 65536.0 / std::f32::consts::TAU;
-                let heading = d[0].atan2(d[2]) * turn;
                 // Positive pitch is nose down, so climbing toward a target
                 // above is a negative pitch (`0x4eeaf0` is the negative scale).
-                let pitch = -(d[1].atan2((d[0] * d[0] + d[2] * d[2]).sqrt())) * turn;
+                let (heading, pitch) = angles_of(offset(self.position, target));
                 if self.age > 1.5 {
-                    self.heading = heading.rem_euclid(65536.0);
+                    self.heading = heading.rem_euclid(TURN);
                     self.pitch = pitch;
                 } else {
                     let gain = Missile::GAIN * self.age.min(1.0);

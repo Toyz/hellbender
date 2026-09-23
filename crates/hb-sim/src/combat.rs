@@ -26,6 +26,7 @@
 
 use hb_formats::mrgl::Model;
 use hb_formats::text::{EnemyDef, Placement};
+use hb_formats::vector::{direction, distance, dot, offset, within};
 
 /// Seconds a straight shot lives: `0x20000` in 16.16, set by the spawner.
 pub const SHOT_LIFE: f32 = 2.0;
@@ -97,13 +98,6 @@ pub struct Shot {
     /// The weapon kind, which picks the target's damage multiplier.
     pub kind: i32,
     pub side: Side,
-}
-
-/// A direction in the engine's convention: heading 0 along +z increasing
-/// toward +x, positive pitch nose down.
-pub fn direction(heading: f32, pitch: f32) -> [f32; 3] {
-    let (h, p) = (hb_formats::fixed::radians(heading), hb_formats::fixed::radians(pitch));
-    [h.sin() * p.cos(), -p.sin(), h.cos() * p.cos()]
 }
 
 impl Shot {
@@ -333,10 +327,6 @@ pub fn position_of(p: &Placement) -> [f32; 3] {
     [p.x, p.y, p.z].map(hb_formats::fixed::to_units)
 }
 
-/// The shortest signed difference between two positions in the wrapping
-/// world, as the engine takes it with `shl 6; sar 6` on 16.16 values.
-pub use hb_formats::fixed::wrapped;
-
 /// What stopped a shot this frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stop {
@@ -403,10 +393,7 @@ pub fn splash(
             if !alive(i) {
                 return false;
             }
-            let o = position_of(p);
-            wrapped(at[0] - o[0]).abs() <= reach
-                && (at[1] - o[1]).abs() <= reach
-                && wrapped(at[2] - o[2]).abs() <= reach
+            offset(position_of(p), at).iter().all(|c| c.abs() <= reach)
         })
         .map(|(i, _)| i)
         .collect()
@@ -426,9 +413,9 @@ pub fn object_at(
         }
         let Some(volume) = volumes.get(p.kind) else { continue };
         let origin = position_of(p);
-        let d = [wrapped(at[0] - origin[0]), at[1] - origin[1], wrapped(at[2] - origin[2])];
+        let d = offset(origin, at);
         let reach = volume.reach();
-        if d.iter().map(|v| v * v).sum::<f32>() > reach * reach {
+        if dot(d, d) > reach * reach {
             continue;
         }
         let near = [origin[0] + d[0], at[1], origin[2] + d[2]];
@@ -456,9 +443,7 @@ pub fn rammable(class: i64) -> bool {
 
 /// The player's hit box: 2 units each way of the ship (`0x46568a`).
 pub fn player_is_hit(player: [f32; 3], point: [f32; 3]) -> bool {
-    wrapped(player[0] - point[0]).abs() < 2.0
-        && (player[1] - point[1]).abs() < 2.0
-        && wrapped(player[2] - point[2]).abs() < 2.0
+    within(player, point, 2.0)
 }
 
 /// The player's ship in a fight: health, shield, and a hit's jolt.
@@ -527,7 +512,8 @@ pub fn near_miss_sound(kind: i32) -> &'static str {
 /// units or less on both x and z (`0x42f7b9`, `0x500000`). The actor loop at
 /// `0x406650` updates nothing outside it.
 pub fn in_range(eye: [f32; 3], at: [f32; 3]) -> bool {
-    wrapped(at[0] - eye[0]).abs() <= 80.0 && wrapped(at[2] - eye[2]).abs() <= 80.0
+    let d = offset(eye, at);
+    d[0].abs() <= 80.0 && d[2].abs() <= 80.0
 }
 
 /// How loud something at `at` should be, 1.0 on top of you and 0.0 at the
@@ -540,8 +526,7 @@ pub fn in_range(eye: [f32; 3], at: [f32; 3]) -> bool {
 /// so that is where this reaches zero. Without it every explosion in the
 /// level arrives at full volume, which is its own invention and a louder one.
 pub fn falloff(eye: [f32; 3], at: [f32; 3]) -> f32 {
-    let d = [wrapped(at[0] - eye[0]), at[1] - eye[1], wrapped(at[2] - eye[2])];
-    let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+    let distance = distance(eye, at);
     // Flat up close, then falling away - squared, so it is quiet well before
     // the edge rather than only at it.
     let near = 1.0 - (distance / 80.0).clamp(0.0, 1.0);

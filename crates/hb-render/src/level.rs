@@ -702,9 +702,8 @@ impl Level {
             mesh_flipbooks: &self.mesh_flipbooks,
             seconds: 0.0,
             sun: {
-                let v = self.manifest.light.map(|c| c as f32 / 65536.0);
-                let length = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-                if length > 0.0 { v.map(|c| c / length) } else { [0.0, -1.0, 0.0] }
+                let v = hb_formats::vector::normalise(self.manifest.light.map(|c| c as f32));
+                if v == [0.0; 3] { [0.0, -1.0, 0.0] } else { v }
             },
             sun_ambient: (self.manifest.ambient as f32 / 65536.0).clamp(0.0, 1.0),
             ambient: (self.manifest.ambient >> 8).clamp(0, 255) as u8,
@@ -764,13 +763,7 @@ fn halve(image: &Image, palette: &Palette, map: Option<&ColourMap>) -> Option<Im
             let [r, g, b] = sum.map(|c| (c / 4) as u8);
             let index = match map {
                 Some(map) => map.lookup(r, g, b),
-                None => (0..240u16)
-                    .min_by_key(|&i| {
-                        let [pr, pg, pb] = palette.rgb(i as u8);
-                        let d = [pr as i32 - r as i32, pg as i32 - g as i32, pb as i32 - b as i32];
-                        d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
-                    })
-                    .unwrap_or(0) as u8,
+                None => palette.nearest_in([r, g, b], 0..=239),
             };
             pixels.push(index);
         }
@@ -794,23 +787,8 @@ pub fn brighten([r, g, b]: [u8; 3]) -> [u8; 3] {
     [r, g, b].map(|c| ((c as i64 * factor) >> 16) as u8)
 }
 
-/// The palette index nearest a colour, as the engine measures it
-/// (`0x485080`): `29|dr| + 58|dg| + 15|db|`, the first of equals.
-pub fn nearest(palette: &Palette, [r, g, b]: [u8; 3]) -> u8 {
-    let mut best = (i64::MAX, 0u8);
-    for i in 0..=255u8 {
-        let [pr, pg, pb] = palette.rgb(i);
-        let d = |a: u8, b: u8| (a as i64 - b as i64).abs();
-        let cost = 29 * d(r, pr) + 58 * d(g, pg) + 15 * d(b, pb);
-        if cost < best.0 {
-            best = (cost, i);
-        }
-    }
-    best.1
-}
-
 /// The sky remap a flash swaps in: each sky index's level colour,
 /// brightened, and matched back into the level's palette (`0x451290`).
 pub fn bright_sky(remap: &[u8; 256], palette: &Palette) -> [u8; 256] {
-    remap.map(|i| nearest(palette, brighten(palette.rgb(i))))
+    remap.map(|i| palette.nearest(brighten(palette.rgb(i))))
 }

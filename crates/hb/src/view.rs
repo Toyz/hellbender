@@ -5,6 +5,7 @@
 //! right", which a table of numbers cannot.
 
 use hb_formats::mrgl::Model;
+use hb_formats::vector::{dot, normalise};
 
 pub struct View {
     pub width: usize,
@@ -125,8 +126,7 @@ pub fn render(model: &Model, view: &View) -> (Vec<u8>, usize, usize) {
             continue;
         };
 
-        let lambert = (-(normal[0] * light[0] + normal[1] * light[1] + normal[2] * light[2]))
-            .max(0.0);
+        let lambert = (-dot(normal, light)).max(0.0);
         let shade = 0.30 + 0.70 * lambert;
         // Tint by material so adjacent faces are told apart.
         let tint = [
@@ -146,14 +146,6 @@ pub fn render(model: &Model, view: &View) -> (Vec<u8>, usize, usize) {
     (pixels, drawn, culled)
 }
 
-fn normalise(v: [f32; 3]) -> [f32; 3] {
-    let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-    if len == 0.0 {
-        v
-    } else {
-        [v[0] / len, v[1] / len, v[2] / len]
-    }
-}
 
 /// Scanline fill of a convex polygon, which every face here is - they all have
 /// three or four corners.
@@ -249,8 +241,7 @@ pub fn heightmap(grid: &hb_world::Grid, scale: usize) -> (Vec<u8>, usize, usize)
                         normal[1] as f32,
                         normal[2] as f32,
                     ]);
-                    let lambert =
-                        (n[0] * light[0] + n[1] * light[1] + n[2] * light[2]).max(0.0);
+                    let lambert = dot(n, light).max(0.0);
                     let shade = 0.25 + 0.75 * lambert;
 
                     let mut rgb = [

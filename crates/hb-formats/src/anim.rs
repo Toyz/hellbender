@@ -332,16 +332,8 @@ fn tween(a: Option<&[i32; 3]>, b: Option<&[i32; 3]>, t: f32) -> [f32; 3] {
 /// first is about x, the second about z and the third about y, which is the
 /// order the actor draw hands its pitch, roll and heading to `0x42aa30`.
 fn rotation(angle: [f32; 3]) -> [[f32; 3]; 3] {
-    let turn = crate::fixed::radians;
-    let (sp, cp) = turn(angle[0]).sin_cos();
-    let (sr, cr) = turn(angle[1]).sin_cos();
-    let (sh, ch) = turn(angle[2]).sin_cos();
     // The same right, up and forward the renderer builds for a placement.
-    let forward = [sh * cp, -sp, ch * cp];
-    let up0 = [sh * sp, cp, ch * sp];
-    let right0 = [ch, 0.0, -sh];
-    let right: [f32; 3] = std::array::from_fn(|k| right0[k] * cr + up0[k] * sr);
-    let up: [f32; 3] = std::array::from_fn(|k| up0[k] * cr - right0[k] * sr);
+    let [right, up, forward] = crate::vector::axes(angle[2], angle[0], angle[1]);
     [
         [right[0], up[0], forward[0]],
         [right[1], up[1], forward[1]],

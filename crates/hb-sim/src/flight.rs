@@ -34,6 +34,7 @@
 //! vertical velocities are only ever halved.
 
 use hb_formats::fixed::{circle, radians, TURN};
+use hb_formats::vector::{add, cross, from_frame, normalise, scale};
 
 /// `0x2492`, the input scale.
 const SEVENTH: f32 = 9362.0 / 65536.0;
@@ -89,23 +90,6 @@ pub struct Ship {
     pub auto_level: bool,
 }
 
-fn add(a: [f32; 3], b: [f32; 3], k: f32) -> [f32; 3] {
-    [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k]
-}
-
-fn scale(a: [f32; 3], k: f32) -> [f32; 3] {
-    [a[0] * k, a[1] * k, a[2] * k]
-}
-
-fn normalise(a: [f32; 3]) -> [f32; 3] {
-    let l = (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt().max(1e-6);
-    scale(a, 1.0 / l)
-}
-
-fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
-}
-
 impl Ship {
     /// A ship at a position, level, facing a heading in the engine's circle.
     pub fn new(position: [f32; 3], heading: f32) -> Ship {
@@ -143,8 +127,8 @@ impl Ship {
     pub fn pitch_by(&mut self, turns: f32) {
         let (sp, cp) = (turns * std::f32::consts::TAU).sin_cos();
         let (f, u) = (self.forward, self.up);
-        self.forward = normalise(add(scale(f, cp), u, -sp));
-        self.up = normalise(add(scale(u, cp), f, sp));
+        self.forward = normalise(add(scale(f, cp), scale(u, -sp)));
+        self.up = normalise(add(scale(u, cp), scale(f, sp)));
     }
 
     /// Forward speed, units a second.
@@ -154,8 +138,7 @@ impl Ship {
 
     /// The ship's velocity in the world.
     pub fn world_velocity(&self) -> [f32; 3] {
-        let v = self.velocity;
-        add(add(scale(self.right, v[0]), self.up, v[1]), self.forward, v[2])
+        from_frame(self.velocity, &[self.right, self.up, self.forward])
     }
 
     /// One frame of `0x463aa0`.
@@ -239,21 +222,21 @@ impl Ship {
         let angle = |rate: f32| rate * dt * std::f32::consts::TAU;
         let (sp, cp) = angle(self.rates[0]).sin_cos();
         let (f, u) = (self.forward, self.up);
-        self.forward = add(scale(f, cp), u, -sp);
-        self.up = add(scale(u, cp), f, sp);
+        self.forward = add(scale(f, cp), scale(u, -sp));
+        self.up = add(scale(u, cp), scale(f, sp));
         let (sy, cy) = angle(self.rates[2]).sin_cos();
         let (f, r) = (self.forward, self.right);
-        self.forward = add(scale(f, cy), r, sy);
-        self.right = add(scale(r, cy), f, -sy);
+        self.forward = add(scale(f, cy), scale(r, sy));
+        self.right = add(scale(r, cy), scale(f, -sy));
         let (sr, cr) = angle(self.rates[1]).sin_cos();
         let (r, u) = (self.right, self.up);
-        self.right = add(scale(r, cr), u, sr);
-        self.up = add(scale(u, cr), r, -sr);
+        self.right = add(scale(r, cr), scale(u, sr));
+        self.up = add(scale(u, cr), scale(r, -sr));
         // Keep the axes square as they accumulate.
         self.forward = normalise(self.forward);
         self.right = normalise(cross(self.up, self.forward));
         self.up = cross(self.forward, self.right);
 
-        self.position = add(self.position, self.world_velocity(), dt);
+        self.position = add(self.position, scale(self.world_velocity(), dt));
     }
 }

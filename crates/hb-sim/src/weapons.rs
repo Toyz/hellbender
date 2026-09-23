@@ -8,7 +8,9 @@
 //! the weapon and on how much weapon energy is left - the guns fire from one,
 //! two or four barrels, and the more barrels the more each volley costs.
 
-use crate::combat::{direction, Shot, Side};
+use hb_formats::vector::direction;
+
+use crate::combat::{Shot, Side};
 use crate::mission::Voice;
 use crate::powerup::{Stores, ENERGY_MAX};
 use crate::turret::{Missile, Rng};

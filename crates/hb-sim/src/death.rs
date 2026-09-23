@@ -56,7 +56,7 @@ impl Wreck {
         }
         self.pitch = (self.pitch + TURN * dt).min(PITCH_LIMIT);
         self.roll += TURN * dt;
-        let forward = crate::combat::direction(self.heading, self.pitch);
+        let forward = hb_formats::vector::direction(self.heading, self.pitch);
         for k in 0..3 {
             position[k] += forward[k] * DRIFT * dt;
         }

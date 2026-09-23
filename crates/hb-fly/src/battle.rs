@@ -379,12 +379,7 @@ impl Battle {
             // `0x4768a0`: an enemy shot that comes within 16 units while
             // closing plays its sound once.
             if shot.side == Side::Enemy && !flying.whizzed {
-                let d = [
-                    combat::wrapped(shot.position[0] - player[0]),
-                    shot.position[1] - player[1],
-                    combat::wrapped(shot.position[2] - player[2]),
-                ];
-                let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+                let distance = hb_formats::vector::distance(player, shot.position);
                 if distance < 16.0 && distance < flying.last_distance {
                     flying.whizzed = true;
                     noises.push(Noise::NearMiss(shot.kind, shot.position));

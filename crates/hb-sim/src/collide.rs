@@ -20,6 +20,8 @@
 /// (`0x4272d2`).
 pub const SHIP: f32 = 1.0;
 
+use hb_formats::vector::{length, scale, sub};
+
 /// The engine's overshoot on a push (`0x427841`).
 pub const OVERSHOOT: f32 = 0x103e8 as f32 / 65536.0;
 
@@ -81,13 +83,13 @@ pub fn push_out(position: [f32; 3], radius: f32, solids: &[Solid]) -> ([f32; 3],
                 Some((step, axis == 1 && sign > 0.0))
             } else {
                 let near = solid.nearest(p);
-                let d: [f32; 3] = std::array::from_fn(|k| p[k] - near[k]);
-                let length = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+                let d = sub(p, near);
+                let length = length(d);
                 if length >= radius || length <= 0.0 {
                     None
                 } else {
                     let want = (radius - length) * OVERSHOOT;
-                    let step: [f32; 3] = std::array::from_fn(|k| d[k] / length * want);
+                    let step = scale(d, want / length);
                     Some((step, d[1] > 0.0 && d[1] >= d[0].abs() && d[1] >= d[2].abs()))
                 }
             };

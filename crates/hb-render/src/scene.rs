@@ -4,6 +4,7 @@ use hb_formats::act::Palette;
 use hb_formats::colour::Ramp;
 use hb_formats::raw::Image;
 use hb_formats::terrain::{BoxFace, Layer, TextureRef, CELL_SIZE, SIDE};
+use hb_formats::vector::{axes, cross, dot, flat_length, from_frame, length, scale, sub};
 use hb_world::{triangle, Cell, Corner, Grid, Half};
 
 use crate::camera::Camera;
@@ -302,15 +303,7 @@ fn draw_mesh(
     // The model's own right, up and forward in the world, from heading, pitch
     // and roll with the camera's conventions: heading 0 along +z, positive
     // pitch nose down, positive roll the left wing down.
-    let [heading, pitch, roll] = angles.map(|a| hb_formats::Angle(a).to_radians());
-    let (sh, ch) = heading.sin_cos();
-    let (sp, cp) = pitch.sin_cos();
-    let (sr, cr) = roll.sin_cos();
-    let forward = [sh * cp, -sp, ch * cp];
-    let up0 = [sh * sp, cp, ch * sp];
-    let right0 = [ch, 0.0, -sh];
-    let right: [f32; 3] = std::array::from_fn(|k| right0[k] * cr + up0[k] * sr);
-    let up: [f32; 3] = std::array::from_fn(|k| up0[k] * cr - right0[k] * sr);
+    let frame = axes(angles[0] as f32, angles[1] as f32, angles[2] as f32);
     // Model space is 2.14 and spans -1.0 to +1.0, so `Vertex::world` turns a
     // vertex into a 16.16 world offset at the type's radius.
     let (width, height) = (target.width, target.height);
@@ -318,8 +311,7 @@ fn draw_mesh(
     // plane come later, after the polygon is clipped, so a model the camera
     // is inside is cut rather than dropped.
     let place = |v: &hb_formats::mrgl::Vertex| -> [f32; 3] {
-        let [mx, my, mz] = v.world(scale).map(|c| c as f32);
-        let world: [f32; 3] = std::array::from_fn(|k| right[k] * mx + up[k] * my + forward[k] * mz);
+        let world = from_frame(v.world(scale).map(|c| c as f32), &frame);
         camera.to_view(x + world[0] as i32, y + world[1] as i32, z + world[2] as i32)
     };
 
@@ -329,8 +321,7 @@ fn draw_mesh(
         if let Some(light) = below {
             return light;
         }
-        let n = normal.map(|c| c as f32 / 65536.0);
-        sun_light(scene, std::array::from_fn(|k| right[k] * n[0] + up[k] * n[1] + forward[k] * n[2]))
+        sun_light(scene, from_frame(normal.map(hb_formats::fixed::to_units), &frame))
     };
     let shade = shade_for(scene, camera);
     // The indexed polygons' span routine (`0x4a5b1a`) skips texel 0, so their
@@ -582,7 +573,7 @@ fn ground_light(scene: &Scene, x: i32, z: i32) -> f32 {
 /// rest of the way to full by how squarely the face looks into the light -
 /// `-dot(normal, light)`, clamped to 0..1.
 fn sun_light(scene: &Scene, normal: [f32; 3]) -> f32 {
-    let facing = -(normal[0] * scene.sun[0] + normal[1] * scene.sun[1] + normal[2] * scene.sun[2]);
+    let facing = -dot(normal, scene.sun);
     (scene.sun_ambient + facing.clamp(0.0, 1.0) * (1.0 - scene.sun_ambient)).clamp(0.0, 1.0)
 }
 
@@ -894,20 +885,16 @@ pub fn draw_smoke(
     radius: f32,
     texture: &Image,
 ) {
-    let d = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
-    let length = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+    let d = sub(to, from);
+    let length = length(d);
     if length <= 0.0 || radius <= 0.0 {
         return;
     }
-    let forward = d.map(|c| c / length);
+    let forward = scale(d, 1.0 / length);
     // Across and up from the segment, with no roll: across is level.
-    let flat = (forward[0] * forward[0] + forward[2] * forward[2]).sqrt();
+    let flat = flat_length(forward);
     let right = if flat > 1e-6 { [forward[2] / flat, 0.0, -forward[0] / flat] } else { [1.0, 0.0, 0.0] };
-    let up = [
-        forward[1] * right[2] - forward[2] * right[1],
-        forward[2] * right[0] - forward[0] * right[2],
-        forward[0] * right[1] - forward[1] * right[0],
-    ];
+    let up = cross(forward, right);
     let long = length * hb_sim::smoke::OVERLAP;
     let (r, h) = (radius, radius * 0.866);
     let section = [(0.0, h), (r, -h), (-r, -h)];

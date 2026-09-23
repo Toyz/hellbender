@@ -1,5 +1,6 @@
 //! The player's weapons and energy.
 
+use hb_formats::vector;
 use hb_sim::combat::{self, Side};
 use hb_sim::powerup::Stores;
 use hb_sim::turret::Rng;
@@ -102,10 +103,10 @@ fn the_dispersion_cannon_also_fires_straight_back() {
     let v = guns.step(true, false, 1.0 / 60.0, &level(), &mut stores, &mut rng).0.remove(0);
     assert_eq!(v.shots.len(), 2);
     let [a, b] = [v.shots[0].velocity, v.shots[1].velocity];
-    let dot = (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+    let dot = vector::dot(a, b) / vector::dot(a, a);
     assert!((dot + 1.0).abs() < 1e-4, "{dot}");
     // The first step of the pattern is 1,024 off in pitch: about 5.6 degrees.
-    let up = -a[1] / (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt();
+    let up = -a[1] / vector::length(a);
     assert!((up.asin().to_degrees().abs() - 5.625).abs() < 0.01, "{up}");
     assert_eq!(stores.ammo[weapons::DISPERSION], 9);
 

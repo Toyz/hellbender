@@ -11,11 +11,10 @@
 //! The loader's own additions - an end marker, sync points around tunnels,
 //! the start - are made here too (`0x470bd0`).
 
-use hb_formats::fixed::UNITS_PER_RADIAN;
+use hb_formats::vector::{angles_of, flat_length, flat_within, offset};
 use hb_formats::nav::{Data, Kind, Nav};
 use hb_formats::text::Placement;
 
-use crate::combat::wrapped;
 use crate::turret::Rng;
 
 /// How many beacons the player can have out; the eleventh replaces the oldest.
@@ -451,8 +450,7 @@ impl Mission {
                 let dropped = self.points.iter().any(|p| {
                     p.nav.kind == Kind::Beacon
                         && layer(p.position[1]) == layer(here[1])
-                        && wrapped(p.position[0] - here[0]).abs() < 8.0
-                        && wrapped(p.position[2] - here[2]).abs() < 8.0
+                        && flat_within(here, p.position, 8.0)
                 });
                 if dropped {
                     if let Some(s) = self.points[cur].nav.completion_sound.clone() {
@@ -468,9 +466,9 @@ impl Mission {
         };
 
         if let Some(t) = target {
-            let d = [wrapped(player[0] - t[0]), player[1] - t[1], wrapped(player[2] - t[2])];
-            let distance = (d[0] * d[0] + d[2] * d[2]).sqrt();
-            let bearing = (d[0].atan2(d[2]) * UNITS_PER_RADIAN) as i32;
+            let d = offset(t, player);
+            let distance = flat_length(d);
+            let bearing = angles_of(d).0 as i32;
             self.arrow = (bearing - heading as i32) as u16;
             self.near = distance < 60.0;
             self.distance = distance;

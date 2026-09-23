@@ -9,7 +9,9 @@
 
 use hb_formats::text::EnemyDef;
 
-use crate::combat::{wrapped, Pilot};
+use hb_formats::vector::within;
+
+use crate::combat::Pilot;
 use crate::mission::Voice;
 use crate::turret::Rng;
 
@@ -334,9 +336,7 @@ impl Field {
             if p.taken {
                 continue;
             }
-            let inside = wrapped(p.position[0] - player[0]).abs() < p.size
-                && (p.position[1] - player[1]).abs() < p.size
-                && wrapped(p.position[2] - player[2]).abs() < p.size;
+            let inside = within(player, p.position, p.size);
             if !inside {
                 continue;
             }
