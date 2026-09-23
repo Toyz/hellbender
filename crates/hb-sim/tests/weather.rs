@@ -77,6 +77,7 @@ fn they_are_drawn_in_colour_ramp_one() {
 }
 
 use hb_sim::weather::{bolt, Flash, Lightning, FLASH, STRIKE_REACH};
+use hb_formats::fixed::to_units;
 
 /// The `.LVL`'s line 42 in every level, as stored.
 const BASE: i32 = 983_040;
@@ -115,7 +116,7 @@ fn a_strike_flashes_for_half_a_second_and_thunders_after() {
     assert_eq!(at[1], EYE[1]);
     // Dark half a second later.
     let dark = seen.iter().find(|(f, e)| *f > first && *e == Flash::Dark).unwrap().0;
-    assert_eq!(dark - first, (FLASH as f32 / 65536.0 * 30.0) as usize);
+    assert_eq!(dark - first, (to_units(FLASH) * 30.0) as usize);
     // Thunder comes, at the strike on the sky layer.
     assert!(seen.iter().any(|(_, e)| matches!(e, Flash::Thunder { at } if at[1] == sky)));
     // And a second strike about fifteen seconds after the first.

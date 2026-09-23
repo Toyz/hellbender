@@ -8,6 +8,7 @@ use std::process::ExitCode;
 
 mod view;
 
+use hb_formats::fixed::{from_units, to_units};
 use hb_formats::{act, colour, lvl, mrgl, png, raw, terrain, text};
 use hb_pod::Pod;
 
@@ -367,7 +368,7 @@ fn cmd_view(name: &str, out: &Path, at: f32) -> Result<(), String> {
             "{name}: {} parts, {} frames at {:.3}s, {} materials",
             animated.parts.len(),
             animated.frames,
-            animated.time_per_frame as f32 / 65536.0,
+            to_units(animated.time_per_frame),
             animated.materials.len()
         );
         let (frame, fraction) = animated.frame_at(at);
@@ -513,18 +514,18 @@ fn cmd_look(name: &str, index: &str, out: &Path, rest: &[&str]) -> Result<(), St
     }
     let distance: f32 = match rest.first() {
         Some(d) => d.parse().map_err(|_| "distance must be world units")?,
-        None => (kind.radius() as f32 / 65536.0 * 4.0).max(10.0),
+        None => (to_units(kind.radius()) * 4.0).max(10.0),
     };
-    let (x, y, z) = (p.x, p.y + ((distance / 3.0) * 65536.0) as i32, p.z - (distance * 65536.0) as i32);
+    let (x, y, z) = (p.x, p.y + from_units(distance / 3.0), p.z - from_units(distance));
     let grid = hb_world::Grid::new(&level.terrain);
     println!(
         "object at ({:.1}, {:.1}, {:.1}), solid top there {:.1}; eye at y {:.1}, solid top under it {:.1}",
-        p.x as f32 / 65536.0,
-        p.y as f32 / 65536.0,
-        p.z as f32 / 65536.0,
-        grid.ceiling_of_solid(p.x, p.z) as f32 / 65536.0,
-        y as f32 / 65536.0,
-        grid.ceiling_of_solid(x, z) as f32 / 65536.0
+        to_units(p.x),
+        to_units(p.y),
+        to_units(p.z),
+        to_units(grid.ceiling_of_solid(p.x, p.z)),
+        to_units(y),
+        to_units(grid.ceiling_of_solid(x, z))
     );
     let mut camera = hb_render::Camera::looking_at(x, y, z, hb_formats::Angle(0));
     // Nose down by the angle to the object: atan(1/3), in the 16-bit circle.
@@ -552,8 +553,8 @@ fn cmd_look(name: &str, index: &str, out: &Path, rest: &[&str]) -> Result<(), St
             .get(frame)
             .and_then(Option::as_ref)
             .ok_or("that explosion frame did not load")?;
-        let at = [p.x, p.y, p.z].map(|v| v as f32 / 65536.0);
-        let size = (kind.radius() as f32 / 65536.0).clamp(0.5, 8.0) * 2.0;
+        let at = [p.x, p.y, p.z].map(to_units);
+        let size = (to_units(kind.radius())).clamp(0.5, 8.0) * 2.0;
         hb_render::scene::draw_sprite(&mut target, &scene, &camera, at, size, texture);
         println!("explosion frame {frame} at size {size:.1}");
     }
@@ -564,8 +565,8 @@ fn cmd_look(name: &str, index: &str, out: &Path, rest: &[&str]) -> Result<(), St
         level.stem,
         kind.model,
         kind.name.trim(),
-        kind.radius() as f32 / 65536.0,
-        p.hit_points as f32 / 65536.0,
+        to_units(kind.radius()),
+        to_units(p.hit_points),
         drawn.models,
         out.display()
     );
@@ -651,8 +652,8 @@ fn cmd_fly(name: &str, out: &Path, rest: &[&str]) -> Result<(), String> {
                         // The world wraps at 1024 units, which is what the
                         // engine's shl 6 / sar 6 does to the offset.
                         let wrap = |d: f32| d - (d / 1024.0).round() * 1024.0;
-                        let dx = wrap((p.x - x) as f32 / 65536.0);
-                        let dz = wrap((p.z - z) as f32 / 65536.0);
+                        let dx = wrap(to_units(p.x - x));
+                        let dz = wrap(to_units(p.z - z));
                         let class = level.kinds[p.kind].class();
                         hb_render::hud::Blip {
                             right: dx * cos - dz * sin,
@@ -1027,9 +1028,9 @@ fn cmd_demo(n: &str, at: &str, out: &Path) -> Result<(), String> {
     println!(
         "demo {n} at {seconds:.1}s of {:.1}: ({:.1}, {:.1}, {:.1}) heading {} pitch {} -> {}",
         demo.seconds(),
-        pose.x as f32 / 65536.0,
-        pose.y as f32 / 65536.0,
-        pose.z as f32 / 65536.0,
+        to_units(pose.x),
+        to_units(pose.y),
+        to_units(pose.z),
         pose.angles[2],
         pose.angles[0],
         out.display()

@@ -7,6 +7,7 @@
 
 
 use hb_formats::demo::Demo;
+use hb_formats::fixed::to_units;
 use hb_formats::terrain::{Layer, Terrain};
 use hb_pod::Pod;
 use hb_world::Grid;
@@ -81,13 +82,13 @@ fn the_recorded_flight_never_goes_underground() {
         assert!(
             p.y >= ground,
             "at t={:.2}s the pose is {:.2} units under the ground",
-            p.time as f32 / 65536.0,
-            (ground - p.y) as f32 / 65536.0
+            to_units(p.time),
+            to_units(ground - p.y)
         );
         lowest = lowest.min(p.y - ground);
     }
     // The closest the pilot came is about five units, not exactly five.
-    let lowest = lowest as f32 / 65536.0;
+    let lowest = to_units(lowest);
     assert!((4.5..5.5).contains(&lowest), "closest approach {lowest} units");
 }
 

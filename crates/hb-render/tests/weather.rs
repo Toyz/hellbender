@@ -2,6 +2,7 @@
 
 use hb_sim::turret::Rng;
 use hb_sim::weather::{self, Weather};
+use hb_formats::fixed::from_units;
 
 /// A frame of `stem` from ten units above the middle of the map, after a
 /// second of weather at thirty frames a second, flying forward a unit a
@@ -14,7 +15,7 @@ fn frame(stem: &str, out: &str) -> Option<usize> {
     camera.pitch = hb_formats::Angle(0);
     let at = [camera.x, camera.y, camera.z];
     let mut w = Weather::new(at, &mut Rng::new(0x1996));
-    let sky = (level.sky_height() * 65536.0) as i32;
+    let sky = from_units(level.sky_height());
     assert!(Weather::falls(at[1], sky, None), "{stem}: the eye is not where weather falls");
     for _ in 0..30 {
         Weather::step(&mut w.snow, 1.0 / 30.0, at);
@@ -101,7 +102,7 @@ fn a_flash_lights_iowahs_sky_and_its_bolt() {
     let mut target = hb_render::Target::new(320, 200);
     target.clear(0);
     hb_render::draw_world(&mut target, &scene, &camera);
-    let sky = (level.sky_height() * 65536.0) as i32;
+    let sky = from_units(level.sky_height());
     let _ = sky;
     let top = [10 << 16, ground + (40 << 16), 60 << 16];
     let segments = hb_sim::weather::bolt(top, |p| grid.ceiling_of_solid(p[0], p[2]), &mut Rng::new(4));

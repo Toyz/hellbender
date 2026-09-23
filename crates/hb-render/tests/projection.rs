@@ -1,6 +1,7 @@
 //! The camera and the rasteriser, checked without needing the game.
 
 use hb_formats::act::Palette;
+use hb_formats::fixed::from_units;
 use hb_formats::raw::{Image, Shape};
 use hb_formats::Angle;
 use hb_render::raster::{Shade, Vertex};
@@ -38,7 +39,7 @@ fn the_camera_looks_the_way_a_ship_on_that_heading_travels() {
     for heading in [0u16, 0x2000, 0x4000, 0x6000, 0x8000, 0xa000, 0xc000, 0xe000] {
         let camera = Camera::looking_at(0, 0, 0, Angle(heading));
         let h = Angle(heading).to_radians();
-        let (dx, dz) = ((h.sin() * 10.0 * 65536.0) as i32, (h.cos() * 10.0 * 65536.0) as i32);
+        let (dx, dz) = (from_units(h.sin() * 10.0), from_units(h.cos() * 10.0));
         let view = camera.to_view(dx, 0, dz);
         assert!(view[2] > 9.9, "heading {heading:#06x}: {view:?}");
         assert!(view[0].abs() < 0.01, "heading {heading:#06x}: {view:?}");
@@ -171,7 +172,7 @@ fn a_view_direction_turns_back_into_the_world_direction_it_came_from() {
     camera.pitch = Angle(0xf000);
     camera.roll = Angle(0x0c00);
     for world in [[1.0f32, 0.0, 0.0], [0.0, 1.0, 0.0], [0.3, -0.4, 0.8]] {
-        let at = |k: usize| (world[k] * 10.0 * 65536.0) as i32;
+        let at = |k: usize| from_units(world[k] * 10.0);
         let view = camera.to_view(camera.x + at(0), camera.y + at(1), camera.z + at(2));
         let back = camera.to_world_direction(view);
         for k in 0..3 {

@@ -11,6 +11,7 @@
 //! The loader's own additions - an end marker, sync points around tunnels,
 //! the start - are made here too (`0x470bd0`).
 
+use hb_formats::fixed::to_units;
 use hb_formats::vector::{angles_of, flat_length, flat_within, offset};
 use hb_formats::nav::{Data, Kind, Nav};
 use hb_formats::text::Placement;
@@ -164,7 +165,7 @@ pub struct Mission {
 }
 
 fn units(v: [i32; 3]) -> [f32; 3] {
-    v.map(|c| c as f32 / 65536.0)
+    v.map(to_units)
 }
 
 fn sync_point() -> Nav {
@@ -246,7 +247,7 @@ impl Mission {
             .map(|(nav, position)| Point {
                 position,
                 done: false,
-                timer: nav.time as f32 / 65536.0,
+                timer: to_units(nav.time),
                 proximity: nav.proximity_sound.clone(),
                 dropped: 0.0,
                 nav,

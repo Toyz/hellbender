@@ -16,14 +16,15 @@
 //! difference from the engine is that the engine pushes a point onto the
 //! surface and this pushes a sphere off it.
 
+use hb_formats::fixed::to_units;
+use hb_formats::vector::{length, scale, sub};
+
 /// The ship's half-size, the unit the engine grows its query box by
 /// (`0x4272d2`).
 pub const SHIP: f32 = 1.0;
 
-use hb_formats::vector::{length, scale, sub};
-
 /// The engine's overshoot on a push (`0x427841`).
-pub const OVERSHOOT: f32 = 0x103e8 as f32 / 65536.0;
+pub const OVERSHOOT: f32 = to_units(0x103e8);
 
 /// A solid box, in units.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -35,7 +36,7 @@ pub struct Solid {
 impl Solid {
     /// From the world's 16.16 box.
     pub fn of(solid: hb_world::grid::Solid) -> Solid {
-        let units = |v: [i32; 3]| v.map(|c| c as f32 / 65536.0);
+        let units = |v: [i32; 3]| v.map(to_units);
         Solid { min: units(solid.min), max: units(solid.max) }
     }
 

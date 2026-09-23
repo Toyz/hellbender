@@ -1,5 +1,6 @@
 //! The flying enemies' decisions, with the port's own steering.
 
+use hb_formats::fixed::to_units;
 use hb_formats::text::{EnemyDef, Placement, SecondWeapon};
 use hb_sim::combat::{step_shot, Pilot, Stop};
 use hb_sim::flyer::{Flyer, Target};
@@ -121,7 +122,7 @@ fn a_mine_layer_drops_one_in_front_of_the_player() {
     // Its reach is the type's retreat range and its bite the type's shot
     // damage.
     assert_eq!(radius, 14.0);
-    assert!((damage - 4096.0 / 65536.0).abs() < 1e-6, "{damage}");
+    assert!((damage - to_units(4096)).abs() < 1e-6, "{damage}");
     // And it went down clear of the player, not on top of him.
     assert!(
         hb_sim::mine::laid::Field::clear_of(at, player.position),

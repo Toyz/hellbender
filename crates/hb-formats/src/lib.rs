@@ -72,11 +72,11 @@ impl Fixed {
     pub const ONE: Fixed = Fixed(65536);
 
     pub fn to_f32(self) -> f32 {
-        self.0 as f32 / 65536.0
+        fixed::to_units(self.0)
     }
 
     pub fn from_f32(v: f32) -> Fixed {
-        Fixed((v * 65536.0) as i32)
+        Fixed(fixed::from_units(v))
     }
 }
 
@@ -96,7 +96,7 @@ impl Angle {
     }
 
     pub fn to_degrees(self) -> f32 {
-        self.0 as f32 * 360.0 / 65536.0
+        self.0 as f32 * 360.0 / fixed::TURN
     }
 
     /// The angle as a signed value, -half a turn to +half a turn.

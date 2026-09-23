@@ -16,6 +16,7 @@
 
 use crate::camera::Camera;
 use crate::raster::Target;
+use hb_formats::fixed::to_units;
 use hb_formats::raw::Image;
 use hb_formats::hud_font::{HudFont, LINE};
 use hb_formats::mrgl::Model;
@@ -410,7 +411,7 @@ pub fn arrow(target: &mut Target, bearing: u16) {
     // 0.061 either side of it.
     let shape = [(0.0f32, 0.4425f32), (0.061, 0.061), (0.0, 0.0), (-0.061, 0.061)];
     let scale = bh as f32 * 0.45 / 0.4425;
-    let turn = (bearing as f32 / 65536.0) * std::f32::consts::TAU;
+    let turn = hb_formats::fixed::radians(bearing as f32);
     let (sin, cos) = turn.sin_cos();
     let points: Vec<(f32, f32)> = shape
         .iter()
@@ -458,13 +459,13 @@ pub fn reticle(target: &mut Target, model: &Model, colour: u8) {
     let (w, h) = (target.width, target.height);
     let ([sx, sy], [cx, cy]) = Camera::screen(w, h);
     let point = |v: &hb_formats::mrgl::Vertex| {
-        let z = v.z as f32 / 65536.0;
+        let z = to_units(v.z);
         if z <= 0.0 {
             return None;
         }
         Some((
-            cx + (v.x as f32 / 65536.0) / z * sx,
-            cy - (v.y as f32 / 65536.0) / z * sy,
+            cx + (to_units(v.x)) / z * sx,
+            cy - (to_units(v.y)) / z * sy,
         ))
     };
     for polygon in &model.polygons {

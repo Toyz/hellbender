@@ -10,13 +10,15 @@
 //! and the game loop ends the level once it passes five seconds
 //! (`0x4822a4`).
 
+use hb_formats::fixed::to_units;
+
 /// A quarter of a turn a second: the frame time over four, in the 16-bit
 /// circle (`0x464890`).
 pub const TURN: f32 = 16384.0;
 /// The nose stops here, forty-five degrees down (`0x4648a0`).
 pub const PITCH_LIMIT: f32 = 0x1fff as f32;
 /// Units a second it keeps drifting (`0x4648d5`).
-pub const DRIFT: f32 = 0x7a120 as f32 / 65536.0;
+pub const DRIFT: f32 = to_units(0x7a120);
 /// It blows up this far over the ground (`0x46498b`).
 pub const BLAST: f32 = 2.0;
 /// And the level ends this long after (`0x4822a9`).

@@ -18,6 +18,8 @@
 //! along it, textured `puff4.raw`, whose radius is the width times the part
 //! of its life still to come - so a trail thins to nothing from its old end.
 
+use hb_formats::fixed::to_units;
+
 /// The pool's size.
 pub const SEGMENTS: usize = 100;
 
@@ -28,7 +30,7 @@ pub const LIFE: f32 = 2.0;
 pub const DELAY: f32 = 0.125;
 
 /// Its radius when new, units (`0x61a8`).
-pub const WIDTH: f32 = 25_000.0 / 65_536.0;
+pub const WIDTH: f32 = to_units(25_000);
 
 /// Seconds after launch before a missile starts smoking (`0x3000`).
 pub const FIRST: f32 = 0.1875;
@@ -38,7 +40,7 @@ pub const SMOKING: [i32; 3] = [19, 24, 25];
 
 /// The tube runs a hundredth longer than the segment, so neighbours overlap
 /// (`0x1028f`).
-pub const OVERLAP: f32 = 66_191.0 / 65_536.0;
+pub const OVERLAP: f32 = to_units(66_191);
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Segment {

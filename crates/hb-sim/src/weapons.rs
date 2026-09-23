@@ -8,6 +8,7 @@
 //! the weapon and on how much weapon energy is left - the guns fire from one,
 //! two or four barrels, and the more barrels the more each volley costs.
 
+use hb_formats::fixed::to_units;
 use hb_formats::vector::direction;
 
 use crate::combat::{Shot, Side};
@@ -173,7 +174,7 @@ pub const MUZZLE: [&str; 3] = ["muzzle.bin", "muzzle2.bin", "muzzle3.bin"];
 pub const FACES_THE_EYE: [i32; 10] = [2, 4, 9, 10, 11, 12, 13, 14, 15, 16];
 
 /// The line below which weapon or shield energy is "low", 0x199a.
-const LOW: f32 = 0x199a as f32 / 65536.0;
+const LOW: f32 = to_units(0x199a);
 
 /// The ship as the guns see it.
 #[derive(Debug, Clone, Copy)]
@@ -417,7 +418,7 @@ impl Guns {
         let (mut volleys, mut voices) = (Vec::new(), Vec::new());
         let lit = burn && stores.fuel > 0.0;
         if lit {
-            stores.fuel = (stores.fuel - 0x1000 as f32 / 65536.0 * dt).max(0.0);
+            stores.fuel = (stores.fuel - to_units(0x1000) * dt).max(0.0);
         }
         if !held {
             self.accumulator = 1.0;
@@ -440,8 +441,8 @@ impl Guns {
         }
         let w = self.selected;
         let row = ROWS[w];
-        let speed = row.speed as f32 / 65536.0 + pose.speed;
-        let damage = row.damage as f32 / 65536.0;
+        let speed = to_units(row.speed) + pose.speed;
+        let damage = to_units(row.damage);
         let (mut shots, mut missiles) = (Vec::new(), Vec::new());
         let mut mine = false;
         match w {
@@ -512,7 +513,7 @@ impl Guns {
             pitch: pose.pitch,
             speed: pose.speed,
             age: 0.0,
-            damage: ROWS[w].damage as f32 / 65536.0,
+            damage: to_units(ROWS[w].damage),
             kind: w as i32,
             side: Side::Player,
             target,
@@ -668,7 +669,7 @@ fn give_main(stores: &mut Stores, amount: f32, voices: &mut Vec<Voice>) {
 /// an empty tank waits five seconds and is given a thirty-second.
 pub fn regenerate(stores: &mut Stores, hull: &mut f32, dt: f32, empty_for: &mut f32) -> Vec<Voice> {
     let mut voices = Vec::new();
-    let creep = 0x48 as f32 / 65536.0 * dt;
+    let creep = to_units(0x48) * dt;
     give_main(stores, creep, &mut voices);
     if *hull > 0.0 {
         *hull = (*hull + creep).min(1.0);
@@ -676,13 +677,13 @@ pub fn regenerate(stores: &mut Stores, hull: &mut f32, dt: f32, empty_for: &mut 
     if stores.fuel <= 0.0 {
         *empty_for += dt;
         if *empty_for > 5.0 {
-            stores.fuel = 0x800 as f32 / 65536.0;
+            stores.fuel = to_units(0x800);
             *empty_for = 0.0;
         }
-    } else if stores.fuel >= 0xffff as f32 / 65536.0 {
-        stores.fuel = 0xffff as f32 / 65536.0;
+    } else if stores.fuel >= to_units(0xffff) {
+        stores.fuel = to_units(0xffff);
     } else if stores.weapon_energy > 0.0 {
-        stores.fuel += 0x800 as f32 / 65536.0 * dt;
+        stores.fuel += to_units(0x800) * dt;
         weapon_energy(stores, -(0xda as f32) / 65536.0 * dt, &mut voices);
     }
     voices

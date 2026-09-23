@@ -37,7 +37,7 @@
 //! The arithmetic is the engine's 16.16 throughout.
 
 use hb_formats::course::Course;
-use hb_formats::fixed::{cos, distance, mul, sin, wrap};
+use hb_formats::fixed::{cos, distance, from_units, mul, sin, to_units, wrap};
 use hb_formats::text::{EnemyDef, Placement};
 
 /// The classes whose routines read a course.
@@ -196,7 +196,7 @@ impl Follower {
             self.aim(self.points[self.target]);
         }
 
-        let dt = (dt * 65536.0) as i32;
+        let dt = from_units(dt);
         let turn = mul(self.turn, dt);
         let step = mul(self.speed, dt);
         // The step goes along the heading the actor had at the start of the
@@ -209,11 +209,11 @@ impl Follower {
         self.position[0] += mul(step, across);
         // The floor is found after x moves and before z does.
         let at = [
-            self.position[0] as f32 / 65536.0,
-            self.position[1] as f32 / 65536.0,
-            self.position[2] as f32 / 65536.0,
+            to_units(self.position[0]),
+            to_units(self.position[1]),
+            to_units(self.position[2]),
         ];
-        self.position[1] = (floor(at) * 65536.0) as i32 + self.height;
+        self.position[1] = from_units(floor(at)) + self.height;
         self.position[2] += mul(step, along);
     }
 

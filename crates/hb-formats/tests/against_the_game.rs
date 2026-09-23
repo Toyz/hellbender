@@ -7,6 +7,7 @@
 //! workspace still builds and tests for someone without the disc.
 
 
+use hb_formats::fixed::to_units;
 use hb_formats::{act, anim, colour, course, font, glt, lvl, mrgl, nav, raw, terrain, text};
 
 /// The indexed polygons - [`mrgl::INDEXED_POLYGON`] and
@@ -1479,7 +1480,7 @@ fn every_animated_model_stays_in_one_piece_through_its_animation() {
     for e in pod.entries().iter().filter(|e| e.ext() == "txt" && e.dir() == "models") {
         let model = hb_formats::anim::parse(pod.bytes(e)).unwrap();
         models += 1;
-        let seconds = model.time_per_frame as f32 / 65536.0;
+        let seconds = to_units(model.time_per_frame);
         for frame in 0..model.frames {
             let (vertices, _) = model.pose(frame as f32 * seconds);
             let extent = vertices

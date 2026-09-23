@@ -1,5 +1,6 @@
 //! The class-10 turret and the guided missile, synthetic.
 
+use hb_formats::fixed::to_units;
 use hb_formats::text::{EnemyDef, Placement, SecondWeapon};
 use hb_sim::turret::{Aim, Launch, Missile, Rng, Turret, GUIDED};
 
@@ -154,7 +155,7 @@ fn stand_by(level: &str, which: &str, offset: [f32; 3], seconds: f32) -> Option<
         Some(first) if m.polygons.is_empty() => parse(first),
         _ => Some(m),
     });
-    let player = [p.x as f32 / 65536.0 + offset[0], p.y as f32 / 65536.0 + offset[1], p.z as f32 / 65536.0 + offset[2]];
+    let player = [to_units(p.x) + offset[0], to_units(p.y) + offset[1], to_units(p.z) + offset[2]];
     let mut turret = Turret::new(p);
     let mut rng = Rng::new(3);
     let mut pilot = Pilot::default();

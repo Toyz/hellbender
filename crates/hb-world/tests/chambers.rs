@@ -1,6 +1,7 @@
 //! The chambers: the second pair of heightfields the tunnels are cut from,
 //! and what the ship's collision reads from them.
 
+use hb_formats::fixed::to_units;
 use hb_formats::terrain::{Layer, Terrain};
 use hb_pod::Pod;
 use hb_world::{Cell, Grid};
@@ -45,7 +46,7 @@ fn a_chamber_is_a_floor_under_a_ceiling_below_zero() {
     assert!(open > 4_000, "{open} of {chambers} are open");
     assert!(solid > 0, "some are rock: {solid}");
     // HOTH's tunnels: about a hundred units down, tens of units tall.
-    assert!((-110.0..-100.0).contains(&(lowest as f32 / 65536.0)), "{lowest}");
+    assert!((-110.0..-100.0).contains(&(to_units(lowest))), "{lowest}");
     assert!(highest <= 0);
 }
 

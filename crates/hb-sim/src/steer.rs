@@ -37,7 +37,7 @@
 //! It then asks `0x4279b0` whether the segment to that point meets a surface
 //! and moves the target to where it does; that is not ported.
 
-use hb_formats::fixed::{over_the_top, signed, RADIANS_PER_UNIT as K, TURN};
+use hb_formats::fixed::{over_the_top, signed, to_units, RADIANS_PER_UNIT as K, TURN};
 use hb_formats::vector::{add, along, angles_of, axes, from_frame, in_world, length, offset, scale};
 use hb_world::Grid;
 
@@ -82,12 +82,12 @@ pub trait Surfaces {
 impl Surfaces for Grid<'_> {
     fn floor(&self, at: [f32; 3]) -> f32 {
         let [x, y, z] = at.map(hb_formats::fixed::from_units);
-        hb_formats::fixed::to_units(self.floor_under(x, y, z))
+        to_units(self.floor_under(x, y, z))
     }
 
     fn ceiling(&self, at: [f32; 3]) -> f32 {
         let [x, y, z] = at.map(hb_formats::fixed::from_units);
-        hb_formats::fixed::to_units(self.ceiling_over(x, y, z))
+        to_units(self.ceiling_over(x, y, z))
     }
 }
 
@@ -102,7 +102,7 @@ impl Surfaces for Flat {
     }
 
     fn ceiling(&self, _: [f32; 3]) -> f32 {
-        hb_formats::fixed::to_units(hb_world::grid::NO_CEILING)
+        to_units(hb_world::grid::NO_CEILING)
     }
 }
 
@@ -290,7 +290,7 @@ fn hold(at: [f32; 3], order: &Order, world: &impl Surfaces) -> f32 {
     let mut lo = floor(y);
     let hi = world.ceiling(at) - clearance;
     if hi < lo {
-        lo = floor(hi - 1.0 / 65536.0);
+        lo = floor(hi - to_units(1));
         if !ABOVE_GROUND.contains(&order.class) && !ANYWHERE.contains(&order.class) {
             lo = y;
         }

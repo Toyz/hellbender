@@ -7,12 +7,14 @@
 //! as a square facing the eye, textured with `blast1.raw` to `blast16.raw`,
 //! one frame every sixteenth of its own second.
 
+use hb_formats::fixed::to_units;
+
 use crate::turret::Rng;
 
 /// `blast%d.raw`, 1 to 16 (`0x50f3dc`).
 pub const FRAMES: usize = 16;
 /// A frame every `1 << 12` of the puff's clock (`0x4771f5`).
-pub const FRAME_TIME: f32 = 0x1000 as f32 / 65536.0;
+pub const FRAME_TIME: f32 = to_units(0x1000);
 /// The life a puff is given (`0x4770cb`); the frames run out first.
 pub const LIFE: f32 = 2.0;
 /// The effect pool's sixteen slots (`0x612230` to `0x612448`).
@@ -70,7 +72,7 @@ impl Blasts {
 
     pub fn burst(&mut self, at: [f32; 3], size: f32, rng: &mut Rng) {
         for _ in 0..PUFFS {
-            let offset = |rng: &mut Rng| (rng.next() as f32 / 65536.0 - 0.25) * size * 4.0;
+            let offset = |rng: &mut Rng| (to_units(rng.next() as i32) - 0.25) * size * 4.0;
             let (dx, dy, dz) = (offset(rng), offset(rng), offset(rng));
             let position = [at[0] + dx, at[1] + dy, at[2] + dz];
             self.light(Puff { position, size: size * 2.0, age: 0.0, rate: rate(rng) });

@@ -28,6 +28,7 @@
 //! off (`0x42f559`) - the lamps are what light the tunnels. Box corners take it
 //! too (`0x415825`); how is not read yet.
 
+use hb_formats::fixed::{from_units, to_units};
 use hb_formats::vector::{dot, length, offset, within};
 use hb_formats::terrain::{Layer, Terrain};
 use hb_world::grid::{Cell, Grid};
@@ -51,20 +52,20 @@ pub struct Record {
 impl Record {
     /// Reach in units: the first number, 16.16, times eight (`0x48b72f`).
     pub fn reach(&self) -> f32 {
-        self.numbers[0] as f32 / 65536.0 * 8.0
+        to_units(self.numbers[0] as i32) * 8.0
     }
     /// Strength, 1.0 full: the second number (`+0x14`).
     pub fn strength(&self) -> f32 {
-        self.numbers[1] as f32 / 65536.0
+        to_units(self.numbers[1] as i32)
     }
     /// How long a blinking lamp stays on, and off: the third and fourth
     /// numbers, compared as they are with a 16.16 clock (`0x48afc1`,
     /// `0x48af1f`). The shipped off time is 6 - a frame.
     pub fn on_for(&self) -> f32 {
-        self.numbers[2] as f32 / 65536.0
+        to_units(self.numbers[2] as i32)
     }
     pub fn off_for(&self) -> f32 {
-        self.numbers[3] as f32 / 65536.0
+        to_units(self.numbers[3] as i32)
     }
     /// Which kinds of light its faces give (`+0x4c`).
     pub fn kinds(&self) -> i64 {
@@ -160,13 +161,13 @@ impl Light {
     /// A shot's or a missile's own light (`0x48a7f0`): round, reach 1.414
     /// times eight.
     pub fn moving(at: [f32; 3], strength: f32) -> Light {
-        Light { kind: Kind::Round, at, reach: 92_662.0 / 65_536.0 * 8.0, strength, normal: [0.0; 3] }
+        Light { kind: Kind::Round, at, reach: to_units(92_662) * 8.0, strength, normal: [0.0; 3] }
     }
 }
 
 /// A shot carries a light every fourth one drawn (`0x476e8c`), a quarter
 /// strong (`0x3fff`).
-pub const SHOT_LIGHT: f32 = 16383.0 / 65536.0;
+pub const SHOT_LIGHT: f32 = to_units(16383);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Lamp {
@@ -217,7 +218,7 @@ impl Lamps {
                 let cell = Cell::new(x as i32, z as i32);
                 let (ox, oz) = cell.signed_origin();
                 let (cx, cz) = (ox + (4 << 16), oz + (4 << 16));
-                let units = |v: i32| v as f32 / 65536.0;
+                let units = to_units;
                 let mut faces: Vec<(Face, [f32; 3], [f32; 3])> = Vec::new();
                 let flat = |layer: Layer, up: f32| -> Option<(Face, [f32; 3], [f32; 3])> {
                     let h = grid.height_at(layer, cx, cz)?;
@@ -380,22 +381,21 @@ pub fn light_at(point: [f32; 3], lights: &[Light]) -> f32 {
 /// `intersectingBoxSurface` (`0x4294c0`), which the engine asks, is not read.
 pub fn face_at(at: [f32; 3], terrain: &Terrain) -> Face {
     let grid = Grid::new(terrain);
-    let fixed = |v: f32| (v * 65536.0) as i32;
-    let (x, y, z) = (fixed(at[0]), fixed(at[1]), fixed(at[2]));
+    let (x, y, z) = (from_units(at[0]), from_units(at[1]), from_units(at[2]));
     let cell = Cell::containing(x, z);
     let here = (cell.x as usize, cell.z as usize);
     let side = |layer: Layer| -> usize {
         let (ox, oz) = cell.signed_origin();
         let (bottom, top) = grid.box_span(layer, cell).unwrap_or((y, y));
-        let within = |v: i32, o: i32| (v.wrapping_sub(o)) as f32 / 65536.0;
+        let within = |v: i32, o: i32| to_units(v.wrapping_sub(o));
         let (fx, fz) = (within(x, ox), within(z, oz));
         let distances = [
             fz,
             8.0 - fz,
             8.0 - fx,
             fx,
-            (top - y) as f32 / 65536.0,
-            (y - bottom) as f32 / 65536.0,
+            to_units(top - y),
+            to_units(y - bottom),
         ];
         (0..6).min_by(|&a, &b| distances[a].abs().total_cmp(&distances[b].abs())).unwrap_or(0)
     };

@@ -12,12 +12,12 @@
 pub const ONE: i32 = 0x10000;
 
 /// 16.16 to units.
-pub fn to_units(v: i32) -> f32 {
+pub const fn to_units(v: i32) -> f32 {
     v as f32 / 65536.0
 }
 
 /// Units to 16.16, truncating as the engine's `_ftol` does.
-pub fn from_units(v: f32) -> i32 {
+pub const fn from_units(v: f32) -> i32 {
     (v * 65536.0) as i32
 }
 

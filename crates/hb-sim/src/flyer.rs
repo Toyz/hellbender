@@ -51,7 +51,7 @@
 
 use crate::mine::laid::Field as Laid;
 use crate::mine::laid::AHEAD;
-use hb_formats::fixed::{circle, radians, signed, RADIANS_PER_UNIT, UNITS_PER_RADIAN};
+use hb_formats::fixed::{circle, radians, signed, to_units, RADIANS_PER_UNIT, UNITS_PER_RADIAN};
 use hb_formats::mrgl::Model;
 use hb_formats::text::{EnemyDef, Placement};
 use hb_formats::vector::{self, add, along, flat_length, length, offset, scale};
@@ -151,10 +151,10 @@ impl Flyer {
         let distance = length(d);
         let attack = def_range(def, 0);
         let retreat = def_range(def, 1);
-        let mut speed = def.move_rate as f32 / 65536.0;
+        let mut speed = to_units(def.move_rate);
         let mut turn = def.turn_rate as f32 * RADIANS_PER_UNIT;
         let mut thrust = 1.0;
-        let radius = def.radius() as f32 / 65536.0;
+        let radius = to_units(def.radius());
 
         // Phase 200 turns to an attack pass once close enough that it could
         // not turn in time otherwise (`0x49685b`).
@@ -280,7 +280,7 @@ impl Flyer {
                         return Some(Launch::Mine {
                             at: self.body.position,
                             radius: retreat,
-                            damage: def.shot_damage as f32 / 65536.0,
+                            damage: to_units(def.shot_damage),
                         });
                     }
                 }
@@ -328,7 +328,7 @@ pub fn fly(
     world: &impl Surfaces,
     ) {
     let aim = matches!(mode, Mode::Facing | Mode::BackingFacing).then(|| {
-        let shot = def.shot_speed() as f32 / 65536.0;
+        let shot = to_units(def.shot_speed());
         steer::lead(body.position, player.position, player.velocity, shot, dt)
     });
     let order = Order {
@@ -338,7 +338,7 @@ pub fn fly(
         turn: turn * UNITS_PER_RADIAN,
         thrust,
         class: def.class() as i32,
-        clearance: def.radius() as f32 / 65536.0,
+        clearance: to_units(def.radius()),
         breaking,
         aim,
     };
@@ -420,9 +420,9 @@ impl Hover {
         let distance = length(d);
         let attack = def_range(def, 0);
         let retreat = def_range(def, 1);
-        let mut speed = def.move_rate as f32 / 65536.0;
+        let mut speed = to_units(def.move_rate);
         let turn = def.turn_rate as f32 * RADIANS_PER_UNIT;
-        let radius = def.radius() as f32 / 65536.0;
+        let radius = to_units(def.radius());
 
         // How far it has been drawn off its post, flat (`0x49778c`).
         let home = flat_length(offset(self.body.position, self.post));
@@ -511,7 +511,7 @@ impl Hover {
                 self.body.position,
                 player.position,
                 dt,
-                2.0 * speed.max(def.move_rate as f32 / 65536.0),
+                2.0 * speed.max(to_units(def.move_rate)),
                 rng,
             );
         }

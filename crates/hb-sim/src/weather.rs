@@ -28,7 +28,7 @@
 //! when it flies: the drop's motion as the eye sees it. Colour ramp 1 at
 //! `0x6000`, palette index 5.
 
-use hb_formats::fixed::{distance, mul, unit, wrap};
+use hb_formats::fixed::{distance, from_units, mul, unit, wrap};
 
 use crate::turret::Rng;
 
@@ -109,7 +109,7 @@ impl Weather {
 
     /// Move one pool a frame of `dt` seconds.
     pub fn step(pool: &mut [Particle], dt: f32, eye: [i32; 3]) {
-        let dt = (dt * 65536.0) as i32;
+        let dt = from_units(dt);
         for p in pool {
             for k in 0..3 {
                 p.position[k] += mul(p.velocity[k], dt);
@@ -206,7 +206,7 @@ impl Lightning {
     /// layer at `sky`, both 16.16. The engine only runs it with the eye at or
     /// above the ground.
     pub fn step(&mut self, dt: f32, eye: [i32; 3], sky: i32, rng: &mut Rng) -> Vec<Flash> {
-        let dt = (dt * 65536.0) as i32;
+        let dt = from_units(dt);
         let mut out = Vec::new();
         for s in &mut self.strikes {
             s.countdown -= dt;

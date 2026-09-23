@@ -8,6 +8,7 @@
 //! All three shipped demos parse consuming every line, with exactly as many
 //! records as their first line declares and the time never decreasing.
 
+use crate::fixed::{from_units, to_units};
 use crate::text::lines;
 use crate::{Error, Result};
 
@@ -119,7 +120,7 @@ impl Demo {
     /// The pose at a given time, interpolated linearly in position between the
     /// two recorded poses either side of it.
     pub fn pose_at(&self, seconds: f32) -> Option<Pose> {
-        let time = (seconds * 65536.0) as i32;
+        let time = from_units(seconds);
         let poses: Vec<&Pose> = self.poses().collect();
         let after = poses.iter().position(|p| p.time >= time)?;
         if after == 0 {
@@ -139,6 +140,6 @@ impl Demo {
     }
 
     pub fn seconds(&self) -> f32 {
-        self.poses().map(|p| p.time).max().unwrap_or(0) as f32 / 65536.0
+        to_units(self.poses().map(|p| p.time).max().unwrap_or(0))
     }
 }

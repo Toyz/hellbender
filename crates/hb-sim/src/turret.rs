@@ -31,7 +31,7 @@
 //! first and skips the update when it reports the actor out of range
 //! (`0x42f7b9`). See [`crate::combat::in_range`].
 
-use hb_formats::fixed::{over_the_top, signed, TURN};
+use hb_formats::fixed::{over_the_top, signed, to_units, TURN};
 use hb_formats::mrgl::Model;
 use hb_formats::text::{EnemyDef, Placement};
 use hb_formats::vector::{add, angles_of, direction, dot, length, offset, scale};
@@ -70,7 +70,7 @@ impl Rng {
 /// in 16.16, from the actor setup at `0x404e90` - somewhere in the first half
 /// second, so guns of one type placed together do not fire together.
 pub fn first_wait(rng: &mut Rng) -> f32 {
-    (rng.next() & 0xffff) as f32 / 65536.0
+    to_units((rng.next() & 0xffff) as i32)
 }
 
 #[derive(Debug, Clone)]
@@ -150,7 +150,7 @@ impl Turret {
         let eye = self.aim_from.unwrap_or(at);
         let d = offset(eye, player);
         let distance = length(d);
-        let speed = def.shot_speed() as f32 / 65536.0;
+        let speed = to_units(def.shot_speed());
         // Two turret types have no shot speed; the engine divides by it anyway.
         let flight = if speed > 0.0 { distance / speed } else { 0.0 };
         let lead = add(d, scale(player_velocity, flight));
@@ -166,11 +166,11 @@ impl Turret {
             (wanted, wanted_pitch) = over_the_top(heading, pitch);
         }
 
-        let ease = def.turn_rate as f32 / 65536.0 * dt;
+        let ease = to_units(def.turn_rate) * dt;
         self.heading = (self.heading + signed(wanted - self.heading) * ease).rem_euclid(65536.0);
         self.pitch += signed(wanted_pitch - self.pitch) * ease;
 
-        self.trigger(def, mesh, at, player, dt, def.shot_speed() as f32 / 65536.0, rng)
+        self.trigger(def, mesh, at, player, dt, to_units(def.shot_speed()), rng)
     }
 
     /// `0x407770`: frame time accumulates, and past the fire interval the
@@ -188,7 +188,7 @@ impl Turret {
         rng: &mut Rng,
     ) -> Option<Launch> {
         self.waited += dt;
-        let interval = def.fire_interval as f32 / 65536.0;
+        let interval = to_units(def.fire_interval);
         if self.waited <= interval {
             return None;
         }
@@ -214,7 +214,7 @@ impl Turret {
         if w == [0, 0, 0] {
             return None;
         }
-        let local = [w[0] as f32 / 65536.0, w[1] as f32 / 65536.0, w[2] as f32 / 65536.0];
+        let local = [to_units(w[0]), to_units(w[1]), to_units(w[2])];
         Some(to_world(local, at, self.heading))
     }
 
@@ -251,7 +251,7 @@ impl Turret {
             from,
             dir,
             speed,
-            def.shot_damage as f32 / 65536.0,
+            to_units(def.shot_damage),
             def.weapon,
             Side::Enemy,
         ))
@@ -265,7 +265,7 @@ impl Turret {
         rng: &mut Rng,
     ) -> Option<Missile> {
         let from = self.muzzle(def, mesh, at, rng)?;
-        Some(Missile::enemy(from, self.heading, self.pitch, (def.move_rate + 1) as f32 / 65536.0))
+        Some(Missile::enemy(from, self.heading, self.pitch, to_units(def.move_rate + 1)))
     }
 }
 

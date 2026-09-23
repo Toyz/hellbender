@@ -33,13 +33,13 @@
 //! The engine's model has no strafe and no vertical thrust: the side and
 //! vertical velocities are only ever halved.
 
-use hb_formats::fixed::{circle, radians, TURN};
+use hb_formats::fixed::{circle, radians, to_units, TURN};
 use hb_formats::vector::{add, cross, from_frame, normalise, scale};
 
 /// `0x2492`, the input scale.
-const SEVENTH: f32 = 9362.0 / 65536.0;
+const SEVENTH: f32 = to_units(9362);
 /// `0xbb80`: how much of the yaw input banks the ship.
-const BANK: f32 = 48000.0 / 65536.0;
+const BANK: f32 = to_units(48000);
 /// `0xc30`, the auto-level's largest pull a frame, in turns a second.
 const LEVEL_CLAMP: f32 = 3120.0 / TURN;
 

@@ -1,5 +1,6 @@
 //! The player's weapons and energy.
 
+use hb_formats::fixed::to_units;
 use hb_formats::vector;
 use hb_sim::combat::{self, Side};
 use hb_sim::powerup::Stores;
@@ -193,9 +194,9 @@ fn the_afterburner_burns_a_tank_in_sixteen_seconds_and_refills_from_weapon_energ
         weapons::regenerate(&mut stores, &mut hull, dt, &mut empty_for);
     }
     assert!((stores.fuel - 2.0 / 32.0).abs() < 2e-3, "{}", stores.fuel);
-    assert!((before - stores.weapon_energy - 0xda as f32 / 65536.0).abs() < 1e-5);
+    assert!((before - stores.weapon_energy - to_units(0xda)).abs() < 1e-5);
     // The hull creeps up by 0x48 a second.
-    assert!((hull - (0.5 + 0x48 as f32 / 65536.0 * (6.0 + 1.0 / 60.0))).abs() < 1e-5, "{hull}");
+    assert!((hull - (0.5 + to_units(0x48) * (6.0 + 1.0 / 60.0))).abs() < 1e-5, "{hull}");
 }
 
 fn candidate(class: i64, view: [f32; 3]) -> weapons::Candidate {

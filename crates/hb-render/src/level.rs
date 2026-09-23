@@ -6,6 +6,7 @@
 
 use hb_formats::act::Palette;
 use hb_formats::colour::{ColourMap, Ramp};
+use hb_formats::fixed::to_units;
 use hb_formats::lvl::Level as Manifest;
 use hb_formats::raw::Image;
 use hb_formats::{anim, mrgl};
@@ -164,8 +165,7 @@ impl Level {
     /// routine adds to its scroll every frame (`0x44fd98`). 10.0 in eleven
     /// levels, which is a tile every 12.8 seconds, and still in fifteen.
     pub fn sky_drift(&self) -> [f32; 2] {
-        let [u, v] = self.manifest.weather_params[0];
-        [u as f32 / 65536.0, v as f32 / 65536.0]
+        self.manifest.weather_params[0].map(|c| to_units(c as i32))
     }
 
     /// The altitude of the sky layer, in units: the `.LVL`'s
@@ -173,7 +173,7 @@ impl Level {
     /// shifted up fifteen at `0x5055d4`. 127.5 in 24 levels, 95.0 in
     /// `KREASH` and 65.0 in `JURASIC`.
     pub fn sky_height(&self) -> f32 {
-        self.manifest.sky_height as f32 * 32768.0 / 65536.0
+        to_units((self.manifest.sky_height << 15) as i32)
     }
 
     /// The sky's scroll after `seconds`.
@@ -419,7 +419,7 @@ impl Level {
                             .iter()
                             .filter_map(|f| index_of(f, &mut textures, &mut extra))
                             .collect();
-                        Some(Cycle { base, delay: a.delay as f32 / 65536.0, frames })
+                        Some(Cycle { base, delay: to_units(a.delay), frames })
                     })
                     .filter(|c| c.frames.len() > 1)
                     .collect()
@@ -493,7 +493,7 @@ impl Level {
                             .iter()
                             .map(|n| read("art", n).and_then(|b| Image::parse_guessed(&b).ok().flatten()))
                             .collect(),
-                        period: book.period as f32 / 65536.0,
+                        period: to_units(book.period),
                     })
                     .collect(),
                 None => Vec::new(),
@@ -705,7 +705,7 @@ impl Level {
                 let v = hb_formats::vector::normalise(self.manifest.light.map(|c| c as f32));
                 if v == [0.0; 3] { [0.0, -1.0, 0.0] } else { v }
             },
-            sun_ambient: (self.manifest.ambient as f32 / 65536.0).clamp(0.0, 1.0),
+            sun_ambient: (to_units(self.manifest.ambient as i32)).clamp(0.0, 1.0),
             ambient: (self.manifest.ambient >> 8).clamp(0, 255) as u8,
             sky_scroll: [0.0, 0.0],
             sky_height: self.sky_height(),

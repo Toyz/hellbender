@@ -8,6 +8,7 @@
 //!
 //! See `docs/formats/scenery.md`.
 
+use crate::fixed::to_units;
 use crate::text::{int, ints, lines};
 use crate::{Error, Result};
 
@@ -84,7 +85,7 @@ impl Light {
     /// The first number as world units. It is 2, 4, 6 or 10 in every shipped
     /// record.
     pub fn size(&self) -> f32 {
-        self.numbers[0] as f32 / 65536.0
+        to_units(self.numbers[0] as i32)
     }
 
     /// The three textures, in the order on, off, broken.

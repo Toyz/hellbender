@@ -20,10 +20,11 @@
 //!
 //! See `docs/engine/simulation.md`.
 
+use hb_formats::fixed::to_units;
 use hb_formats::vector::{scale, sub, within};
 
 /// Slower than this and the drop is refused: `0x61a80` in 16.16.
-pub const SPEED: f32 = 400_000.0 / 65_536.0;
+pub const SPEED: f32 = to_units(400_000);
 
 /// How far behind the ship it goes: one row of the ship's rotation.
 pub const BEHIND: f32 = 1.0;
@@ -41,7 +42,7 @@ pub const BLAST: f32 = 32.0;
 pub const KIND: i32 = 26;
 
 /// The explosion it draws, in units: `0x186a0` in 16.16 (`0x479a8f`).
-pub const BURST: f32 = 100_000.0 / 65_536.0;
+pub const BURST: f32 = to_units(100_000);
 
 /// The two angles of an armed mine, in the 16-bit circle a second
 /// (`0x4796f2`, `0x479711`).

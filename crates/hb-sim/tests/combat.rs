@@ -1,6 +1,7 @@
 //! Shots and hits: the engine's numbers, synthetic situations, and one real
 //! level.
 
+use hb_formats::fixed::{from_units, to_units};
 use hb_formats::text::{EnemyDef, Placement};
 use hb_sim::combat::{
     multiplier, player_is_hit, step_shot, weapon, wreck_of, Health, HitVolume, Pilot, Shot, Side,
@@ -197,7 +198,7 @@ fn shooting_a_real_placement_destroys_it() {
     // +z at its centre until it goes.
     let target = placed[0];
     let reach = volumes[target.kind].reach();
-    let (tx, ty, tz) = (target.x as f32 / 65536.0, target.y as f32 / 65536.0, target.z as f32 / 65536.0);
+    let (tx, ty, tz) = (to_units(target.x), to_units(target.y), to_units(target.z));
     let mut health = Health::for_placement(&target);
     let mut shots = 0;
     while !health.destroyed && shots < 100 {
@@ -218,9 +219,9 @@ fn a_blast_catches_everything_in_its_cube() {
     let at = |x: f32, y: f32, z: f32| hb_formats::text::Placement {
         kind: 0,
         hit_points: 65536,
-        x: (x * 65536.0) as i32,
-        y: (y * 65536.0) as i32,
-        z: (z * 65536.0) as i32,
+        x: from_units(x),
+        y: from_units(y),
+        z: from_units(z),
         pitch: 0,
         roll: 0,
         heading: 0,

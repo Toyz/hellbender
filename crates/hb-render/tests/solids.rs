@@ -2,6 +2,7 @@
 
 use hb_sim::collide::{self, Solid};
 use hb_sim::combat::{self, HitVolume};
+use hb_formats::fixed::{from_units, to_units};
 
 fn scenery(level: &hb_render::Level) -> Vec<Solid> {
     level
@@ -46,7 +47,7 @@ fn the_start_is_not_inside_anything() {
         let grid = hb_world::Grid::new(&level.terrain);
         let middle = 64.0 * 8.0;
         let ground = grid
-            .height_at(hb_formats::terrain::Layer::Ground, (middle * 65536.0) as i32, (middle * 65536.0) as i32)
+            .height_at(hb_formats::terrain::Layer::Ground, from_units(middle), from_units(middle))
             .unwrap_or(0) as f32
             / 65536.0;
         let at = [middle, ground + 16.0, middle];
@@ -187,7 +188,7 @@ fn a_chamber_draws_what_is_in_it() {
         .iter()
         .enumerate()
         .filter(|(_, p)| {
-            let at = [p.x as f32 / 65536.0, p.y as f32 / 65536.0, p.z as f32 / 65536.0];
+            let at = [to_units(p.x), to_units(p.y), to_units(p.z)];
             at[1] < 0.0 && grid.has_chamber(hb_world::grid::Cell::containing(p.x, p.z))
         })
         .map(|(i, _)| i)
@@ -243,7 +244,7 @@ fn a_lamp_lights_what_is_under_the_ground() {
     let cell = hb_world::grid::Cell::containing(p.x, p.z);
     let (lights, _) = level.lamps.step(1.0 / 30.0, (cell.x as usize, cell.z as usize));
     println!("{} lights near the object", lights.len());
-    let at = [p.x, p.y, p.z].map(hb_formats::fixed::to_units);
+    let at = [p.x, p.y, p.z].map(to_units);
     let light = hb_sim::lights::light_at(at, &lights);
     println!("light at it {light}");
     let frame = |lights: &[hb_sim::lights::Light]| {

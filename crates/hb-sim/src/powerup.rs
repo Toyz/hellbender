@@ -7,6 +7,7 @@
 //! a powerup the player is within its size of on every axis is offered to
 //! `0x426760`, which applies it or refuses it; the rest are drawn.
 
+use hb_formats::fixed::to_units;
 use hb_formats::text::EnemyDef;
 
 use hb_formats::vector::within;
@@ -228,14 +229,14 @@ pub fn collect(kind: usize, pilot: &mut Pilot, stores: &mut Stores, events: &mut
                 }));
                 events.push(Event::Voice(ENERGY_BOOST));
             }
-            stores.add_energy(amount as f32 / 65536.0, events);
+            stores.add_energy(to_units(amount), events);
         }
         21 => {
             if energy >= 0xffff {
                 events.push(Event::Voice(ENERGY_NOT_NEEDED));
                 return false;
             }
-            stores.energy = 0xffff as f32 / 65536.0;
+            stores.energy = to_units(0xffff);
             events.push(Event::Voice(ENERGY_FULL));
         }
         MESSAGE_POD => events.push(Event::Voice(POD_RETRIEVED)),

@@ -2,6 +2,7 @@
 
 use hb_formats::act::Palette;
 use hb_formats::colour::Ramp;
+use hb_formats::fixed::{from_units, to_units};
 use hb_formats::raw::Image;
 use hb_formats::terrain::{BoxFace, Layer, TextureRef, CELL_SIZE, SIDE};
 use hb_formats::vector::{axes, cross, dot, flat_length, from_frame, length, scale, sub};
@@ -232,7 +233,7 @@ fn draw_objects(target: &mut Target, scene: &Scene, camera: &Camera, drawn: &mut
     for (i, p) in scene.placements.iter().enumerate() {
         let (wx, wz) = rebase(eye, p.x, p.z);
         // The engine's box: 80 units either way of the eye, on each axis.
-        let off = |a: i32, b: i32| (a.wrapping_sub(b) as f32 / 65536.0).abs();
+        let off = |a: i32, b: i32| to_units(a.wrapping_sub(b)).abs();
         if off(wx, camera.x) > REACH || off(wz, camera.z) > REACH {
             continue;
         }
@@ -257,7 +258,7 @@ fn draw_objects(target: &mut Target, scene: &Scene, camera: &Camera, drawn: &mut
         // Below the ground an object is lit by the lamps and what is in
         // flight, on top of the ambient, and the sun is off (`0x42f544`).
         let below = (p.y < 0).then(|| {
-            let at = [p.x, p.y, p.z].map(hb_formats::fixed::to_units);
+            let at = [p.x, p.y, p.z].map(to_units);
             (scene.sun_ambient + hb_sim::lights::light_at(at, scene.lights)).min(1.0)
         });
         if draw_mesh(target, scene, camera, mesh, textures, flips, wx, p.y, wz, radius, angles, below) {
@@ -321,7 +322,7 @@ fn draw_mesh(
         if let Some(light) = below {
             return light;
         }
-        sun_light(scene, from_frame(normal.map(hb_formats::fixed::to_units), &frame))
+        sun_light(scene, from_frame(normal.map(to_units), &frame))
     };
     let shade = shade_for(scene, camera);
     // The indexed polygons' span routine (`0x4a5b1a`) skips texel 0, so their
@@ -588,8 +589,7 @@ fn lamp_light(scene: &Scene, x: i32, z: i32, height: i32) -> f32 {
     if scene.lights.is_empty() {
         return 0.0;
     }
-    use hb_formats::fixed::to_units;
-    let at = [to_units(x * CELL_SIZE), to_units(height), to_units(z * CELL_SIZE)];
+        let at = [to_units(x * CELL_SIZE), to_units(height), to_units(z * CELL_SIZE)];
     hb_sim::lights::light_at(at, scene.lights) * 256.0
 }
 
@@ -858,7 +858,7 @@ pub fn draw_sprite(
     let corner = |sx: f32, sy: f32| -> Option<Vertex> {
         let at: [f32; 3] =
             std::array::from_fn(|k| position[k] + right[k] * sx * half + up[k] * sy * half);
-        let (x, y, depth) = project_onto(camera, target.width, target.height, hb_formats::fixed::from_units(at[0]), hb_formats::fixed::from_units(at[1]), hb_formats::fixed::from_units(at[2]))?;
+        let (x, y, depth) = project_onto(camera, target.width, target.height, from_units(at[0]), from_units(at[1]), from_units(at[2]))?;
         let (u, v) = ((sx * 0.5 + 0.5) * (UV_HI - UV_LO) + UV_LO, (0.5 - sy * 0.5) * (UV_HI - UV_LO) + UV_LO);
         Some(Vertex { x, y, depth, u, v, light: 255.0 })
     };
@@ -909,7 +909,7 @@ pub fn draw_smoke(
         let mut corners = [Vertex::default(); 4];
         let mut behind = false;
         for (j, &k) in face.iter().enumerate() {
-            let at = corner(k).map(hb_formats::fixed::from_units);
+            let at = corner(k).map(from_units);
             match project_onto(camera, target.width, target.height, at[0], at[1], at[2]) {
                 Some((x, y, depth)) => {
                     corners[j] = Vertex { x, y, depth, u: uv[j].0, v: uv[j].1, light: 255.0 };
@@ -927,9 +927,9 @@ pub fn draw_smoke(
 
 pub fn draw_spark(target: &mut Target, camera: &Camera, position: [f32; 3], index: u8) {
     let at = [
-        (position[0] * 65536.0) as i32,
-        (position[1] * 65536.0) as i32,
-        (position[2] * 65536.0) as i32,
+        from_units(position[0]),
+        from_units(position[1]),
+        from_units(position[2]),
     ];
     let Some((sx, sy, depth)) = project_onto(camera, target.width, target.height, at[0], at[1], at[2])
     else {

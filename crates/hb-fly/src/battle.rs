@@ -2,6 +2,7 @@
 //! what they do to each other. The rules are `hb_sim`'s; this holds the state
 //! for one level and reports what should be heard.
 
+use hb_formats::fixed::to_units;
 use hb_formats::text::Placement;
 use hb_render::Level;
 use hb_sim::combat::{self, Health, HitVolume, Pilot, Shot, Side, Stop};
@@ -23,7 +24,7 @@ pub const HOVERING: i64 = 58;
 
 /// What a shot leaves where it hits the world, in units: `0x476e14` passes
 /// 60,000 in 16.16 to the explosion.
-pub const SHOT_BURST: f32 = 60_000.0 / 65_536.0;
+pub const SHOT_BURST: f32 = to_units(60_000);
 
 /// And a missile, which is bigger: `0x478b07` passes 4.0.
 pub const MISSILE_BURST: f32 = 4.0;
@@ -244,9 +245,9 @@ impl Battle {
                     let at = combat::position_of(p);
                     let off = level.part_origin(p.kind, part, self.clock)?;
                     Some([
-                        at[0] + off[0] as f32 / 65536.0,
-                        at[1] + off[1] as f32 / 65536.0,
-                        at[2] + off[2] as f32 / 65536.0,
+                        at[0] + to_units(off[0]),
+                        at[1] + to_units(off[1]),
+                        at[2] + to_units(off[2]),
                     ])
                 })
                 .flatten();
@@ -286,7 +287,7 @@ impl Battle {
             gun.heading = p.heading as f32;
             gun.pitch = p.pitch as f32;
             let at = combat::position_of(p);
-            let speed = def.shot_speed() as f32 / 65536.0;
+            let speed = to_units(def.shot_speed());
             match gun.trigger(def, mesh, at, player, dt, speed, &mut self.rng) {
                 Some(Launch::Shot(s)) => self.shots.push(Flying::new(s)),
                 Some(Launch::Missile(m)) => self.missiles.push(m),
@@ -534,7 +535,7 @@ impl Battle {
                 // destroyed. The engine spawns an actor of its own for this
                 // (`0x40c7d0`), which is not read; the puffs are the
                 // engine's (`0x47f3f0`).
-                let radius = level.kinds[original].radius() as f32 / 65536.0;
+                let radius = to_units(level.kinds[original].radius());
                 let at = combat::position_of(&live[i]);
                 // One puff of the type's own radius, which is what
                 // `0x407c20` spawns - not a burst. A burst of eleven at a
@@ -575,7 +576,7 @@ impl Battle {
             }
             self.missiles.extend(v.missiles.iter().copied());
             if v.mine {
-                let damage = hb_sim::weapons::ROWS[hb_sim::weapons::MINE].damage as f32 / 65536.0;
+                let damage = to_units(hb_sim::weapons::ROWS[hb_sim::weapons::MINE].damage);
                 self.mines.lay(pose.position, pose.forward, pose.speed, damage);
             }
         }
@@ -629,7 +630,7 @@ impl hb_sim::mission::World for Standing<'_> {
         Some(hb_sim::mission::Actor {
             position: combat::position_of(p),
             hit_points: if h.destroyed { 0.0 } else { h.hit_points },
-            max: self.placed.get(index)?.hit_points as f32 / 65536.0,
+            max: to_units(self.placed.get(index)?.hit_points),
         })
     }
 
@@ -638,7 +639,7 @@ impl hb_sim::mission::World for Standing<'_> {
     }
 
     fn restore(&mut self, index: usize) {
-        let max = self.placed.get(index).map(|p| p.hit_points as f32 / 65536.0);
+        let max = self.placed.get(index).map(|p| to_units(p.hit_points));
         if let (Some(h), Some(max)) = (self.health.get_mut(index), max) {
             if !h.destroyed {
                 h.hit_points = max;

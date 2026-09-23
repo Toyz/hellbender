@@ -1,6 +1,7 @@
 //! Where the eye is, and how world space reaches the screen.
 
 use hb_formats::Angle;
+use hb_formats::fixed::to_units;
 
 /// World units are 16.16 fixed point and a terrain cell is 8.0 of them, so a
 /// position is an `i32` triple in the same units the `.NAV` and `.DEF` files
@@ -41,9 +42,9 @@ impl Camera {
     /// about x. Returns 16.16 values, with +z into the screen.
     pub fn to_view(&self, x: i32, y: i32, z: i32) -> [f32; 3] {
         let (dx, dy, dz) = (
-            (x - self.x) as f32 / 65536.0,
-            (y - self.y) as f32 / 65536.0,
-            (z - self.z) as f32 / 65536.0,
+            to_units(x - self.x),
+            to_units(y - self.y),
+            to_units(z - self.z),
         );
         // The engine's heading is 0 along +z and increases toward +x - the
         // recorded demo flight says so, to a median of 0.8 degrees. So a

@@ -11,6 +11,7 @@
 //! entry 184 at `0x763d90`, and the file writes each field in the order the
 //! struct holds it.
 
+use crate::fixed::to_units;
 use crate::text::{int, ints, lines, optional_name};
 use crate::{Error, Result};
 
@@ -195,20 +196,20 @@ impl Entry {
     /// Seconds it waits after being thrown, before it starts to move
     /// (`0x411337`). 0 in every shipped entry.
     pub fn delay(&self) -> f32 {
-        self.watch[3] as f32 / 65536.0
+        to_units(self.watch[3] as i32)
     }
 
     /// Seconds the move out and the move back take, and the pause at each
     /// end: (out, hold, back, rest).
     pub fn timing(&self) -> [f32; 4] {
-        let s = |v: i64| v as f32 / 65536.0;
+        let s = |v: i64| to_units(v as i32);
         [s(self.motion[1]), s(self.motion[2]), s(self.motion[3]), s(self.motion[4])]
     }
 
     /// The two heights as world units: the terrain stores a height as a
     /// value shifted up eight, so this is the same scale the chambers use.
     pub fn span(&self) -> [f32; 2] {
-        [self.heights[0] as f32 * 256.0 / 65536.0, self.heights[1] as f32 * 256.0 / 65536.0]
+        self.heights.map(|h| to_units((h << 8) as i32))
     }
 
     /// The sounds it names, in order, without the empty slots.

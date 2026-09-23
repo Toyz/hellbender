@@ -3,6 +3,7 @@
 //! These need no game data: they are about arithmetic transcribed from
 //! `HELLBEND.EXE`, and the point is that the transcription is self-consistent.
 
+use hb_formats::fixed::to_units;
 use hb_formats::terrain::CELL_SIZE;
 use hb_world::grid::{
     cell_fraction, centroid, half_containing, sample_point, triangle, triangle_containing,
@@ -14,7 +15,7 @@ use hb_world::grid::triangle_containing as tri_at;
 #[test]
 fn a_cell_is_eight_units_and_the_grid_wraps() {
     assert_eq!(CELL_SIZE, 1 << 19);
-    assert_eq!(CELL_SIZE as f32 / 65536.0, 8.0);
+    assert_eq!(to_units(CELL_SIZE), 8.0);
     // 128 cells of 8.0 units.
     assert_eq!(hb_world::grid::WORLD_SIZE as f64 / 65536.0, 1024.0);
     // Indices wrap rather than clamp, which is what `and eax, 0x7f` does.

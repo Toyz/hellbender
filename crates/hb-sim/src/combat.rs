@@ -24,6 +24,7 @@
 //!
 //! This port's own choices are named where they are made.
 
+use hb_formats::fixed::to_units;
 use hb_formats::mrgl::Model;
 use hb_formats::text::{EnemyDef, Placement};
 use hb_formats::vector::{direction, distance, dot, offset, within};
@@ -76,7 +77,7 @@ pub const WEAPONS: [(i32, i32); 26] = [
 
 pub fn weapon(kind: usize) -> Option<WeaponStats> {
     let (speed, damage) = *WEAPONS.get(kind)?;
-    Some(WeaponStats { speed: speed as f32 / 65536.0, damage: damage as f32 / 65536.0 })
+    Some(WeaponStats { speed: to_units(speed), damage: to_units(damage) })
 }
 
 /// The servo-kinetic laser's row. The player's guns are
@@ -150,7 +151,7 @@ pub fn multiplier(def: &EnemyDef, kind: i32) -> f32 {
         23 => 0,
         _ => return 1.0,
     };
-    def.damage[slot] as f32 / 65536.0
+    to_units(def.damage[slot] as i32)
 }
 
 /// A placed object's standing in a fight.
@@ -167,7 +168,7 @@ impl Health {
     /// by 1.5 and 3 doubles them (`0x405b0b`); 0 halves the damage the player
     /// takes instead (`0x4653c7`).
     pub fn for_placement(p: &Placement) -> Health {
-        Health { hit_points: p.hit_points as f32 / 65536.0, destroyed: false }
+        Health { hit_points: to_units(p.hit_points), destroyed: false }
     }
 
     /// Apply a hit. Returns true on the hit that destroys it.
@@ -223,7 +224,7 @@ impl HitVolume {
         let radius = def.radius();
         let local = |v: &hb_formats::mrgl::Vertex| {
             let w = v.world(radius);
-            [w[0] as f32 / 65536.0, w[1] as f32 / 65536.0, w[2] as f32 / 65536.0]
+            [to_units(w[0]), to_units(w[1]), to_units(w[2])]
         };
         if let Some(mesh) = mesh {
             if !def.hit_spheres.is_empty() {
@@ -231,7 +232,7 @@ impl HitVolume {
                     .hit_spheres
                     .iter()
                     .filter_map(|&(vertex, half)| {
-                        Some((local(mesh.vertices.get(vertex as usize)?), half as f32 / 65536.0))
+                        Some((local(mesh.vertices.get(vertex as usize)?), to_units(half)))
                     })
                     .collect::<Vec<_>>();
                 if !spheres.is_empty() {
@@ -251,7 +252,7 @@ impl HitVolume {
                 return HitVolume::Box { min, max };
             }
         }
-        let r = radius as f32 / 65536.0;
+        let r = to_units(radius);
         HitVolume::Box { min: [-r; 3], max: [r; 3] }
     }
 
@@ -324,7 +325,7 @@ pub fn to_world(local: [f32; 3], origin: [f32; 3], heading: f32) -> [f32; 3] {
 
 /// A 16.16 placement position in world units.
 pub fn position_of(p: &Placement) -> [f32; 3] {
-    [p.x, p.y, p.z].map(hb_formats::fixed::to_units)
+    [p.x, p.y, p.z].map(to_units)
 }
 
 /// What stopped a shot this frame.
@@ -433,8 +434,8 @@ pub fn object_at(
 /// both: the actor takes [`RAM_ACTOR`] a second and the player
 /// [`RAM_PLAYER`] on the frame. The engine skips every actor whose class is
 /// 0 or 9 (`0x40d6af`).
-pub const RAM_ACTOR: f32 = 0x2000 as f32 / 65536.0;
-pub const RAM_PLAYER: f32 = 0x1000 as f32 / 65536.0;
+pub const RAM_ACTOR: f32 = to_units(0x2000);
+pub const RAM_PLAYER: f32 = to_units(0x1000);
 
 /// The classes flying into them costs nothing (`0x40d6ad`, `0x40d6b2`).
 pub fn rammable(class: i64) -> bool {

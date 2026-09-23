@@ -1,5 +1,6 @@
 //! Cell geometry: coordinates, wrapping, and the triangle split.
 
+use hb_formats::fixed::{from_units, to_units};
 use hb_formats::terrain::{Altitudes, BoxFace, Layer, Terrain, CELL_SIZE, SIDE};
 
 /// The grid wraps rather than clamps. `heightAtGrid` masks both indices with
@@ -436,8 +437,7 @@ impl<'a> Grid<'a> {
     /// [`Grid::ceiling_of_solid`] in world units, for callers that work in
     /// floats.
     pub fn solid_top(&self, x: f32, z: f32) -> f32 {
-        let fixed = |v: f32| (v * 65536.0) as i32;
-        self.ceiling_of_solid(fixed(x), fixed(z)) as f32 / 65536.0
+        to_units(self.ceiling_of_solid(from_units(x), from_units(z)))
     }
 
     /// `0x41c300`: the floor under a point, in 16.16 - what it would come

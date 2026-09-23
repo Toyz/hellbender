@@ -1,6 +1,7 @@
 //! Keeping the ship out of the boxes.
 
 use hb_sim::collide::{push_out, Push, Solid, OVERSHOOT, SHIP};
+use hb_formats::fixed::{from_units, to_units};
 
 fn block() -> Solid {
     Solid { min: [0.0, 0.0, 0.0], max: [8.0, 6.0, 8.0] }
@@ -82,13 +83,13 @@ fn the_boxes_of_a_level_stop_a_ship() {
             }
             let (ox, oz) = cell.signed_origin();
             let middle = [
-                ox as f32 / 65536.0 + 4.0,
+                to_units(ox) + 4.0,
                 (bottom + top) as f32 / 131072.0,
-                oz as f32 / 65536.0 + 4.0,
+                to_units(oz) + 4.0,
             ];
-            let reach = (SHIP * 65536.0) as i32;
+            let reach = from_units(SHIP);
             let solids: Vec<Solid> = grid
-                .boxes_near(hb_formats::fixed::from_units(middle[0]), hb_formats::fixed::from_units(middle[2]), reach)
+                .boxes_near(from_units(middle[0]), from_units(middle[2]), reach)
                 .into_iter()
                 .map(Solid::of)
                 .collect();

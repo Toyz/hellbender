@@ -9,6 +9,7 @@
 //! the binary [MRGL](crate::mrgl) models. A `.TXT` model becomes an MRGL node
 //! of type 0x26 once parsed.
 
+use crate::fixed::to_units;
 use crate::mrgl::{Corner, Polygon, Vertex};
 use crate::text::lines;
 use crate::{Error, Result};
@@ -302,7 +303,7 @@ impl Animated {
     /// Which keyframe `seconds` lands on, and how far past it, 0.0 to 1.0.
     /// The clock wraps at the last frame.
     pub fn frame_at(&self, seconds: f32) -> (usize, f32) {
-        let per_frame = self.time_per_frame as f32 / 65536.0;
+        let per_frame = to_units(self.time_per_frame);
         if self.frames == 0 || per_frame <= 0.0 {
             return (0, 0.0);
         }

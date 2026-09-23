@@ -6,6 +6,7 @@
 
 use std::time::Instant;
 
+use hb_formats::fixed::{from_units, to_units};
 use hb_formats::terrain::CELL_SIZE;
 use hb_formats::Angle;
 mod battle;
@@ -75,8 +76,7 @@ struct Flight {
 
 impl Flight {
     fn new(camera: Camera) -> Flight {
-        let at = |v: i32| v as f32 / 65536.0;
-        let mut ship = hb_sim::flight::Ship::new([at(camera.x), at(camera.y), at(camera.z)], camera.yaw.0 as f32);
+        let mut ship = hb_sim::flight::Ship::new([to_units(camera.x), to_units(camera.y), to_units(camera.z)], camera.yaw.0 as f32);
         // Stopped, which is where the engine starts it: `0x512588` is 0 in
         // the image's `.data` and nothing at the level start moves it, so the
         // player gives it power.
@@ -147,9 +147,9 @@ impl Flight {
     fn sync_camera(&mut self) {
         let [x, y, z] = self.ship.position;
         let [pitch, roll, heading] = self.ship.angles();
-        self.camera.x = hb_formats::fixed::from_units(x);
-        self.camera.y = hb_formats::fixed::from_units(y);
-        self.camera.z = hb_formats::fixed::from_units(z);
+        self.camera.x = from_units(x);
+        self.camera.y = from_units(y);
+        self.camera.z = from_units(z);
         self.camera.pitch = Angle(pitch as i32 as u16);
         self.camera.roll = Angle(roll as i32 as u16);
         self.camera.yaw = Angle(heading as i32 as u16);
@@ -200,7 +200,7 @@ impl Flight {
     ) -> ([f32; 3], bool) {
         let unit = hb_sim::collide::SHIP;
         let mut solids: Vec<hb_sim::collide::Solid> = grid
-            .boxes_near(hb_formats::fixed::from_units(position[0]), hb_formats::fixed::from_units(position[2]), (unit * 65536.0) as i32)
+            .boxes_near(from_units(position[0]), from_units(position[2]), from_units(unit))
             .into_iter()
             .map(hb_sim::collide::Solid::of)
             .collect();
@@ -224,11 +224,11 @@ impl Flight {
         }
         let corners = [(0.0, 0.0), (-unit, -unit), (unit, -unit), (-unit, unit), (unit, unit)];
         let sample = |layer, at: [f32; 3], dx: f32, dz: f32| {
-            grid.height_at(layer, hb_formats::fixed::from_units(at[0] + dx), hb_formats::fixed::from_units(at[2] + dz)).map(|h| h as f32 / 65536.0)
+            grid.height_at(layer, from_units(at[0] + dx), from_units(at[2] + dz)).map(to_units)
         };
         // Underground the chamber holds the ship, not the ground: two
         // heightfields with rock where they meet (`0x4290f0`).
-        let cell = hb_world::Cell::containing(hb_formats::fixed::from_units(at[0]), hb_formats::fixed::from_units(at[2]));
+        let cell = hb_world::Cell::containing(from_units(at[0]), from_units(at[2]));
         if at[1] < 0.0 && grid.has_chamber(cell) {
             let roof = corners
                 .into_iter()
@@ -471,7 +471,7 @@ fn main() -> Result<(), String> {
             let ini = hb_formats::ini::Ini::read(&hb_pod::game_dir().join("system").join("hellbend.ini"))
                 .unwrap_or_default();
             let setting = |name: &str| {
-                ini.int("Sound", name).map_or(1.0, |v| v as f32 / 65536.0).clamp(0.0, 1.0)
+                ini.int("Sound", name).map_or(1.0, |v| to_units(v as i32)).clamp(0.0, 1.0)
             };
             let extra: f32 = std::env::var("HB_VOLUME")
                 .ok()
@@ -964,7 +964,7 @@ fn main() -> Result<(), String> {
                         friendly: kind.friendly,
                         alive: !battle.health[i].destroyed && battle.health[i].hit_points > 0.0,
                         near: hb_sim::combat::in_range(eye, at),
-                        view: flight.camera.to_view(hb_formats::fixed::from_units(near[0]), hb_formats::fixed::from_units(near[1]), hb_formats::fixed::from_units(near[2])),
+                        view: flight.camera.to_view(from_units(near[0]), from_units(near[1]), from_units(near[2])),
                     }
                 })
                 .collect();
@@ -1014,8 +1014,8 @@ fn main() -> Result<(), String> {
         // because the ground overhead is not what a shot fired down there
         // meets first.
         let solid = |p: [f32; 3]| {
-            let (x, z) = ((p[0] * 65536.0) as i32, (p[2] * 65536.0) as i32);
-            let y = (p[1] * 65536.0) as i32;
+            let (x, z) = (from_units(p[0]), from_units(p[2]));
+            let y = from_units(p[1]);
             let cell = hb_world::Cell::containing(x, z);
             if p[1] < 0.0 && grid.has_chamber(cell) {
                 let layer = hb_formats::terrain::Layer::ChamberFloor;
@@ -1085,8 +1085,8 @@ fn main() -> Result<(), String> {
         // own words.
         for hit in std::mem::take(&mut battle.ground_hits) {
             let cell = hb_world::grid::Cell::containing(
-                (hit[0] * 65536.0) as i32,
-                (hit[2] * 65536.0) as i32,
+                from_units(hit[0]),
+                from_units(hit[2]),
             );
             let started = doors.shot((cell.x, cell.z), hit[1] * hb_sim::quake::WORD);
             // And a lamp on the face it hit takes the shot (`0x48c800`); one
@@ -1160,9 +1160,9 @@ fn main() -> Result<(), String> {
             let ground = under(at);
             let wants = wreck.step(&mut at, dt, ground);
             flight.ship.position = at;
-            flight.camera.x = (at[0] * 65536.0) as i32;
-            flight.camera.y = (at[1] * 65536.0) as i32;
-            flight.camera.z = (at[2] * 65536.0) as i32;
+            flight.camera.x = from_units(at[0]);
+            flight.camera.y = from_units(at[1]);
+            flight.camera.z = from_units(at[2]);
             flight.camera.pitch = Angle(wreck.pitch as i32 as u16);
             flight.camera.roll = Angle(wreck.roll as i32 as u16);
             last_eye = eye_of(&flight.camera);
@@ -1304,7 +1304,7 @@ fn main() -> Result<(), String> {
             };
             let moved = motion.step(dt, around, &mut rng);
             let placed = &mut live[*i];
-            [placed.x, placed.y, placed.z] = moved.at.map(|v| (v * 65536.0) as i32);
+            [placed.x, placed.y, placed.z] = moved.at.map(from_units);
             placed.pitch = moved.angles[0] as i32;
             placed.roll = moved.angles[1] as i32;
             placed.heading = moved.angles[2] as u16;
@@ -1346,7 +1346,7 @@ fn main() -> Result<(), String> {
         // each frame.
         let bolt = {
             let eye = camera_at(&flight.camera);
-            let sky = (level.sky_height() * 65536.0) as i32;
+            let sky = from_units(level.sky_height());
             if eye[1] >= 0 {
                 for event in lightning.step(dt, eye, sky, &mut rng) {
                     let (name, at) = match event {
@@ -1355,7 +1355,7 @@ fn main() -> Result<(), String> {
                         hb_sim::weather::Flash::Dark => ("", None),
                     };
                     if let (Some(at), Some(music), Some(s)) = (at, music.as_ref(), sound(name)) {
-                        let at = at.map(|v| v as f32 / 65536.0);
+                        let at = at.map(to_units);
                         music.effect(&s, hb_sim::combat::falloff(eye_of(&flight.camera), at));
                     }
                 }
@@ -1416,9 +1416,9 @@ fn main() -> Result<(), String> {
                 drawn.push(hb_formats::text::Placement {
                     kind: *mesh,
                     hit_points: 0,
-                    x: hb_formats::fixed::from_units(item.position[0]),
-                    y: hb_formats::fixed::from_units(item.position[1]),
-                    z: hb_formats::fixed::from_units(item.position[2]),
+                    x: from_units(item.position[0]),
+                    y: from_units(item.position[1]),
+                    z: from_units(item.position[2]),
                     pitch: 0,
                     roll: 0,
                     heading: flight.camera.yaw.0,
@@ -1434,9 +1434,9 @@ fn main() -> Result<(), String> {
             drawn.push(hb_formats::text::Placement {
                 kind: mesh,
                 hit_points: 0,
-                x: hb_formats::fixed::from_units(at[0]),
-                y: hb_formats::fixed::from_units(at[1]),
-                z: hb_formats::fixed::from_units(at[2]),
+                x: from_units(at[0]),
+                y: from_units(at[1]),
+                z: from_units(at[2]),
                 pitch: angles.1 as i32,
                 roll: 0,
                 heading: angles.0,
@@ -1515,9 +1515,9 @@ fn main() -> Result<(), String> {
                 drawn.push(hb_formats::text::Placement {
                     kind: mesh,
                     hit_points: 0,
-                    x: hb_formats::fixed::from_units(flight.ship.position[0]),
-                    y: hb_formats::fixed::from_units(flight.ship.position[1]),
-                    z: hb_formats::fixed::from_units(flight.ship.position[2]),
+                    x: from_units(flight.ship.position[0]),
+                    y: from_units(flight.ship.position[1]),
+                    z: from_units(flight.ship.position[2]),
                     pitch: pitch as i32,
                     roll: roll as i32,
                     heading: heading as u16,
@@ -1530,22 +1530,22 @@ fn main() -> Result<(), String> {
         let seen = if let Some((height, spin)) = arriving {
             // Straight over the ship, looking straight down, turning.
             let mut c = flight.camera;
-            c.y = (height * 65536.0) as i32;
+            c.y = from_units(height);
             c.pitch = Angle(entry::PITCH);
             c.roll = Angle(0);
-            c.yaw = Angle((spin * 65536.0) as i32 as u16);
+            c.yaw = Angle((spin * hb_formats::fixed::TURN) as i32 as u16);
             c
         } else {
             let mut c = flight.camera;
             let mut turn = hb_render::cockpit::VIEWS[view].0;
             if let Some((clock, _)) = jumping {
                 let (yaw, pitch) = jump::look(clock);
-                turn = turn.wrapping_add((yaw * 65536.0) as i32 as u16);
-                c.pitch = Angle(c.pitch.0.wrapping_add((pitch * 65536.0) as i32 as u16));
+                turn = turn.wrapping_add((yaw * hb_formats::fixed::TURN) as i32 as u16);
+                c.pitch = Angle(c.pitch.0.wrapping_add((pitch * hb_formats::fixed::TURN) as i32 as u16));
                 // And the eye comes off the ship, back along where it looks.
                 let (a, b) = (
-                    (c.yaw.0.wrapping_add(turn) as f32 / 65536.0) * std::f32::consts::TAU,
-                    (c.pitch.0 as i16 as f32 / 65536.0) * std::f32::consts::TAU,
+                    hb_formats::fixed::radians(c.yaw.0.wrapping_add(turn) as f32),
+                    hb_formats::fixed::radians(c.pitch.0 as i16 as f32),
                 );
                 let back = jump::BACK * 65536.0;
                 c.x -= (a.sin() * b.cos() * back) as i32;
@@ -1593,7 +1593,7 @@ fn main() -> Result<(), String> {
                 .box_span(hb_world::Layer::BoxA, cell)
                 .map(|(bottom, _)| bottom)
                 .filter(|&bottom| at[1] < bottom);
-            let sky = (level.sky_height() * 65536.0) as i32;
+            let sky = from_units(level.sky_height());
             let ship = camera_at(&flight.camera);
             let moved: [i32; 3] = std::array::from_fn(|k| hb_formats::fixed::wrap(ship[k] - weather_eye[k]));
             weather_eye = ship;
@@ -1626,7 +1626,7 @@ fn main() -> Result<(), String> {
                 if health.destroyed || !hb_sim::combat::in_range(eye, at) {
                     return;
                 }
-                let [x, y, z] = hb_formats::vector::nearest(eye, at).map(hb_formats::fixed::from_units);
+                let [x, y, z] = hb_formats::vector::nearest(eye, at).map(from_units);
                 let v = seen.to_view(x, y, z);
                 // In front, and inside ninety degrees each way.
                 if v[2] <= 0.0 || v[0].abs() > v[2] || v[1].abs() > v[2] {
@@ -1634,7 +1634,7 @@ fn main() -> Result<(), String> {
                 }
                 let (sx, sy) = Camera::to_screen(v, w, h);
                 let (sx, sy) = (sx as isize, sy as isize);
-                let full = level.placements[i].hit_points as f32 / 65536.0;
+                let full = to_units(level.placements[i].hit_points);
                 let bar = bar.then_some((health.hit_points, full));
                 if hb_render::hud::is_target(level.kinds[p.kind].class()) {
                     hb_render::hud::target_box(&mut target, sx, sy, size, colour, bar);
@@ -1829,8 +1829,8 @@ fn main() -> Result<(), String> {
                 frames as f32 / since.elapsed().as_secs_f32(),
                 cell.x,
                 cell.z,
-                flight.camera.y as f32 / 65536.0,
-                ground as f32 / 65536.0,
+                to_units(flight.camera.y),
+                to_units(ground),
                 flight.ship.speed(),
                 if flight.grounded { "  [on the deck]" } else { "" }
             );
@@ -1909,16 +1909,16 @@ fn hoverers_for(level: &Level) -> Vec<(usize, hb_sim::behaviour::Motion, f32)> {
         .enumerate()
         .filter_map(|(i, p)| {
             let kind = level.kinds.get(p.kind)?;
-            let at = [p.x, p.y, p.z].map(|v| v as f32 / 65536.0);
+            let at = [p.x, p.y, p.z].map(to_units);
             let angles = [p.pitch as f32, p.roll as f32, p.heading as f32];
             let motion = hb_sim::behaviour::Motion::of(kind.class(), at, angles)?;
-            Some((i, motion, kind.radius() as f32 / 65536.0))
+            Some((i, motion, to_units(kind.radius())))
         })
         .collect()
 }
 
 fn eye_of(camera: &Camera) -> [f32; 3] {
-    [camera.x as f32 / 65536.0, camera.y as f32 / 65536.0, camera.z as f32 / 65536.0]
+    [to_units(camera.x), to_units(camera.y), to_units(camera.z)]
 }
 
 /// Which palette entries draw shots. All three come from the reserved range,
@@ -1982,7 +1982,7 @@ fn begin(level: &Level, rng: &mut hb_sim::turret::Rng) -> Round {
     let mut battle = battle::Battle::new(level);
     let floor = floor_of(level);
     for p in &level.powerups {
-        let at = p.position.map(|v| v as f32 / 65536.0);
+        let at = p.position.map(to_units);
         let size = level.powerup_size.get(p.kind).copied().unwrap_or(0.0);
         battle.field.place(at, p.kind, size, floor(at));
     }
@@ -2087,7 +2087,7 @@ mod jump {
         (clock * SPIN, pitch)
     }
     /// How far the nose comes up: `0xffffc100` of the circle.
-    pub const PITCH: f32 = 0x3f00 as f32 / 65536.0;
+    pub const PITCH: f32 = hb_formats::fixed::to_units(0x3f00);
     pub const BLAST: &str = "blast4.wav";
     /// How far behind the ship the outside camera sits: `0x481792` puts
     /// `0x20000` in `0x512558` as a level starts, and `0x480021` is what
@@ -2157,7 +2157,7 @@ fn floor_of(level: &Level) -> impl Fn([f32; 3]) -> f32 + '_ {
 fn start_camera(level: &Level, mission: &hb_sim::mission::Mission) -> Camera {
     match mission.start {
         Some(start) => {
-            let [x, y, z] = start.position.map(hb_formats::fixed::from_units);
+            let [x, y, z] = start.position.map(from_units);
             let mut camera = Camera::looking_at(x, y, z, Angle(start.angles[2]));
             camera.pitch = Angle(start.angles[0]);
             camera

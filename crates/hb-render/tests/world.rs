@@ -1,6 +1,7 @@
 //! Whole frames of a real level. These need the game and skip without it.
 
 use hb_formats::Angle;
+use hb_formats::fixed::to_units;
 use hb_render::{Camera, Level, Target};
 
 fn frame(level: &Level, x: i32, y: i32, z: i32) -> (Vec<u8>, hb_render::scene::Drawn) {
@@ -154,9 +155,9 @@ fn an_explosion_puff_draws() {
     let camera = Camera::looking_at(64 << 19, 40 << 16, 64 << 19, Angle(0));
     let scene = level.scene();
     let eye = [
-        camera.x as f32 / 65536.0,
-        camera.y as f32 / 65536.0,
-        camera.z as f32 / 65536.0,
+        to_units(camera.x),
+        to_units(camera.y),
+        to_units(camera.z),
     ];
     let at = [eye[0], eye[1], eye[2] + 10.0];
     hb_render::scene::draw_sprite(&mut target, &scene, &camera, at, 3.0, texture);
