@@ -922,6 +922,7 @@ fn main() -> Result<(), String> {
             flight.collide = !flight.collide;
             println!("collision {}", if flight.collide { "on" } else { "off" });
         }
+        let mut faked_burn = false;
         match &demo {
             // Replaying: the ship is wherever the original game recorded it.
             Some(_) => {
@@ -933,7 +934,17 @@ fn main() -> Result<(), String> {
                     } else {
                         [0.0; 3]
                     };
+                    let before = [flight.ship.right, flight.ship.up, flight.ship.forward];
                     flight.ship.set_pose(at, [p.angles[0], p.angles[1], p.angles[2]].map(|a| a as f32), moving);
+                    // The stick, throttle and afterburner the recording does
+                    // not hold, made up from how the ship moved - the port's
+                    // own, so the hand and the gauges move - but not across
+                    // the jump from where the level put the ship.
+                    if dt > 0.0 && playback.clock > from_units(dt) {
+                        let faked = flight.ship.controls_for(before, dt);
+                        flight.ship.take_input(&faked, dt);
+                        faked_burn = faked.afterburner;
+                    }
                     flight.camera.x = p.x;
                     flight.camera.y = p.y;
                     flight.camera.z = p.z;
@@ -1004,7 +1015,10 @@ fn main() -> Result<(), String> {
             battle.guns.track(pressed(binds.missile_lock), candidates.len(), |i| {
                 candidates[i].lockable(selected)
             });
-            let burn = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
+            let burn = match demo {
+                Some(_) => faked_burn,
+                None => window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift),
+            };
             let (volleys, mut voices) = battle.trigger(fire_held, burn, dt, &pose);
             for (key, weapon) in binds.weapons.iter().zip(keys::WEAPON_ROWS) {
                 if pressed(*key) {

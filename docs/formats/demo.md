@@ -91,6 +91,14 @@ Each frame `0x44d180`:
 Everything else runs as in play: the actors think and shoot, and the
 player's shots fly.
 
+Nothing else of the pilot is recorded - no stick, no throttle, no
+afterburner - so in the original the cockpit hand stays centred and the
+throttle where the level left it. The port makes those up from how the
+recorded ship moves, which is its own invention: the stick from the pitch
+and yaw rates against the 2/7 of a turn a second a held key gives, the
+throttle from the forward speed against the 16 units a second full throttle
+settles at, and the afterburner past 32 (`Ship::controls_for`).
+
 ## Two demos were recorded on levels that did not ship
 
 `DEMO2.DMO` names `red.lvl` and `DEMO3.DMO` names `atmos-t2.lvl`. Neither is in

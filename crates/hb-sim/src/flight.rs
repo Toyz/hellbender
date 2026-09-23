@@ -34,10 +34,15 @@
 //! vertical velocities are only ever halved.
 
 use hb_formats::fixed::{circle, radians, to_units, TURN};
-use hb_formats::vector::{add, along, axes, cross, from_frame, normalise, scale};
+use hb_formats::vector::{add, along, axes, cross, dot, from_frame, normalise, scale};
 
 /// `0x2492`, the input scale.
 const SEVENTH: f32 = to_units(9362);
+/// Where the forward speed settles at full throttle, and on the afterburner,
+/// units a second: twice the eight and 24 added each frame (`0x4644a4`,
+/// `0x464475`).
+const FULL_THROTTLE: f32 = 16.0;
+const BURNER: f32 = 48.0;
 /// `0xbb80`: how much of the yaw input banks the ship.
 const BANK: f32 = to_units(48000);
 /// `0xc30`, the auto-level's largest pull a frame, in turns a second.
@@ -151,12 +156,11 @@ impl Ship {
         from_frame(self.velocity, &[self.right, self.up, self.forward])
     }
 
-    /// One frame of `0x463aa0`.
-    pub fn step(&mut self, controls: &Controls, dt: f32) {
-        if dt <= 0.0 {
-            return;
-        }
+    /// The controls into the ship's inputs: the six key ramps, a stick in
+    /// their place, and the throttle. The first part of [`Ship::step`].
+    pub fn take_input(&mut self, controls: &Controls, dt: f32) {
         let held = [
+
             controls.up,
             controls.down,
             controls.left,
@@ -192,6 +196,39 @@ impl Ship {
             self.throttle = lever;
         }
         self.throttle = self.throttle.clamp(0.0, 1.0);
+    }
+
+    /// The port's own, for a recorded demo, which holds the ship's pose and
+    /// nothing of what the pilot held: controls that would have flown the
+    /// ship the way it moved since `before`, `dt` ago, so the cockpit's hand
+    /// and gauges move with it. The stick is the pitch and yaw rates as a
+    /// fraction of a held key's 2/7 of a turn a second - the 1/7 input
+    /// settled at twice - and the throttle is the forward speed over the 16
+    /// units a second full throttle settles at; past 32, midway to the
+    /// afterburner's 48, the afterburner is taken to be lit. The engine's
+    /// demo sets none of this (`0x44d180`).
+    pub fn controls_for(&self, before: [[f32; 3]; 3], dt: f32) -> Controls {
+        let [right, up, _] = before;
+        let turned = |across: [f32; 3]| dot(self.forward, across).clamp(-1.0, 1.0).asin() / std::f32::consts::TAU / dt;
+        let full = 2.0 * SEVENTH;
+        let deflection = |rate: f32| (rate / full).clamp(-1.0, 1.0);
+        // Nose down is a positive pitch, which the up key gives.
+        let stick = [deflection(-turned(up)), deflection(turned(right)), 0.0];
+        let speed = self.speed();
+        Controls {
+            stick: Some(stick),
+            lever: Some((speed / FULL_THROTTLE).clamp(0.0, 1.0)),
+            afterburner: speed > (FULL_THROTTLE + BURNER) / 2.0,
+            ..Controls::default()
+        }
+    }
+
+    /// One frame of `0x463aa0`.
+    pub fn step(&mut self, controls: &Controls, dt: f32) {
+        if dt <= 0.0 {
+            return;
+        }
+        self.take_input(controls, dt);
 
         for r in &mut self.rates {
             *r *= 0.5;

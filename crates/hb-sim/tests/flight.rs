@@ -164,3 +164,36 @@ fn a_key_and_a_stick_do_not_fight() {
     fly(&mut ship, controls, 1.0);
     assert!(hb_formats::fixed::signed(ship.angles()[2]) > 0.0, "the key still turns right");
 }
+
+/// A demo's made-up controls: flying the ship by the keys and then asking
+/// what controls would have done that gives the keys back.
+#[test]
+fn the_controls_for_a_turn_are_the_keys_that_made_it() {
+    let dt = 1.0 / 30.0;
+    let mut ship = Ship::new([0.0; 3], 0.0);
+    ship.throttle = 0.5;
+    // Settle into a right turn, nose down, at half throttle.
+    for _ in 0..90 {
+        ship.step(&Controls { right: true, up: true, lever: Some(0.5), ..Controls::default() }, dt);
+    }
+    let before = [ship.right, ship.up, ship.forward];
+    ship.step(&Controls { right: true, up: true, lever: Some(0.5), ..Controls::default() }, dt);
+    let faked = ship.controls_for(before, dt);
+    let [pitch, turn, _] = faked.stick.unwrap();
+    assert!(pitch > 0.7 && turn > 0.7, "{pitch} {turn}");
+    assert!((faked.lever.unwrap() - 0.5).abs() < 0.05, "{:?}", faked.lever);
+    assert!(!faked.afterburner);
+}
+
+/// Faster than full throttle settles at, well on the way to the
+/// afterburner's, reads as the afterburner.
+#[test]
+fn a_demo_flying_fast_has_its_afterburner_lit() {
+    let mut ship = Ship::new([0.0; 3], 0.0);
+    let frame = [ship.right, ship.up, ship.forward];
+    ship.set_pose([0.0; 3], [0.0; 3], [0.0, 0.0, 40.0]);
+    let faked = ship.controls_for(frame, 1.0 / 30.0);
+    assert!(faked.afterburner);
+    assert_eq!(faked.lever, Some(1.0));
+    assert_eq!(faked.stick, Some([0.0; 3]));
+}
