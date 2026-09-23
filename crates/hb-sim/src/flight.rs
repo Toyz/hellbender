@@ -34,7 +34,7 @@
 //! vertical velocities are only ever halved.
 
 use hb_formats::fixed::{circle, radians, to_units, TURN};
-use hb_formats::vector::{add, cross, from_frame, normalise, scale};
+use hb_formats::vector::{add, along, axes, cross, from_frame, normalise, scale};
 
 /// `0x2492`, the input scale.
 const SEVENTH: f32 = to_units(9362);
@@ -93,13 +93,12 @@ pub struct Ship {
 impl Ship {
     /// A ship at a position, level, facing a heading in the engine's circle.
     pub fn new(position: [f32; 3], heading: f32) -> Ship {
-        let h = radians(heading);
-        let (s, c) = h.sin_cos();
+        let [right, up, forward] = axes(heading, 0.0, 0.0);
         Ship {
             position,
-            right: [c, 0.0, -s],
-            up: [0.0, 1.0, 0.0],
-            forward: [s, 0.0, c],
+            right,
+            up,
+            forward,
             rates: [0.0; 3],
             velocity: [0.0; 3],
             keys: [0.0; 6],
@@ -117,6 +116,17 @@ impl Ship {
         let heading = f[0].atan2(f[2]);
         let roll = self.right[1].atan2(self.up[1]);
         [circle(pitch), circle(roll), circle(heading)]
+    }
+
+    /// Put the ship where a recorded demo has it: a position, pitch, roll
+    /// and heading in the circle, moving at `velocity` in the world.
+    /// `0x44d180` writes the pose and `0x464800` rebuilds the ship's
+    /// orientation from the angles.
+    pub fn set_pose(&mut self, position: [f32; 3], [pitch, roll, heading]: [f32; 3], velocity: [f32; 3]) {
+        let frame = axes(heading, pitch, roll);
+        [self.right, self.up, self.forward] = frame;
+        self.position = position;
+        self.velocity = along(velocity, &frame);
     }
 
     /// Turn the ship about its own right axis, in turns. Positive is nose

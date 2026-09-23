@@ -20,7 +20,7 @@ The containers and record layouts.
 | [Sound, music and cutscenes](formats/audio-video.md) | solid | SOUND\*.WAV, MUSIC\*.MOD, system/Story/*.SMK |
 | [The colour tables - .MAP, .LTE, .FOG, .MIX](formats/colour-tables.md) | partial | FOG\*.MAP, FOG\*.LTE, FOG\*.FOG, FOG\*.MIX, DATA\*.LTE |
 | [The .CRS courses](formats/courses.md) | solid | DATA\*.CRS |
-| [The .DMO recorded flight](formats/demo.md) | solid | DEMO\DEMO1.DMO, DEMO\DEMO2.DMO, DEMO\DEMO3.DMO |
+| [The .DMO recorded flight](formats/demo.md) | solid | DEMO\DEMO1.DMO, DEMO\DEMO2.DMO, DEMO\DEMO3.DMO, HELLBEND.EXE:0x44d180, 0x44d470, 0x4558e0 |
 | [The two fonts](formats/font.md) | solid | STARTUP\FONT.BIN, STARTUP\FONT.NDX, HELLBEND.EXE:0x50f530 |
 | [The level text files - .DEF, .NAV, .TXT, .TEX, .ANI, .LVL family](formats/level-text.md) | partial | DATA\*.DEF, DATA\*.NAV, DATA\*.TXT, DATA\*.TEX, DATA\*.ANI, DEMO\*.DMO |
 | [The .LVL manifest](formats/lvl.md) | solid | LEVELS\*.LVL |

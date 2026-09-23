@@ -551,7 +551,7 @@ fn main() -> Result<(), String> {
     let Round {
         mut flight, mut mission, mut followers, mut transports, mut live, mut battle, mut colours, mut scenery,
         mut doors, mut hoverers, mut gone, mut last_eye, mut weather, mut weather_eye,
-        mut lightning
+        mut lightning, mut playback
     } = begin(&level, &mut rng);
     // The missile warning and the afterburner's note, while they are held.
     let mut warning: Option<u64> = None;
@@ -570,22 +570,15 @@ fn main() -> Result<(), String> {
             })
             .clone()
     };
-    briefing = has_briefing(&game, &level.stem).then(|| level.stem.clone());
+    let arrived;
+    (briefing, arrived) = arrival(&game, &level, demo.is_some());
     typing = 0.0;
-    // A chapter's briefing is a movie before it is a screen, and the `.LVL`
-    // names it on line 36. The arrival follows it.
     if movies {
         // The game opens on four of them before it opens on anything else.
         if opening && demo.is_none() {
-            let mut first: Vec<String> =
-                movie::OPENING.iter().map(|s| s.to_string()).collect();
-            first.append(&mut pending);
-            pending = first;
+            pending.splice(0..0, movie::OPENING.iter().map(|s| s.to_string()));
         }
-        if briefing.is_some() {
-            pending.extend(level.manifest.briefing_movie.clone());
-        }
-        pending.extend(opening_of(&level));
+        pending.extend(arrived);
     }
     // The one that is playing, its clock, and the buffer it draws into -
     // which is the movie's size, not the game's.
@@ -621,6 +614,8 @@ fn main() -> Result<(), String> {
     let started = Instant::now();
     let mut last = Instant::now();
     let mut tab_was_down = false;
+    // A demo that has played to its end, to be started again.
+    let mut replay = false;
     // The original's own floor was 8 frames a second - `autoMinFrameRate` in
     // HELLBEND.INI - so it is worth knowing where this sits.
     let (mut frames, mut since) = (0u32, Instant::now());
@@ -682,13 +677,18 @@ fn main() -> Result<(), String> {
         }
 
         // The opening camera is armed on the first running frame, over the
-        // ship, and Eve waits for it to land.
+        // ship, and Eve waits for it to land. A demo has neither: the level
+        // start skips the camera with the attract mode's flag set
+        // (`0x481693`), and the welcome belongs to a new game.
         let mut held = false;
         if !opened && dt > 0.0 && show.is_none() && briefing.is_none() {
             opened = true;
-            let at = flight.ship.position;
-            let ground = floor_of(&level)(at);
-            arriving = Some(((ground + entry::ABOVE).max(at[1] + entry::STOP), 0.0));
+            welcomed |= demo.is_some();
+            if demo.is_none() {
+                let at = flight.ship.position;
+                let ground = floor_of(&level)(at);
+                arriving = Some(((ground + entry::ABOVE).max(at[1] + entry::STOP), 0.0));
+            }
         }
 
         // Eve introduces herself on the first frame of the cockpit, which is
@@ -793,6 +793,7 @@ fn main() -> Result<(), String> {
         // if not. What the engine does next - the debriefing, the story - is
         // not read.
         let next = match mission.outcome {
+            _ if replay => Some(false),
             Some(outcome) if demo.is_none() => {
                 if ended == 0.0 {
                     println!("mission {}", match outcome {
@@ -820,37 +821,50 @@ fn main() -> Result<(), String> {
             }
             _ => None,
         };
-        if (tab && !tab_was_down) || next.is_some() {
+        if (tab && !tab_was_down && demo.is_none()) || next.is_some() {
             if next != Some(false) {
                 index = (index + 1) % hb_formats::campaign::CAMPAIGN.len();
             }
             let leaving = level.manifest.story_movies.clone();
             level = Level::load(&game, Some(&startup), hb_formats::campaign::CAMPAIGN[index].stem)?;
-            briefing = has_briefing(&game, &level.stem).then(|| level.stem.clone());
+            let arrived;
+            (briefing, arrived) = arrival(&game, &level, demo.is_some());
             typing = 0.0;
             if movies {
                 // The level being left says goodbye before the next one
                 // arrives - `HOTH3` names `snowout.smk`, `ROID4` `astrout.smk`.
-                pending.extend(departure(&leaving));
-                if briefing.is_some() {
-                    pending.extend(level.manifest.briefing_movie.clone());
+                if demo.is_none() {
+                    pending.extend(departure(&leaving));
                 }
-                pending.extend(opening_of(&level));
+                pending.extend(arrived);
             }
             describe(&level);
             play_music(&level);
             Round {
                 flight, mission, followers, transports, live, battle, colours, scenery, doors,
-                hoverers, gone, last_eye, weather, weather_eye, lightning
+                hoverers, gone, last_eye, weather, weather_eye, lightning, playback
             } = begin(&level, &mut rng);
             ended = 0.0;
             dying = None;
             flash = None;
+            replay = false;
         }
         tab_was_down = tab;
 
+        // A demo's frame (`0x44d470`): the recorded pose at the demo's clock,
+        // which starts with the level and runs on the frame time, and the
+        // recorded trigger and keys, which stand in for the player's. At the
+        // end the engine says "Demo Play Done"; this plays it again.
+        let recorded = demo.as_ref().and_then(|d| d.play(&mut playback));
+        if recorded.is_some() {
+            playback.advance(dt);
+        } else if demo.is_some() {
+            replay = true;
+        }
+        let replayed: Vec<Key> =
+            recorded.iter().flat_map(|f| f.keys.iter().filter_map(|&code| keys::key_of(code as u8))).collect();
         let pressed = |key: Option<Key>| {
-            key.is_some_and(|k| window.is_key_pressed(k, minifb::KeyRepeat::No))
+            key.is_some_and(|k| window.is_key_pressed(k, minifb::KeyRepeat::No) || replayed.contains(&k))
         };
         if window.is_key_pressed(binds.hud, minifb::KeyRepeat::No) {
             show_hud = !show_hud && hud_font.is_some();
@@ -894,19 +908,23 @@ fn main() -> Result<(), String> {
             println!("collision {}", if flight.collide { "on" } else { "off" });
         }
         match &demo {
-            // Replaying: the camera is wherever the original game recorded it,
-            // looping. The recorded angles are pitch, roll and heading in the
-            // engine's 16-bit circle.
-            Some(demo) => {
-                let length = demo.seconds().max(0.1);
-                let t = started.elapsed().as_secs_f32() % length;
-                if let Some(pose) = demo.pose_at(t) {
-                    flight.camera.x = pose.x;
-                    flight.camera.y = pose.y;
-                    flight.camera.z = pose.z;
-                    flight.camera.pitch = Angle(pose.angles[0] as u16);
-                    flight.camera.roll = Angle(pose.angles[1] as u16);
-                    flight.camera.yaw = Angle(pose.angles[2] as u16);
+            // Replaying: the ship is wherever the original game recorded it.
+            Some(_) => {
+                if let Some(frame) = &recorded {
+                    let p = frame.pose;
+                    let at = [p.x, p.y, p.z].map(to_units);
+                    let moving = if dt > 0.0 {
+                        hb_formats::vector::scale(hb_formats::vector::offset(flight.ship.position, at), 1.0 / dt)
+                    } else {
+                        [0.0; 3]
+                    };
+                    flight.ship.set_pose(at, [p.angles[0], p.angles[1], p.angles[2]].map(|a| a as f32), moving);
+                    flight.camera.x = p.x;
+                    flight.camera.y = p.y;
+                    flight.camera.z = p.z;
+                    flight.camera.pitch = Angle(p.angles[0] as u16);
+                    flight.camera.roll = Angle(p.angles[1] as u16);
+                    flight.camera.yaw = Angle(p.angles[2] as u16);
                 }
             }
             None => match jumping.as_mut() {
@@ -939,7 +957,7 @@ fn main() -> Result<(), String> {
 
         // The guns, the afterburner's fuel, and the energy that feeds both:
         // `hb_sim::weapons`, from the trigger at `0x47db11` on.
-        if demo.is_none() && battle.pilot.alive() {
+        if battle.pilot.alive() {
             let pose = hb_sim::weapons::Pose {
                 position: eye,
                 right: flight.ship.right,
@@ -973,7 +991,8 @@ fn main() -> Result<(), String> {
             });
             let burn = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
             let firing = binds.fire.is_some_and(|k| window.is_key_down(k))
-                || joystick.as_ref().is_some_and(|s| s.button(stick::FIRE));
+                || joystick.as_ref().is_some_and(|s| s.button(stick::FIRE))
+                || recorded.as_ref().is_some_and(|f| f.fire);
             let (volleys, mut voices) = battle.trigger(firing, burn, dt, &pose);
             for (key, weapon) in binds.weapons.iter().zip(keys::WEAPON_ROWS) {
                 if pressed(*key) {
@@ -1026,14 +1045,13 @@ fn main() -> Result<(), String> {
             }
             y <= grid.ceiling_of_solid(x, z)
         };
-        // In a demo the recorded flight cannot dodge, so nothing shoots back.
+        // The whole fight runs in a demo too, as it does in the engine; the
+        // recorded flight cannot dodge, so it takes no damage.
         let ground = |x: f32, z: f32| grid.solid_top(x, z);
         let axes = [flight.ship.right, flight.ship.up, flight.ship.forward];
-        let mut noises = if demo.is_none() {
-            battle.step(&level, &mut live, eye, velocity, Some((&axes, flight.ship.speed())), dt, &solid, &ground, &grid)
-        } else {
-            battle.step(&level, &mut live, [0.0, 1.0e6, 0.0], [0.0; 3], None, dt, &|_| false, &ground, &grid)
-        };
+        battle.untouchable = demo.is_some();
+        let mut noises =
+            battle.step(&level, &mut live, eye, velocity, Some((&axes, flight.ship.speed())), dt, &solid, &ground, &grid);
         // The transports (`hb_sim::transport`), which think only inside the
         // same 80-unit box. One that gets away is gone, not killed; one that
         // escapes to the sky loses the level.
@@ -1206,7 +1224,7 @@ fn main() -> Result<(), String> {
                     println!("shot down ({} so far) - starting again", battle.deaths);
                     Round {
                         flight, mission, followers, transports, live, battle, colours, scenery,
-                        doors, hoverers, gone, last_eye, weather, weather_eye, lightning
+                        doors, hoverers, gone, last_eye, weather, weather_eye, lightning, playback
                     } = begin(&level, &mut rng);
                     dying = None;
                     ended = 0.0;
@@ -2014,6 +2032,8 @@ struct Round {
     weather: hb_sim::weather::Weather,
     weather_eye: [i32; 3],
     lightning: hb_sim::weather::Lightning,
+    /// A demo's playback, whose clock starts with the level (`0x44cec0`).
+    playback: hb_formats::demo::Player,
 }
 
 /// A level's opening state.
@@ -2056,6 +2076,7 @@ fn begin(level: &Level, rng: &mut hb_sim::turret::Rng) -> Round {
         weather: hb_sim::weather::Weather::new(at, rng),
         weather_eye: at,
         lightning: lightning_for(level, rng),
+        playback: hb_formats::demo::Player::default(),
         followers,
         transports,
         live: level.placements.clone(),
@@ -2232,6 +2253,24 @@ fn say(panel: &mut Vec<String>, saying: &mut f32, text: &str) {
     // The phrase table's own durations are two to five seconds; four is the
     // middle of them and what this uses until a line carries its own.
     *saying = 4.0;
+}
+
+/// What a level opens with: its briefing, if it has one, and the movies to
+/// play first - the briefing's own, which the `.LVL` names on line 36, then
+/// the arrival. A demo has none of it: with the attract mode's flag set
+/// (`0x512630`, `0x4558e0`) the level start skips the whole block
+/// (`0x4815e1`).
+fn arrival(game: &Pod, level: &Level, demo: bool) -> (Option<String>, Vec<String>) {
+    if demo {
+        return (None, Vec::new());
+    }
+    let briefing = has_briefing(game, &level.stem).then(|| level.stem.clone());
+    let mut movies = Vec::new();
+    if briefing.is_some() {
+        movies.extend(level.manifest.briefing_movie.clone());
+    }
+    movies.extend(opening_of(level));
+    (briefing, movies)
 }
 
 /// The movies a level opens with, in the order the engine plays them.

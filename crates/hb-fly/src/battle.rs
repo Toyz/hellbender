@@ -104,6 +104,9 @@ pub struct Battle {
     pub ground_hits: Vec<[f32; 3]>,
     pub destroyed: usize,
     pub deaths: usize,
+    /// Hits on the player sound but take nothing: a recorded demo flight
+    /// cannot dodge, so the port keeps it alive - its own choice.
+    pub untouchable: bool,
     rng: Rng,
 }
 
@@ -194,6 +197,7 @@ impl Battle {
             touching: Vec::new(),
             destroyed: 0,
             deaths: 0,
+            untouchable: false,
             rng,
         }
     }
@@ -558,7 +562,7 @@ impl Battle {
 
         if player_damage > 0.0 && self.pilot.alive() {
             noises.push(Noise::PlayerHit(self.rng.below(5)));
-            if self.pilot.take(player_damage) {
+            if !self.untouchable && self.pilot.take(player_damage) {
                 self.deaths += 1;
                 noises.push(Noise::Died);
             }

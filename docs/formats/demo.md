@@ -1,8 +1,8 @@
 ---
 title: The .DMO recorded flight
 status: solid
-covers: DEMO\DEMO1.DMO, DEMO\DEMO2.DMO, DEMO\DEMO3.DMO
-worklog: 25
+covers: DEMO\DEMO1.DMO, DEMO\DEMO2.DMO, DEMO\DEMO3.DMO, HELLBEND.EXE:0x44d180, 0x44d470, 0x4558e0
+worklog: 25, 123
 ---
 
 # The .DMO recorded flight
@@ -38,8 +38,10 @@ DEMO3.DMO   atmos-t2.lvl    811 records   640 poses   171 keys
 
 ## Fields
 
-**time** is 16.16 seconds: `DEMO1` runs to 3,331,473, which is 50.8 s - a
-plausible attract loop. That reading is from plausibility, not from the binary.
+**time** is 16.16 seconds: `DEMO1` runs to 3,331,473, which is 50.8 s. The
+player's clock (`0x505130`) is zeroed at the level's start (`0x44cec0`) and
+advanced by the frame time after each frame (`0x44d48c`), and poses are
+compared with it directly.
 
 **x, y, z** are a world position in the world's signed, centred coordinates -
 see [terrain](terrain.md).
@@ -54,12 +56,40 @@ against the recorded motion itself:
 - The **first** is the **pitch**, and **positive is nose down**: its sign is
   opposite to the climb in all 637 samples steep enough to test, and its
   magnitude matches the climb angle to a median 0.8 degrees.
-- The second runs the full circle and is presumably roll.
-- The fourth is only ever 0 or 1.
+- The second is the **roll**: the player writes it to the pose's `+0x10`
+  (`0x5b3840`).
+- The fourth is the **fire button**: 1 while it is held. The player writes it
+  into the key array at `fireKey`'s scan code (`0x44d3f4`).
 
 **Scan codes**: 57 is the space bar, which `HELLBEND.INI` binds as `fireKey`,
 and accounts for 636 of the 638 key presses. The other two are a single 2 (the
 `1` key, `keyDispersionCannon`) and a single 59 (F1).
+
+## Playing one back
+
+The attract mode (`0x4558e0`) always loads `demo1.dmo`, sets the attract flag
+`0x512630` and the playing flag `0x50512c`, and runs the level. With the
+attract flag set the level start skips its whole introduction - the briefing,
+the arrival, and the opening camera (`0x4815e1`, `0x481693`).
+
+Each frame `0x44d180`:
+
+- finds the first **pose** whose time is past the clock; with none, "Demo
+  Play Done" and playback stops
+- takes the pose before it - or the first record at time zero - and puts the
+  player between the two: each value the earlier one's plus the difference
+  times the time since over the time between, in integers (`imul`, `idiv`),
+  the three angles the short way round (`shl 16; sar 16`) and back into the
+  circle
+- rebuilds the ship's orientation from the angles (`0x464800`)
+- clears the key array, and holds `fireKey` if the later pose's fourth value
+  is set
+- when the pose it plays toward has moved on, presses the key records
+  between the two before it (`0x505138`, `0x50513c`) - so a key press lands a
+  pose late
+
+Everything else runs as in play: the actors think and shoot, and the
+player's shots fly.
 
 ## Two demos were recorded on levels that did not ship
 
@@ -92,5 +122,7 @@ cell's surface for the two to differ.
 
 ## Unknown
 
-Whether the second angle is roll, and what the fourth value's 0 and 1 mean.
-Whether the time unit really is 16.16 seconds.
+What the engine does after "Demo Play Done" - it returns to the attract
+screen, which is not read; the port plays the demo again. Whether a demo
+flight can be killed: the actors shoot at it as at any player, and the port
+keeps it alive.
